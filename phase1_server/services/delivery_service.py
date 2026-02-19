@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,7 @@ from phase1_server.services.attempt_state_service import (
 from phase1_server.services.audit_service import AuditService
 from phase1_server.services.exam_service import ExamNotFoundError, ExamService, ExamValidationError
 from phase1_server.services.grading_service import GradingEngine, GradingError
+from phase1_server.services.metrics_service import MetricsService
 
 
 class DeliveryError(ValueError):
@@ -62,12 +64,14 @@ class DeliveryService:
         question_repo: QuestionRepository,
         now_provider: Callable[[], datetime] | None = None,
         audit_service: AuditService | None = None,
+        metrics_service: MetricsService | None = None,
     ):
         self._attempt_repo = attempt_repo
         self._exam_repo = exam_repo
         self._question_repo = question_repo
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._audit_service = audit_service
+        self._metrics_service = metrics_service
 
     def start_attempt(self, exam_id: str, student_id: str) -> dict:
         exam = self._exam_repo.get_exam(exam_id)
@@ -205,6 +209,7 @@ class DeliveryService:
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
             except AttemptConcurrencyError as exc:
+                self._record_metric_safely("increment_concurrency_conflict")
                 self._log_event_safely(
                     entity_type="attempt",
                     entity_id=attempt.id,
@@ -247,6 +252,7 @@ class DeliveryService:
         if not self._attempt_repo.is_expired(attempt_id, self._now_iso()):
             raise AttemptStateError("Attempt is not expired")
 
+        self._record_metric_safely("increment_auto_expire")
         self._log_event_safely(
             entity_type="attempt",
             entity_id=attempt.id,
@@ -262,6 +268,7 @@ class DeliveryService:
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
             except AttemptConcurrencyError as exc:
+                self._record_metric_safely("increment_concurrency_conflict")
                 self._log_event_safely(
                     entity_type="attempt",
                     entity_id=attempt.id,
@@ -314,10 +321,14 @@ class DeliveryService:
             self._exam_repo,
             self._question_repo,
         )
+        start = time.perf_counter()
         try:
             summary = grading_engine.grade_attempt(attempt_id, graded_at=finalized_at)
         except GradingError as exc:
+            self._record_metric_safely("record_finalize_to_grade_duration", (time.perf_counter() - start) * 1000.0)
             raise DeliveryError(str(exc)) from exc
+
+        self._record_metric_safely("record_finalize_to_grade_duration", (time.perf_counter() - start) * 1000.0)
 
         if summary.graded_now:
             self._attempt_repo.log_audit_event(
@@ -361,6 +372,7 @@ class DeliveryService:
             )
 
         if self._attempt_repo.is_expired(attempt.id, self._now_iso()):
+            self._record_metric_safely("increment_auto_expire")
             self._log_event_safely(
                 entity_type="attempt",
                 entity_id=attempt.id,
@@ -394,6 +406,17 @@ class DeliveryService:
                 for option in options
             ],
         }
+
+    def _record_metric_safely(self, method_name: str, *args) -> None:
+        if self._metrics_service is None:
+            return
+        method = getattr(self._metrics_service, method_name, None)
+        if method is None:
+            return
+        try:
+            method(*args)
+        except Exception:
+            return
 
     def _log_event_safely(self, **kwargs) -> None:
         if self._audit_service is None:

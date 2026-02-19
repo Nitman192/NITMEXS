@@ -15,6 +15,7 @@ from phase1_server.services.delivery_service import (
     OwnershipError,
     SnapshotQuestionNotFoundError,
 )
+from phase1_server.services.metrics_service import MetricsService
 from phase1_server.services.grading_service import (
     GradingError,
     GradingNotFoundError,
@@ -40,6 +41,7 @@ def start_attempt(
             uow.exams,
             uow.questions,
             audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
         )
         try:
             data = service.start_attempt(exam_id=exam_id, student_id=student_id)
@@ -65,6 +67,7 @@ def fetch_question(
             uow.exams,
             uow.questions,
             audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
         )
         try:
             data = service.fetch_question(
@@ -96,6 +99,7 @@ def submit_answer(
             uow.exams,
             uow.questions,
             audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
         )
         try:
             data = service.submit_answer(
@@ -129,6 +133,7 @@ def finalize_attempt(
             uow.exams,
             uow.questions,
             audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
         )
         try:
             data = service.finalize_attempt(attempt_id=attempt_id, student_id=student_id)
@@ -152,6 +157,7 @@ def get_attempt_result(
             uow.exams,
             uow.questions,
             audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
         )
         try:
             data = service.get_result(attempt_id=attempt_id, student_id=student_id)

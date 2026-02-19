@@ -219,6 +219,20 @@ class Database:
                     SELECT RAISE(ABORT, 'audit_events is immutable');
                 END;
 
+
+                CREATE TABLE IF NOT EXISTS system_metrics (
+                    metric_name TEXT NOT NULL,
+                    metric_key TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 0,
+                    total_value REAL NOT NULL DEFAULT 0,
+                    max_value REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(metric_name, metric_key)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_system_metrics_name
+                ON system_metrics(metric_name);
+
                 CREATE TABLE IF NOT EXISTS exam_audit_logs (
                     id TEXT PRIMARY KEY,
                     exam_id TEXT NOT NULL,

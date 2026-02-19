@@ -9,6 +9,10 @@ from phase1_server.repositories.audit_event_repository import (
     SQLiteAuditEventRepository,
 )
 from phase1_server.repositories.exam_repository import ExamRepository, SQLiteExamRepository
+from phase1_server.repositories.metrics_repository import (
+    MetricsRepository,
+    SQLiteMetricsRepository,
+)
 from phase1_server.repositories.question_repository import (
     QuestionRepository,
     SQLiteQuestionRepository,
@@ -23,4 +27,6 @@ __all__ = [
     "SQLiteExamRepository",
     "AuditEventRepository",
     "SQLiteAuditEventRepository",
+    "MetricsRepository",
+    "SQLiteMetricsRepository",
 ]

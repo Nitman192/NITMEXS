@@ -28,6 +28,7 @@ from phase1_server.services.exam_service import (
     ExamCreatePayload,
     ExamValidationError,
 )
+from phase1_server.services.metrics_service import MetricsService
 from phase1_server.services.question_import_service import (
     CsvImportError,
     QuestionCsvImportService,
@@ -276,3 +277,12 @@ def get_attempt_timeline(attempt_id: str, request: Request):
         timeline = service.list_entity_timeline(entity_type="attempt", entity_id=attempt_id)
 
     return {"status": "success", "data": timeline}
+
+
+@router.get("/system/metrics")
+def get_system_metrics(request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        data = MetricsService(uow.metrics).get_metrics()
+
+    return {"status": "success", "data": data}

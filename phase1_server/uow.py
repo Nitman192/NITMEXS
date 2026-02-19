@@ -8,6 +8,7 @@ from phase1_server.db import Database
 from phase1_server.repositories.attempt_repository import SQLiteAttemptRepository
 from phase1_server.repositories.audit_event_repository import SQLiteAuditEventRepository
 from phase1_server.repositories.exam_repository import SQLiteExamRepository
+from phase1_server.repositories.metrics_repository import SQLiteMetricsRepository
 from phase1_server.repositories.question_repository import SQLiteQuestionRepository
 
 
@@ -20,6 +21,7 @@ class UnitOfWork(AbstractContextManager):
         self.questions: SQLiteQuestionRepository | None = None
         self.exams: SQLiteExamRepository | None = None
         self.audit_events: SQLiteAuditEventRepository | None = None
+        self.metrics: SQLiteMetricsRepository | None = None
 
     def __enter__(self):
         self._ctx = self._db.connection()
@@ -28,6 +30,7 @@ class UnitOfWork(AbstractContextManager):
         self.questions = SQLiteQuestionRepository(self.conn)
         self.exams = SQLiteExamRepository(self.conn)
         self.audit_events = SQLiteAuditEventRepository(self.conn)
+        self.metrics = SQLiteMetricsRepository(self.conn)
         return self
 
     def __exit__(self, exc_type, exc, tb):
