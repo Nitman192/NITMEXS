@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from phase1_server.schema_version import EXPECTED_SCHEMA_VERSION
+
 
 @dataclass(frozen=True)
 class SQLiteConfig:
@@ -29,6 +31,13 @@ class Database:
         with self.connection() as conn:
             conn.executescript(
                 """
+
+
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS attempts (
                     id TEXT PRIMARY KEY,
                     candidate_id TEXT NOT NULL,
@@ -294,6 +303,11 @@ class Database:
                     "UPDATE exams SET status = CASE WHEN published = 1 THEN 'ACTIVE' ELSE 'DRAFT' END"
                 )
 
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",
+                (EXPECTED_SCHEMA_VERSION,),
+            )
+
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(
@@ -313,6 +327,20 @@ class Database:
 
     def close(self) -> None:
         """Database manager shutdown hook (no persistent connection to close)."""
+
+    def get_schema_version(self) -> int | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
+            ).fetchone()
+            return None if row is None else int(row["version"])
+
+    def ensure_expected_schema_version(self, expected_version: int) -> None:
+        actual = self.get_schema_version()
+        if actual != expected_version:
+            raise RuntimeError(
+                f"Schema version mismatch: expected {expected_version}, got {actual}"
+            )
 
     def _apply_pragmas(self, conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA journal_mode=WAL;")

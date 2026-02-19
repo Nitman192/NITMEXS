@@ -13,6 +13,7 @@ from phase1_server.api.student_routes import router as student_router
 from phase1_server.api.system_routes import router as system_router
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.logging_config import configure_logging
+from phase1_server.schema_version import EXPECTED_SCHEMA_VERSION
 from phase1_server.services.metrics_service import MetricsService
 from phase1_server.settings import AppSettings, load_settings
 from phase1_server.uow import UnitOfWork
@@ -40,6 +41,7 @@ def create_app(
     app = FastAPI(title="NITMEXS LAN Server")
     db = Database(SQLiteConfig(db_path=active_settings.db_path))
     db.initialize()
+    db.ensure_expected_schema_version(EXPECTED_SCHEMA_VERSION)
 
     app.state.db = db
     app.state.settings = active_settings
