@@ -20,6 +20,7 @@ from phase1_server.schemas import (
     QuestionCreateSchema,
 )
 from phase1_server.services.analytics_service import AnalyticsService
+from phase1_server.services.audit_service import AuditService
 from phase1_server.services.exam_service import (
     ExamAlreadyPublishedError,
     ExamNotFoundError,
@@ -136,7 +137,7 @@ async def import_questions_csv(
 def create_exam(payload: ExamCreateSchema, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = ExamService(uow.exams, uow.questions)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             exam = service.create_exam(
                 ExamCreatePayload(
@@ -166,7 +167,7 @@ def create_exam(payload: ExamCreateSchema, request: Request):
 def add_questions(exam_id: str, payload: AddQuestionsSchema, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = ExamService(uow.exams, uow.questions)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             service.add_questions(exam_id, payload.question_ids)
         except ExamNotFoundError as exc:
@@ -184,7 +185,7 @@ def add_questions(exam_id: str, payload: AddQuestionsSchema, request: Request):
 def publish_exam(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = ExamService(uow.exams, uow.questions)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             exam = service.publish_exam(exam_id)
         except ExamNotFoundError as exc:
@@ -211,7 +212,7 @@ def close_exam(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = ExamService(uow.exams, uow.questions)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             exam = service.close_exam(exam_id, actor_id=x_admin_id, actor_role="admin")
         except ExamNotFoundError as exc:
@@ -234,7 +235,7 @@ def close_exam(
 def list_exams(request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = ExamService(uow.exams, uow.questions)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         exams = service.list_exams()
 
     return {
@@ -265,3 +266,13 @@ def get_exam_analytics(exam_id: str, request: Request):
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return {"status": "success", "data": analytics}
+
+
+@router.get("/attempts/{attempt_id}/timeline")
+def get_attempt_timeline(attempt_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = AuditService(uow.audit_events)
+        timeline = service.list_entity_timeline(entity_type="attempt", entity_id=attempt_id)
+
+    return {"status": "success", "data": timeline}

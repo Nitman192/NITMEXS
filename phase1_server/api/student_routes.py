@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from phase1_server.api.deps import student_identity
 from phase1_server.schemas import AnswerSubmitSchema
+from phase1_server.services.audit_service import AuditService
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
     AttemptStateError,
@@ -34,7 +35,12 @@ def start_attempt(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
         try:
             data = service.start_attempt(exam_id=exam_id, student_id=student_id)
         except ExamNotFoundError as exc:
@@ -54,7 +60,12 @@ def fetch_question(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
         try:
             data = service.fetch_question(
                 attempt_id=attempt_id,
@@ -80,7 +91,12 @@ def submit_answer(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
         try:
             data = service.submit_answer(
                 AnswerSubmissionPayload(
@@ -108,7 +124,12 @@ def finalize_attempt(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
         try:
             data = service.finalize_attempt(attempt_id=attempt_id, student_id=student_id)
         except OwnershipError as exc:
@@ -126,7 +147,12 @@ def get_attempt_result(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
         try:
             data = service.get_result(attempt_id=attempt_id, student_id=student_id)
         except GradingOwnershipError as exc:

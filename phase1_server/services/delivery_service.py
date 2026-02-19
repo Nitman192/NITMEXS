@@ -16,6 +16,7 @@ from phase1_server.services.attempt_state_service import (
     AttemptConcurrencyError,
     InvalidAttemptTransitionError,
 )
+from phase1_server.services.audit_service import AuditService
 from phase1_server.services.exam_service import ExamNotFoundError, ExamService, ExamValidationError
 from phase1_server.services.grading_service import GradingEngine, GradingError
 
@@ -37,9 +38,13 @@ class SnapshotQuestionNotFoundError(DeliveryError):
 
 
 class AuditEventType:
+    ATTEMPT_STARTED = "ATTEMPT_STARTED"
+    ANSWER_SUBMITTED = "ANSWER_SUBMITTED"
     FINALIZED = "FINALIZED"
+    AUTO_EXPIRE = "AUTO_EXPIRE"
     GRADED = "GRADED"
     RESULT_VIEWED = "RESULT_VIEWED"
+    CONCURRENCY_CONFLICT = "CONCURRENCY_CONFLICT"
 
 
 @dataclass(frozen=True)
@@ -56,11 +61,13 @@ class DeliveryService:
         exam_repo: ExamRepository,
         question_repo: QuestionRepository,
         now_provider: Callable[[], datetime] | None = None,
+        audit_service: AuditService | None = None,
     ):
         self._attempt_repo = attempt_repo
         self._exam_repo = exam_repo
         self._question_repo = question_repo
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+        self._audit_service = audit_service
 
     def start_attempt(self, exam_id: str, student_id: str) -> dict:
         exam = self._exam_repo.get_exam(exam_id)
@@ -90,12 +97,21 @@ class DeliveryService:
         state_service = AttemptStateService(self._attempt_repo)
         state_service.transition(attempt.id, AttemptStatus.ACTIVE)
 
-        exam_service = ExamService(self._exam_repo, self._question_repo)
+        exam_service = ExamService(self._exam_repo, self._question_repo, self._audit_service)
         snapshot = exam_service.generate_exam_snapshot(exam_id=exam_id, attempt_id=attempt.id)
         first = next((item for item in snapshot if item["order_index"] == 1), None)
         if first is None:
             raise DeliveryError("Unable to generate first question")
         question_payload = self._question_public_payload(first["question_id"])
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt.id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.ATTEMPT_STARTED,
+            payload={"exam_id": exam_id, "expires_at": expires_at},
+            version=attempt.version,
+        )
 
         return {
             "attempt_id": attempt.id,
@@ -149,6 +165,19 @@ class DeliveryService:
                 answered_at=answered_at,
             )
         )
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt.id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.ANSWER_SUBMITTED,
+            payload={
+                "question_id": payload.question_id,
+                "selected_option_id": payload.selected_option_id,
+            },
+            created_at=answered_at,
+            version=attempt.version,
+        )
         return {
             "attempt_id": attempt.id,
             "question_id": payload.question_id,
@@ -175,7 +204,17 @@ class DeliveryService:
             state_service = AttemptStateService(self._attempt_repo)
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
-            except (InvalidAttemptTransitionError, AttemptConcurrencyError) as exc:
+            except AttemptConcurrencyError as exc:
+                self._log_event_safely(
+                    entity_type="attempt",
+                    entity_id=attempt.id,
+                    actor_type="student",
+                    actor_id=student_id,
+                    event_type=AuditEventType.CONCURRENCY_CONFLICT,
+                    payload={"error": str(exc)},
+                )
+                raise AttemptStateError(str(exc)) from exc
+            except InvalidAttemptTransitionError as exc:
                 raise AttemptStateError(str(exc)) from exc
             finalized_at = result.updated_at
             self._attempt_repo.log_audit_event(
@@ -184,6 +223,15 @@ class DeliveryService:
                 timestamp=finalized_at,
                 actor_id=student_id,
                 actor_role="student",
+            )
+            self._log_event_safely(
+                entity_type="attempt",
+                entity_id=attempt.id,
+                actor_type="student",
+                actor_id=student_id,
+                event_type=AuditEventType.FINALIZED,
+                created_at=finalized_at,
+                version=result.version,
             )
 
         return self._grade_and_build_finalize_response(
@@ -199,12 +247,31 @@ class DeliveryService:
         if not self._attempt_repo.is_expired(attempt_id, self._now_iso()):
             raise AttemptStateError("Attempt is not expired")
 
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt.id,
+            actor_type="system",
+            actor_id="system",
+            event_type=AuditEventType.AUTO_EXPIRE,
+            payload={"reason": "expired_attempt_force_finalize"},
+        )
+
         finalized_at = attempt.updated_at
         if attempt.status != AttemptStatus.FINALIZED:
             state_service = AttemptStateService(self._attempt_repo)
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
-            except (InvalidAttemptTransitionError, AttemptConcurrencyError) as exc:
+            except AttemptConcurrencyError as exc:
+                self._log_event_safely(
+                    entity_type="attempt",
+                    entity_id=attempt.id,
+                    actor_type="system",
+                    actor_id="system",
+                    event_type=AuditEventType.CONCURRENCY_CONFLICT,
+                    payload={"error": str(exc)},
+                )
+                raise AttemptStateError(str(exc)) from exc
+            except InvalidAttemptTransitionError as exc:
                 raise AttemptStateError(str(exc)) from exc
             finalized_at = result.updated_at
             self._attempt_repo.log_audit_event(
@@ -213,6 +280,15 @@ class DeliveryService:
                 timestamp=finalized_at,
                 actor_id="system",
                 actor_role="system",
+            )
+            self._log_event_safely(
+                entity_type="attempt",
+                entity_id=attempt.id,
+                actor_type="system",
+                actor_id="system",
+                event_type=AuditEventType.FINALIZED,
+                created_at=finalized_at,
+                version=result.version,
             )
 
         return self._grade_and_build_finalize_response(
@@ -251,6 +327,14 @@ class DeliveryService:
                 actor_id="system",
                 actor_role="system",
             )
+            self._log_event_safely(
+                entity_type="attempt",
+                entity_id=attempt_id,
+                actor_type="system",
+                actor_id="system",
+                event_type=AuditEventType.GRADED,
+                created_at=finalized_at,
+            )
 
         return {
             "attempt_id": attempt_id,
@@ -277,6 +361,14 @@ class DeliveryService:
             )
 
         if self._attempt_repo.is_expired(attempt.id, self._now_iso()):
+            self._log_event_safely(
+                entity_type="attempt",
+                entity_id=attempt.id,
+                actor_type="system",
+                actor_id="system",
+                event_type=AuditEventType.AUTO_EXPIRE,
+                payload={"reason": "expired_during_access"},
+            )
             raise AttemptStateError("Attempt has expired")
         return attempt
 
@@ -302,6 +394,14 @@ class DeliveryService:
                 for option in options
             ],
         }
+
+    def _log_event_safely(self, **kwargs) -> None:
+        if self._audit_service is None:
+            return
+        try:
+            self._audit_service.log_event(**kwargs)
+        except Exception:
+            return
 
     def _calculate_expires_at(self, started_at_iso: str, duration_minutes: int) -> str:
         started = datetime.fromisoformat(started_at_iso)

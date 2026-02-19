@@ -188,6 +188,37 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type
                 ON audit_logs(event_type);
 
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id TEXT PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    actor_type TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    version INTEGER
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_id
+                ON audit_events(entity_id);
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_created
+                ON audit_events(entity_type, entity_id, created_at);
+
+                CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_update
+                BEFORE UPDATE ON audit_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'audit_events is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_delete
+                BEFORE DELETE ON audit_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'audit_events is immutable');
+                END;
+
                 CREATE TABLE IF NOT EXISTS exam_audit_logs (
                     id TEXT PRIMARY KEY,
                     exam_id TEXT NOT NULL,

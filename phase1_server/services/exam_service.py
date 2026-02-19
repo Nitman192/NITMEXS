@@ -5,10 +5,12 @@ from __future__ import annotations
 import random
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from phase1_server.models import AttemptQuestionSnapshot, Exam, ExamStatus, utc_now_iso
 from phase1_server.repositories.exam_repository import ExamRepository
 from phase1_server.repositories.question_repository import QuestionRepository
+from phase1_server.services.audit_service import AuditService
 
 
 class ExamNotFoundError(ValueError):
@@ -25,6 +27,7 @@ class ExamValidationError(ValueError):
 
 class ExamEventType:
     EXAM_CLOSED = "EXAM_CLOSED"
+    EXAM_PUBLISHED = "EXAM_PUBLISHED"
 
 
 @dataclass(frozen=True)
@@ -35,9 +38,15 @@ class ExamCreatePayload:
 
 
 class ExamService:
-    def __init__(self, exam_repo: ExamRepository, question_repo: QuestionRepository):
+    def __init__(
+        self,
+        exam_repo: ExamRepository,
+        question_repo: QuestionRepository,
+        audit_service: AuditService | None = None,
+    ):
         self._exam_repo = exam_repo
         self._question_repo = question_repo
+        self._audit_service = audit_service
 
     def create_exam(self, payload: ExamCreatePayload) -> Exam:
         if payload.duration_minutes <= 0:
@@ -87,6 +96,14 @@ class ExamService:
             raise ExamValidationError("Cannot publish exam without questions")
 
         self._exam_repo.set_status(exam_id, ExamStatus.ACTIVE)
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type="admin",
+            actor_id="admin",
+            event_type=ExamEventType.EXAM_PUBLISHED,
+            payload={"status": ExamStatus.ACTIVE.value},
+        )
         published_exam = self._exam_repo.get_exam(exam_id)
         if published_exam is None:
             raise ExamNotFoundError(f"Exam '{exam_id}' not found after publish")
@@ -116,6 +133,14 @@ class ExamService:
             actor_role=actor_role,
         )
         return closed_exam
+
+    def _log_event_safely(self, **kwargs: Any) -> None:
+        if self._audit_service is None:
+            return
+        try:
+            self._audit_service.log_event(**kwargs)
+        except Exception:
+            return
 
     def generate_exam_snapshot(self, exam_id: str, attempt_id: str) -> list[dict]:
         exam = self._exam_repo.get_exam(exam_id)
