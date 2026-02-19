@@ -20,7 +20,8 @@ class AttemptRepository(Protocol):
         status: AttemptStatus,
         updated_at: str,
         submitted_at: str | None,
-    ) -> None: ...
+        expected_version: int,
+    ) -> bool: ...
 
     def get_by_candidate_and_exam(
         self,
@@ -92,7 +93,7 @@ class SQLiteAttemptRepository:
     def get(self, attempt_id: str) -> Attempt | None:
         row = self._conn.execute(
             """
-            SELECT id, candidate_id, exam_id, status, created_at, updated_at, submitted_at, expires_at
+            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
             FROM attempts
             WHERE id = ?
             """,
@@ -107,6 +108,7 @@ class SQLiteAttemptRepository:
             status=AttemptStatus(row["status"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            version=row["version"],
             submitted_at=row["submitted_at"],
             expires_at=row["expires_at"],
         )
@@ -115,8 +117,8 @@ class SQLiteAttemptRepository:
         self._conn.execute(
             """
             INSERT INTO attempts(
-                id, candidate_id, exam_id, status, created_at, updated_at, submitted_at, expires_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 attempt.id,
@@ -125,6 +127,7 @@ class SQLiteAttemptRepository:
                 attempt.status.value,
                 attempt.created_at,
                 attempt.updated_at,
+                attempt.version,
                 attempt.submitted_at,
                 attempt.expires_at,
             ),
@@ -136,15 +139,20 @@ class SQLiteAttemptRepository:
         status: AttemptStatus,
         updated_at: str,
         submitted_at: str | None,
-    ) -> None:
-        self._conn.execute(
+        expected_version: int,
+    ) -> bool:
+        cursor = self._conn.execute(
             """
             UPDATE attempts
-            SET status = ?, updated_at = ?, submitted_at = COALESCE(?, submitted_at)
-            WHERE id = ?
+            SET status = ?,
+                updated_at = ?,
+                submitted_at = COALESCE(?, submitted_at),
+                version = version + 1
+            WHERE id = ? AND version = ?
             """,
-            (status.value, updated_at, submitted_at, attempt_id),
+            (status.value, updated_at, submitted_at, attempt_id, expected_version),
         )
+        return cursor.rowcount == 1
 
     def get_by_candidate_and_exam(
         self,
@@ -153,7 +161,7 @@ class SQLiteAttemptRepository:
     ) -> Attempt | None:
         row = self._conn.execute(
             """
-            SELECT id, candidate_id, exam_id, status, created_at, updated_at, submitted_at, expires_at
+            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
             FROM attempts
             WHERE candidate_id = ? AND exam_id = ?
             ORDER BY created_at DESC
@@ -170,6 +178,7 @@ class SQLiteAttemptRepository:
             status=AttemptStatus(row["status"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            version=row["version"],
             submitted_at=row["submitted_at"],
             expires_at=row["expires_at"],
         )

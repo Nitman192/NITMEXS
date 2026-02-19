@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from phase1_server.db import Database, SQLiteConfig
-from phase1_server.models import AttemptStatus
+from phase1_server.models import Attempt, AttemptStatus
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
     AttemptStateError,
@@ -33,6 +33,22 @@ class FrozenClock:
 
     def advance(self, seconds: int) -> None:
         self.current = self.current + timedelta(seconds=seconds)
+
+
+
+
+class StaleAttemptRepository:
+    def __init__(self, base_repo, stale_attempt: Attempt):
+        self._base_repo = base_repo
+        self._stale_attempt = stale_attempt
+
+    def get(self, attempt_id: str):
+        if attempt_id == self._stale_attempt.id:
+            return self._stale_attempt
+        return self._base_repo.get(attempt_id)
+
+    def __getattr__(self, item):
+        return getattr(self._base_repo, item)
 
 
 class StudentDeliveryFlowTests(unittest.TestCase):
@@ -283,6 +299,39 @@ class StudentDeliveryFlowTests(unittest.TestCase):
         self.assertEqual(first["result"], second["result"])
         self.assertEqual(first["finalized_at"], second["finalized_at"])
         self.assertIsNotNone(stored)
+
+
+    def test_finalize_with_stale_version_raises_concurrency_error(self):
+        exam_id, _ = self._seed_exam()
+        with UnitOfWork(self.db) as uow:
+            service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+            start = service.start_attempt(exam_id, "conc1")
+            stale = uow.attempts.get(start["attempt_id"])
+            self.assertIsNotNone(stale)
+            stale_attempt = Attempt(
+                id=stale.id,
+                candidate_id=stale.candidate_id,
+                exam_id=stale.exam_id,
+                status=stale.status,
+                created_at=stale.created_at,
+                updated_at=stale.updated_at,
+                version=stale.version,
+                submitted_at=stale.submitted_at,
+                expires_at=stale.expires_at,
+            )
+
+            first = service.finalize_attempt(start["attempt_id"], "conc1")
+            stale_repo = StaleAttemptRepository(uow.attempts, stale_attempt)
+            stale_service = DeliveryService(stale_repo, uow.exams, uow.questions)
+
+            with self.assertRaises(AttemptStateError):
+                stale_service.finalize_attempt(start["attempt_id"], "conc1")
+
+            second = service.finalize_attempt(start["attempt_id"], "conc1")
+            events = uow.attempts.list_audit_events(start["attempt_id"])
+
+        self.assertEqual(first["result"], second["result"])
+        self.assertEqual(1, len([e for e in events if e["event_type"] == "GRADED"]))
 
     def test_finalize_duplicate_call_grades_once(self):
         exam_id, _ = self._seed_exam()

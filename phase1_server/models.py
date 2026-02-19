@@ -31,6 +31,7 @@ class Attempt:
     status: AttemptStatus
     created_at: str
     updated_at: str
+    version: int = 0
     submitted_at: str | None = None
     expires_at: str | None = None
 

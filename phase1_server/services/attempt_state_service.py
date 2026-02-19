@@ -16,12 +16,17 @@ class InvalidAttemptTransitionError(ValueError):
     pass
 
 
+class AttemptConcurrencyError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class TransitionResult:
     attempt_id: str
     from_status: AttemptStatus
     to_status: AttemptStatus
     updated_at: str
+    version: int
 
 
 class AttemptStateService:
@@ -48,6 +53,7 @@ class AttemptStateService:
                 from_status=attempt.status,
                 to_status=to_status,
                 updated_at=attempt.updated_at,
+                version=attempt.version,
             )
 
         allowed = self.ALLOWED_TRANSITIONS[attempt.status]
@@ -58,10 +64,22 @@ class AttemptStateService:
 
         now = utc_now_iso()
         submitted_at = now if to_status is AttemptStatus.FINALIZED else None
-        self._repo.update_status(attempt.id, to_status, now, submitted_at=submitted_at)
+        updated = self._repo.update_status(
+            attempt.id,
+            to_status,
+            now,
+            submitted_at=submitted_at,
+            expected_version=attempt.version,
+        )
+        if not updated:
+            raise AttemptConcurrencyError(
+                f"Concurrent update detected for attempt '{attempt.id}'"
+            )
+
         return TransitionResult(
             attempt_id=attempt.id,
             from_status=attempt.status,
             to_status=to_status,
             updated_at=now,
+            version=attempt.version + 1,
         )

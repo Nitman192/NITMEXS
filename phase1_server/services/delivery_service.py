@@ -13,6 +13,7 @@ from phase1_server.repositories.exam_repository import ExamRepository
 from phase1_server.repositories.question_repository import QuestionRepository
 from phase1_server.services.attempt_state_service import (
     AttemptStateService,
+    AttemptConcurrencyError,
     InvalidAttemptTransitionError,
 )
 from phase1_server.services.exam_service import ExamNotFoundError, ExamService, ExamValidationError
@@ -174,7 +175,7 @@ class DeliveryService:
             state_service = AttemptStateService(self._attempt_repo)
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
-            except InvalidAttemptTransitionError as exc:
+            except (InvalidAttemptTransitionError, AttemptConcurrencyError) as exc:
                 raise AttemptStateError(str(exc)) from exc
             finalized_at = result.updated_at
             self._attempt_repo.log_audit_event(
@@ -203,7 +204,7 @@ class DeliveryService:
             state_service = AttemptStateService(self._attempt_repo)
             try:
                 result = state_service.transition(attempt.id, AttemptStatus.FINALIZED)
-            except InvalidAttemptTransitionError as exc:
+            except (InvalidAttemptTransitionError, AttemptConcurrencyError) as exc:
                 raise AttemptStateError(str(exc)) from exc
             finalized_at = result.updated_at
             self._attempt_repo.log_audit_event(

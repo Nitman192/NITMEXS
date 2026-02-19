@@ -36,6 +36,7 @@ class Database:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 0,
                     submitted_at TEXT,
                     expires_at TEXT
                 );
@@ -225,6 +226,16 @@ class Database:
                 END;
                 """
             )
+
+
+            attempt_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(attempts)").fetchall()
+            }
+            if "version" not in attempt_columns:
+                conn.execute(
+                    "ALTER TABLE attempts ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
+                )
 
             exam_columns = {
                 row["name"]
