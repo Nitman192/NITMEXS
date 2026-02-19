@@ -311,6 +311,9 @@ class Database:
         finally:
             conn.close()
 
+    def close(self) -> None:
+        """Database manager shutdown hook (no persistent connection to close)."""
+
     def _apply_pragmas(self, conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute(f"PRAGMA busy_timeout={self._config.busy_timeout_ms};")
