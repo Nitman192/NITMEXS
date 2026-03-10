@@ -15,7 +15,7 @@ a = Analysis(
         # Keep config external; include only example template for first-run setup.
         (str(repo_root / 'packaging' / 'nitmexs.example.yaml'), '.'),
     ],
-    hiddenimports=['uvicorn.logging'],
+    hiddenimports=['uvicorn.logging', 'phase1_server.app'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
