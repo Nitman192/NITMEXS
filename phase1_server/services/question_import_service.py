@@ -50,7 +50,7 @@ class CsvExamPackageImportResult:
 
 
 class QuestionCsvImportService:
-    REQUIRED_COLUMNS = [
+    LEGACY_REQUIRED_COLUMNS = [
         "text",
         "topic",
         "difficulty",
@@ -64,7 +64,18 @@ class QuestionCsvImportService:
         "option4",
         "option4_is_correct",
     ]
+    SIMPLIFIED_REQUIRED_COLUMNS = [
+        "text",
+        "topic",
+        "marks",
+        "option_a",
+        "option_b",
+        "correct_option",
+    ]
     OPTIONAL_COLUMNS = [
+        "difficulty",
+        "option_c",
+        "option_d",
         "difficulty_level",
         "discrimination_index",
         "topic_tag",
@@ -82,9 +93,13 @@ class QuestionCsvImportService:
         if not reader.fieldnames:
             raise CsvImportError("CSV header is missing")
 
-        missing = [col for col in self.REQUIRED_COLUMNS if col not in reader.fieldnames]
-        if missing:
-            raise CsvImportError(f"Missing required columns: {', '.join(missing)}")
+        format_name = self.detect_format(reader.fieldnames)
+        if format_name is None:
+            raise CsvImportError(
+                "CSV header not recognized. Use legacy columns "
+                "(option1..option4 + option*_is_correct) or simplified columns "
+                "(option_a..option_d + correct_option)."
+            )
 
         errors: list[CsvImportRowError] = []
         inserted = 0
@@ -95,7 +110,7 @@ class QuestionCsvImportService:
                 continue
             total_rows += 1
             try:
-                payload = self._parse_row(row)
+                payload = self._parse_row(row, format_name=format_name)
                 self._question_service.create_question(payload)
                 inserted += 1
             except (CsvImportError, QuestionValidationError, ValueError) as exc:
@@ -108,10 +123,19 @@ class QuestionCsvImportService:
             errors=errors,
         )
 
-    def _parse_row(self, row: dict[str, str]) -> QuestionCreatePayload:
+    @classmethod
+    def detect_format(cls, fieldnames: list[str]) -> str | None:
+        names = set(fieldnames)
+        if all(column in names for column in cls.LEGACY_REQUIRED_COLUMNS):
+            return "legacy"
+        if all(column in names for column in cls.SIMPLIFIED_REQUIRED_COLUMNS):
+            return "simplified"
+        return None
+
+    def _parse_row(self, row: dict[str, str], format_name: str) -> QuestionCreatePayload:
         text = (row.get("text") or "").strip()
         topic = (row.get("topic") or "").strip()
-        difficulty = (row.get("difficulty") or "").strip()
+        difficulty = (row.get("difficulty") or "").strip() or "medium"
         marks_raw = (row.get("marks") or "").strip()
         difficulty_level_raw = (row.get("difficulty_level") or "").strip()
         discrimination_raw = (row.get("discrimination_index") or "").strip()
@@ -120,6 +144,8 @@ class QuestionCsvImportService:
 
         if not text:
             raise CsvImportError("Question text cannot be empty")
+        if not topic:
+            raise CsvImportError("topic cannot be empty")
         if not difficulty:
             raise CsvImportError("difficulty must be string")
 
@@ -146,13 +172,7 @@ class QuestionCsvImportService:
             if discrimination_index < 0 or discrimination_index > 1:
                 raise CsvImportError("discrimination_index must be between 0 and 1")
 
-        options: list[tuple[str, bool]] = []
-        for index in range(1, 5):
-            option_text = (row.get(f"option{index}") or "").strip()
-            if not option_text:
-                continue
-            is_correct = self._parse_bool(row.get(f"option{index}_is_correct"))
-            options.append((option_text, is_correct))
+        options = self._parse_options(row, format_name=format_name)
 
         if len(options) < 2:
             raise CsvImportError("At least two options are required")
@@ -169,6 +189,48 @@ class QuestionCsvImportService:
             cognitive_level=cognitive_level,
         )
 
+    def _parse_options(self, row: dict[str, str], format_name: str) -> list[tuple[str, bool]]:
+        if format_name == "legacy":
+            return self._parse_legacy_options(row)
+        if format_name == "simplified":
+            return self._parse_simplified_options(row)
+        raise CsvImportError("Unsupported CSV format")
+
+    def _parse_legacy_options(self, row: dict[str, str]) -> list[tuple[str, bool]]:
+        options: list[tuple[str, bool]] = []
+        for index in range(1, 5):
+            option_text = (row.get(f"option{index}") or "").strip()
+            if not option_text:
+                continue
+            is_correct = self._parse_bool(row.get(f"option{index}_is_correct"))
+            options.append((option_text, is_correct))
+        return options
+
+    def _parse_simplified_options(self, row: dict[str, str]) -> list[tuple[str, bool]]:
+        option_entries = [
+            ("A", (row.get("option_a") or "").strip()),
+            ("B", (row.get("option_b") or "").strip()),
+            ("C", (row.get("option_c") or "").strip()),
+            ("D", (row.get("option_d") or "").strip()),
+        ]
+        provided_entries = [
+            (label, text)
+            for label, text in option_entries
+            if text
+        ]
+        if len(provided_entries) < 2:
+            raise CsvImportError("At least two options are required")
+
+        correct_option = (row.get("correct_option") or "").strip().upper()
+        valid_labels = {label for label, _ in provided_entries}
+        if correct_option not in valid_labels:
+            raise CsvImportError("correct_option must match provided option labels (A/B/C/D)")
+
+        return [
+            (text, label == correct_option)
+            for label, text in provided_entries
+        ]
+
     @staticmethod
     def _parse_bool(value: str | None) -> bool:
         normalized = (value or "").strip().lower()
@@ -184,15 +246,13 @@ class QuestionCsvImportService:
 
 
 class ExamQuestionPackageCsvImportService:
-    REQUIRED_COLUMNS = [
+    REQUIRED_EXAM_COLUMNS = [
         "exam_name",
         "duration_minutes",
         "negative_marking",
-        *QuestionCsvImportService.REQUIRED_COLUMNS,
     ]
-    OPTIONAL_COLUMNS = [
+    OPTIONAL_EXAM_COLUMNS = [
         "publish_exam",
-        *QuestionCsvImportService.OPTIONAL_COLUMNS,
     ]
 
     def __init__(
@@ -211,11 +271,20 @@ class ExamQuestionPackageCsvImportService:
         if not reader.fieldnames:
             raise CsvImportError("CSV header is missing")
 
-        missing = [col for col in self.REQUIRED_COLUMNS if col not in reader.fieldnames]
-        if missing:
-            raise CsvImportError(f"Missing required columns: {', '.join(missing)}")
+        missing_exam_columns = [
+            col for col in self.REQUIRED_EXAM_COLUMNS if col not in reader.fieldnames
+        ]
+        if missing_exam_columns:
+            raise CsvImportError(f"Missing required columns: {', '.join(missing_exam_columns)}")
 
         parser = QuestionCsvImportService(self._question_service)
+        question_format = parser.detect_format(reader.fieldnames)
+        if question_format is None:
+            raise CsvImportError(
+                "CSV header not recognized. Use legacy columns "
+                "(option1..option4 + option*_is_correct) or simplified columns "
+                "(option_a..option_d + correct_option)."
+            )
         errors: list[CsvImportRowError] = []
         inserted = 0
         total_rows = 0
@@ -266,7 +335,7 @@ class ExamQuestionPackageCsvImportService:
                     continue
 
             try:
-                payload = parser._parse_row(row)
+                payload = parser._parse_row(row, format_name=question_format)
                 question = self._question_service.create_question(payload)
                 created_question_ids.append(question.id)
                 inserted += 1

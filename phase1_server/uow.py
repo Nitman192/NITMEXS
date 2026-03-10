@@ -17,6 +17,9 @@ from phase1_server.repositories.question_recalibration_repository import (
     SQLiteQuestionRecalibrationRepository,
 )
 from phase1_server.repositories.question_repository import SQLiteQuestionRepository
+from phase1_server.repositories.student_registry_repository import (
+    SQLiteStudentRegistryRepository,
+)
 
 
 class UnitOfWork(AbstractContextManager):
@@ -32,6 +35,7 @@ class UnitOfWork(AbstractContextManager):
         self.analytics: SQLiteAnalyticsRepository | None = None
         self.recalibration_runs: SQLiteQuestionRecalibrationRepository | None = None
         self.proctor_alerts: SQLiteProctorAlertRepository | None = None
+        self.student_accounts: SQLiteStudentRegistryRepository | None = None
 
     def __enter__(self):
         self._ctx = self._db.connection()
@@ -44,6 +48,7 @@ class UnitOfWork(AbstractContextManager):
         self.analytics = SQLiteAnalyticsRepository(self.conn)
         self.recalibration_runs = SQLiteQuestionRecalibrationRepository(self.conn)
         self.proctor_alerts = SQLiteProctorAlertRepository(self.conn)
+        self.student_accounts = SQLiteStudentRegistryRepository(self.conn)
         return self
 
     def __exit__(self, exc_type, exc, tb):

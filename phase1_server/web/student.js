@@ -14,6 +14,7 @@
     finalized: false,
     syncIntervalId: null,
     warningTimeoutId: null,
+    moraleTimerId: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -35,6 +36,10 @@
     prevQuestion: $("prev-question"),
     saveNext: $("save-next"),
     remainingTime: $("remaining-time"),
+    moraleTitle: $("morale-title"),
+    moraleMessage: $("morale-message"),
+    moraleTip: $("morale-tip"),
+    refreshMorale: $("refresh-morale"),
     paletteStats: $("palette-stats"),
     questionPalette: $("question-palette"),
     submitExam: $("submit-exam"),
@@ -314,6 +319,65 @@
   const setStatus = (message) => {
     el.status.textContent = message;
   };
+
+  function setMoralePlaceholder() {
+    el.moraleTitle.textContent = "Stay focused";
+    el.moraleMessage.textContent = "Start exam to receive personalized motivation and pacing tips.";
+    el.moraleTip.textContent = "Tip: read question statement twice before selecting answer.";
+  }
+
+  function renderResultSummary(payload) {
+    const summary = payload?.result && typeof payload.result === "object"
+      ? payload.result
+      : payload;
+    const questionResults = Array.isArray(payload?.question_results)
+      ? payload.question_results
+      : [];
+
+    const totalScore = Number(summary?.total_score ?? 0);
+    const totalPossible = Number(summary?.total_possible_marks ?? 0);
+    const percentage = Number(summary?.percentage ?? 0);
+    const passed = Boolean(summary?.passed);
+
+    const attempted = questionResults.filter((item) => item.selected_option_id).length;
+    const correct = questionResults.filter((item) => item.is_correct).length;
+    const totalQuestions = questionResults.length || Number(st.totalQuestions || 0);
+
+    const resultBadgeClass = passed ? "result-pass" : "result-fail";
+    const resultBadgeText = passed ? "PASS" : "NEEDS IMPROVEMENT";
+
+    el.resultBox.innerHTML = `
+      <div class="result-grid">
+        <div class="result-kpi">
+          <p>Final Score</p>
+          <h4>${totalScore.toFixed(2)} / ${totalPossible.toFixed(2)}</h4>
+        </div>
+        <div class="result-kpi">
+          <p>Percentage</p>
+          <h4>${percentage.toFixed(2)}%</h4>
+        </div>
+        <div class="result-kpi">
+          <p>Status</p>
+          <h4><span class="result-badge ${resultBadgeClass}">${resultBadgeText}</span></h4>
+        </div>
+      </div>
+      <div class="result-grid compact">
+        <div class="result-kpi small">
+          <p>Attempted</p>
+          <h5>${attempted || 0}${totalQuestions ? ` / ${totalQuestions}` : ""}</h5>
+        </div>
+        <div class="result-kpi small">
+          <p>Correct</p>
+          <h5>${correct || 0}${totalQuestions ? ` / ${totalQuestions}` : ""}</h5>
+        </div>
+      </div>
+      <p class="result-note">
+        ${passed
+          ? "Excellent effort. Keep this consistency for upcoming exams."
+          : "Acha attempt tha. Weak areas revise karke next attempt me score improve hoga."}
+      </p>
+    `;
+  }
 
   function showAntiCheatWarning(message) {
     el.antiCheatWarning.textContent = message;
@@ -736,6 +800,23 @@
     return statusPayload;
   }
 
+  async function loadMoraleCoach() {
+    if (!st.attemptId || st.finalized) {
+      return;
+    }
+    try {
+      const data = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/morale`,
+        { headers: studentHeaders() }
+      );
+      el.moraleTitle.textContent = data.title || "Stay focused";
+      el.moraleMessage.textContent = data.message || "You are doing well. Keep going.";
+      el.moraleTip.textContent = data.focus_tip || "Read carefully and manage pace.";
+    } catch {
+      return;
+    }
+  }
+
   async function fetchQuestion(sequenceNumber) {
     if (!st.attemptId) {
       setStatus("Start exam first.");
@@ -800,6 +881,7 @@
       }
 
       await flushPendingQueue();
+      await loadMoraleCoach();
       setStatus("Exam started successfully. Read each question carefully.");
     } catch (error) {
       setStatus(error.message);
@@ -828,6 +910,7 @@
 
     await fetchQuestion(st.sequence + 1);
     await flushPendingQueue();
+    await loadMoraleCoach();
   }
 
   function toggleMarkForReview() {
@@ -901,9 +984,13 @@
       st.finalized = true;
       setAttemptControlsEnabled(false);
       timerState.stop();
+      if (st.moraleTimerId) {
+        clearInterval(st.moraleTimerId);
+        st.moraleTimerId = null;
+      }
       clearAttemptCache();
 
-      el.resultBox.textContent = JSON.stringify(finalizePayload.result || finalizePayload, null, 2);
+      renderResultSummary(finalizePayload.result || finalizePayload);
       setStatus("Exam submitted successfully.");
       renderAttemptMeta({
         started_at: null,
@@ -928,7 +1015,7 @@
         `/student/attempts/${encodeURIComponent(st.attemptId)}/result`,
         { headers: studentHeaders() }
       );
-      el.resultBox.textContent = JSON.stringify(resultPayload, null, 2);
+      renderResultSummary(resultPayload);
       setStatus("Result loaded.");
     } catch (error) {
       setStatus(error.message);
@@ -940,6 +1027,10 @@
     if (st.syncIntervalId) {
       clearInterval(st.syncIntervalId);
       st.syncIntervalId = null;
+    }
+    if (st.moraleTimerId) {
+      clearInterval(st.moraleTimerId);
+      st.moraleTimerId = null;
     }
     localStorage.removeItem(STUDENT_SESSION_KEY);
     window.location.href = "/web?target=student&reason=login_required";
@@ -968,6 +1059,7 @@
         const sequenceToLoad = Math.max(1, Math.min(st.sequence, st.totalQuestions || st.sequence));
         await fetchQuestion(sequenceToLoad);
         await flushPendingQueue();
+        await loadMoraleCoach();
         setStatus("Recovered your local in-progress attempt.");
       }
     } catch {
@@ -993,6 +1085,7 @@
     el.cancelSubmit.addEventListener("click", closeSubmitModal);
     el.confirmSubmit.addEventListener("click", confirmSubmitExam);
     el.viewResult.addEventListener("click", viewResult);
+    el.refreshMorale.addEventListener("click", loadMoraleCoach);
 
     el.optionsList.addEventListener("change", (event) => {
       const input = event.target;
@@ -1044,6 +1137,9 @@
       if (st.syncIntervalId) {
         clearInterval(st.syncIntervalId);
       }
+      if (st.moraleTimerId) {
+        clearInterval(st.moraleTimerId);
+      }
     });
 
     window.addEventListener("keydown", (event) => {
@@ -1055,11 +1151,16 @@
     st.syncIntervalId = window.setInterval(() => {
       flushPendingQueue();
     }, 8000);
+
+    st.moraleTimerId = window.setInterval(() => {
+      loadMoraleCoach();
+    }, 20000);
   }
 
   async function initialize() {
     ensureSession();
     el.examName.textContent = "Exam Name";
+    setMoralePlaceholder();
     renderPalette();
     updateProgress();
     setAttemptControlsEnabled(false);

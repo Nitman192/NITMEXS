@@ -23,6 +23,8 @@ from phase1_server.schemas import (
     QuestionMetadataUpdateSchema,
     QuestionRecalibrationSchema,
     QuestionRecalibrationRollbackSchema,
+    StudentGenerateSchema,
+    StudentRegisterSchema,
 )
 from phase1_server.services.analytics_service import AnalyticsService
 from phase1_server.services.audit_service import AuditService
@@ -62,6 +64,13 @@ from phase1_server.services.question_service import (
     QuestionCreatePayload,
     QuestionMetadataUpdatePayload,
     QuestionValidationError,
+)
+from phase1_server.services.student_registry_service import (
+    StudentAlreadyExistsError,
+    StudentGeneratePayload,
+    StudentRegisterPayload,
+    StudentRegistryService,
+    StudentValidationError,
 )
 from phase1_server.uow import UnitOfWork
 
@@ -568,6 +577,73 @@ def get_system_metrics(request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
         data = MetricsService(uow.metrics).get_metrics()
+
+    return {"status": "success", "data": data}
+
+
+@router.get("/students")
+def list_student_accounts(
+    request: Request,
+    limit: int = Query(default=300, ge=1, le=1000),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = StudentRegistryService(uow.student_accounts)
+        students = service.list_students(limit=limit)
+
+    return {
+        "status": "success",
+        "data": {
+            "count": len(students),
+            "students": students,
+        },
+    }
+
+
+@router.post("/students/register", status_code=status.HTTP_201_CREATED)
+def register_student_account(
+    payload: StudentRegisterSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = StudentRegistryService(uow.student_accounts)
+        try:
+            student = service.register_student(
+                StudentRegisterPayload(
+                    student_id=payload.student_id,
+                    display_name=payload.display_name,
+                    created_by=x_admin_id,
+                )
+            )
+        except StudentAlreadyExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StudentValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": student}
+
+
+@router.post("/students/generate")
+def generate_student_accounts(
+    payload: StudentGenerateSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = StudentRegistryService(uow.student_accounts)
+        try:
+            data = service.generate_students(
+                StudentGeneratePayload(
+                    prefix=payload.prefix,
+                    count=payload.count,
+                    created_by=x_admin_id,
+                )
+            )
+        except StudentValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}
 

@@ -56,6 +56,17 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_attempts_exam_id
                 ON attempts(exam_id);
 
+                CREATE TABLE IF NOT EXISTS student_accounts (
+                    student_id TEXT PRIMARY KEY,
+                    display_name TEXT,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ACTIVE'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_student_accounts_created
+                ON student_accounts(created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS idempotency_keys (
                     key TEXT PRIMARY KEY,
                     operation TEXT NOT NULL,
@@ -452,6 +463,15 @@ class Database:
                 )
             if proctor_alert_columns and "resolution_note" not in proctor_alert_columns:
                 conn.execute("ALTER TABLE proctor_alerts ADD COLUMN resolution_note TEXT")
+
+            student_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(student_accounts)").fetchall()
+            }
+            if student_columns and "status" not in student_columns:
+                conn.execute(
+                    "ALTER TABLE student_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'"
+                )
 
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",

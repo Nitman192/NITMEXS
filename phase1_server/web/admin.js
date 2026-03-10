@@ -49,6 +49,15 @@
     loadQuestions: $("load-questions"),
     questionCount: $("question-count"),
     questionsBody: $("questions-body"),
+    studentIdInput: $("student-id-input"),
+    studentNameInput: $("student-name-input"),
+    createStudentId: $("create-student-id"),
+    studentPrefix: $("student-prefix"),
+    studentCount: $("student-count"),
+    generateStudentIds: $("generate-student-ids"),
+    refreshStudentIds: $("refresh-student-ids"),
+    studentIdResult: $("student-id-result"),
+    studentsBody: $("students-body"),
     minAttempts: $("min-attempts"),
     applyRun: $("apply-run"),
     runRecalibration: $("run-recalibration"),
@@ -498,6 +507,78 @@
     }
   }
 
+  function renderStudentIds(rows) {
+    if (!rows.length) {
+      el.studentsBody.innerHTML = '<tr><td colspan="5" class="small">No student IDs created yet.</td></tr>';
+      return;
+    }
+    el.studentsBody.innerHTML = rows
+      .map(
+        (student) => `
+          <tr>
+            <td class="mono">${esc(student.student_id)}</td>
+            <td>${esc(student.display_name || "-")}</td>
+            <td>${esc(student.created_by || "-")}</td>
+            <td>${esc(formatDate(student.created_at))}</td>
+            <td>${esc(student.status || "-")}</td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  async function loadStudentIds() {
+    try {
+      const data = await api("/admin/students?limit=500", { headers: adminHeaders() });
+      renderStudentIds(data.students || []);
+      setStatus(`Loaded ${Number(data.count || 0)} student ID(s).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function createStudentId() {
+    try {
+      const studentId = el.studentIdInput.value.trim();
+      const displayName = el.studentNameInput.value.trim();
+      if (!studentId) {
+        throw new Error("Student ID required");
+      }
+      const data = await api("/admin/students/register", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: {
+          student_id: studentId,
+          display_name: displayName || null,
+        },
+      });
+      el.studentIdResult.textContent = JSON.stringify(data, null, 2);
+      el.studentIdInput.value = "";
+      el.studentNameInput.value = "";
+      await loadStudentIds();
+      setStatus(`Student ID '${data.student_id}' created.`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function generateStudentIds() {
+    try {
+      const prefix = el.studentPrefix.value.trim() || "cadet";
+      const count = Number(el.studentCount.value || "10");
+      const data = await api("/admin/students/generate", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: { prefix, count },
+      });
+      el.studentIdResult.textContent = JSON.stringify(data, null, 2);
+      await loadStudentIds();
+      setStatus(`Generated ${data.generated_count} student ID(s).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function renderRuns(runs) {
     if (!runs.length) {
       el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
@@ -790,6 +871,9 @@
     el.uploadQuestionCsv.addEventListener("click", uploadQuestionCsv);
     el.uploadExamPack.addEventListener("click", uploadExamPack);
     el.loadQuestions.addEventListener("click", loadQuestions);
+    el.createStudentId.addEventListener("click", createStudentId);
+    el.generateStudentIds.addEventListener("click", generateStudentIds);
+    el.refreshStudentIds.addEventListener("click", loadStudentIds);
 
     el.runRecalibration.addEventListener("click", runRecalibration);
     el.loadHistory.addEventListener("click", loadHistory);
@@ -829,6 +913,7 @@
     el.alertBody.innerHTML = '<tr><td colspan="6" class="small">No alerts.</td></tr>';
     el.eventsBody.innerHTML = '<tr><td colspan="5" class="small">No events yet.</td></tr>';
     el.questionsBody.innerHTML = '<tr><td colspan="5" class="small">No questions available.</td></tr>';
+    el.studentsBody.innerHTML = '<tr><td colspan="5" class="small">No student IDs created yet.</td></tr>';
     el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
     el.itemsBody.innerHTML = '<tr><td colspan="6" class="small">No run items.</td></tr>';
     el.difficultyBody.innerHTML = '<tr><td colspan="4" class="small">No difficulty heatmap data.</td></tr>';
@@ -845,5 +930,6 @@
   loadVersion();
   loadExams();
   loadQuestions();
+  loadStudentIds();
   loadMetrics();
 })();

@@ -29,6 +29,10 @@ from phase1_server.repositories.question_recalibration_repository import (
     QuestionRecalibrationRepository,
     SQLiteQuestionRecalibrationRepository,
 )
+from phase1_server.repositories.student_registry_repository import (
+    StudentRegistryRepository,
+    SQLiteStudentRegistryRepository,
+)
 
 __all__ = [
     "AnalyticsRepository",
@@ -47,4 +51,6 @@ __all__ = [
     "SQLiteMetricsRepository",
     "ProctorAlertRepository",
     "SQLiteProctorAlertRepository",
+    "StudentRegistryRepository",
+    "SQLiteStudentRegistryRepository",
 ]

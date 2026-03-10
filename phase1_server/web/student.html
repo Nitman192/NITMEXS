@@ -77,6 +77,14 @@
             <p id="remaining-time" class="timer-display">--:--</p>
           </section>
 
+          <section class="card morale-card">
+            <p class="section-label">AI Confidence Coach</p>
+            <h3 id="morale-title">Stay focused</h3>
+            <p id="morale-message">Start exam to receive personalized motivation and pacing tips.</p>
+            <p id="morale-tip" class="small">Tip: read question statement twice before selecting answer.</p>
+            <button id="refresh-morale" class="btn-outline" type="button">Refresh Coach Tip</button>
+          </section>
+
           <section class="card palette-card">
             <div class="palette-head">
               <h3>Question Palette</h3>
@@ -100,7 +108,7 @@
 
     <section class="card result-card">
       <h3>Result Summary</h3>
-      <pre id="result-box">Result will appear here after submission.</pre>
+      <div id="result-box" class="result-placeholder">Result summary will appear here after submission.</div>
     </section>
   </main>
 

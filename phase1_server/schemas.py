@@ -56,3 +56,13 @@ class AddQuestionsSchema(BaseModel):
 class AnswerSubmitSchema(BaseModel):
     question_id: str = Field(min_length=1)
     selected_option_id: str = Field(min_length=1)
+
+
+class StudentRegisterSchema(BaseModel):
+    student_id: str = Field(min_length=3, max_length=40)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
+class StudentGenerateSchema(BaseModel):
+    prefix: str = Field(default="cadet", min_length=2, max_length=20)
+    count: conint(ge=1, le=200) = 10

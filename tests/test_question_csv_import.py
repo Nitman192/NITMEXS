@@ -63,6 +63,18 @@ class QuestionCsvImportTests(unittest.TestCase):
         self.assertEqual(result.inserted, 1)
         self.assertEqual(result.failed, 0)
 
+    def test_valid_simplified_csv(self):
+        csv_content = (
+            "text,topic,difficulty,marks,option_a,option_b,option_c,option_d,correct_option\n"
+            "What is 2+2?,math,easy,1,4,3,5,2,A\n"
+        )
+
+        result = self._import(csv_content)
+
+        self.assertEqual(result.total_rows, 1)
+        self.assertEqual(result.inserted, 1)
+        self.assertEqual(result.failed, 0)
+
     def test_invalid_rows(self):
         csv_content = (
             "text,topic,difficulty,marks,"
@@ -126,6 +138,21 @@ class QuestionCsvImportTests(unittest.TestCase):
         with UnitOfWork(self.db) as uow:
             question_ids = uow.exams.list_question_ids(result.exam_id)
         self.assertEqual(len(question_ids), 2)
+
+    def test_exam_package_import_supports_simplified_question_columns(self):
+        csv_content = (
+            "exam_name,duration_minutes,negative_marking,publish_exam,"
+            "text,topic,difficulty,marks,option_a,option_b,option_c,option_d,correct_option\n"
+            "LAN Mock,30,0.25,true,What is 1+1?,math,easy,1,2,1,3,4,A\n"
+            "LAN Mock,30,0.25,true,OSI layers?,networking,medium,2,7,6,5,4,A\n"
+        )
+
+        result = self._import_exam_package(csv_content)
+
+        self.assertEqual(result.exam_name, "LAN Mock")
+        self.assertEqual(result.inserted, 2)
+        self.assertEqual(result.failed, 0)
+        self.assertTrue(result.published)
 
     def test_exam_package_import_flags_mixed_exam_name_rows(self):
         csv_content = (

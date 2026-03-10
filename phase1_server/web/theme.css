@@ -165,6 +165,30 @@ body {
   background: rgba(15, 33, 72, 0.6);
 }
 
+.identity-chip {
+  display: grid;
+  gap: 1px;
+  min-width: 102px;
+  border-radius: 12px;
+  border: 1px solid rgba(82, 149, 255, 0.3);
+  background: linear-gradient(150deg, rgba(16, 31, 67, 0.86), rgba(10, 21, 46, 0.9));
+  padding: 5px 10px;
+}
+
+.identity-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8fb5ff;
+}
+
+.identity-value {
+  font-family: Consolas, "Courier New", monospace;
+  font-weight: 700;
+  color: #e9f2ff;
+  font-size: 0.82rem;
+}
+
 .page {
   max-width: 1400px;
   margin: 0 auto;
@@ -457,15 +481,36 @@ th {
 }
 
 .nav-btn {
+  position: relative;
+  overflow: hidden;
   text-align: left;
   color: #d8e8ff;
   background: linear-gradient(145deg, #1f3561, #253f75);
   border: 1px solid rgba(118, 160, 255, 0.2);
 }
 
+.nav-btn::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 999px;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 160ms ease;
+  background: linear-gradient(90deg, #46efac, #84ffd0);
+  box-shadow: 0 0 12px rgba(82, 255, 192, 0.5);
+}
+
 .nav-btn.active {
   color: #032033;
   background: linear-gradient(145deg, var(--mint), #97ffd9);
+}
+
+.nav-btn.active::after {
+  transform: scaleX(1);
 }
 
 .admin-content {
@@ -584,9 +629,27 @@ body.theme-light:not(.student-body) .chip {
   background: rgba(255, 255, 255, 0.92);
 }
 
+body.theme-light:not(.student-body) .identity-chip {
+  border-color: rgba(117, 148, 204, 0.35);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(240, 246, 255, 0.95));
+}
+
+body.theme-light:not(.student-body) .identity-label {
+  color: #4d6da1;
+}
+
+body.theme-light:not(.student-body) .identity-value {
+  color: #1f3558;
+}
+
 body.theme-light:not(.student-body) .panel {
   background: linear-gradient(180deg, #ffffff, #f7faff);
   border-color: rgba(111, 143, 207, 0.24);
+}
+
+body.theme-light:not(.student-body) .nav-btn.active::after {
+  background: linear-gradient(90deg, #ff6464, #ff9b9b);
+  box-shadow: 0 0 12px rgba(255, 114, 114, 0.38);
 }
 
 body.theme-light:not(.student-body) input,
@@ -919,6 +982,24 @@ body.student-body .timer-display {
   color: #1e3a8a;
 }
 
+body.student-body .morale-card {
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+body.student-body .morale-card h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1rem;
+}
+
+body.student-body .morale-card p {
+  margin: 0;
+  color: #334155;
+  font-size: 0.88rem;
+}
+
 body.student-body .palette-head {
   display: flex;
   justify-content: space-between;
@@ -1031,17 +1112,84 @@ body.student-body .result-card h3 {
   color: #1f2937;
 }
 
-body.student-body .result-card pre {
+body.student-body .result-placeholder {
+  margin-top: 8px;
   margin: 8px 0 0;
   background: #f8fafc;
   border: 1px solid #dce6f3;
   border-radius: 10px;
   padding: 10px;
+  min-height: 90px;
+  color: #334155;
+}
+
+body.student-body .result-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+body.student-body .result-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+body.student-body .result-kpi {
+  border: 1px solid #d9e3f1;
+  border-radius: 10px;
+  background: #f9fbff;
+  padding: 10px;
+}
+
+body.student-body .result-kpi p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #4b5f7e;
+}
+
+body.student-body .result-kpi h4 {
+  margin: 6px 0 0;
+  font-size: 1.08rem;
+  color: #15243f;
+}
+
+body.student-body .result-kpi.small h5 {
+  margin: 6px 0 0;
+  font-size: 1rem;
+  color: #1d2f52;
+}
+
+body.student-body .result-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+}
+
+body.student-body .result-pass {
+  background: #ddfbe7;
+  color: #14532d;
+  border: 1px solid #95dcac;
+}
+
+body.student-body .result-fail {
+  background: #ffe5e5;
+  color: #7f1d1d;
+  border: 1px solid #f2b3b3;
+}
+
+body.student-body .result-note {
+  margin: 10px 0 2px;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+body.student-body .result-card pre {
   overflow: auto;
   color: #0f172a;
   font-family: Consolas, "Courier New", monospace;
   font-size: 0.8rem;
-  min-height: 90px;
 }
 
 body.student-body input,
@@ -1241,6 +1389,10 @@ body.student-body.theme-dark .exam-status-row {
   color: #d6e4ff;
 }
 
+body.student-body.theme-dark .timer-display {
+  color: #ffffff;
+}
+
 body.student-body.theme-dark .attempt-meta {
   color: #b3c2de;
 }
@@ -1265,7 +1417,8 @@ body.student-body.theme-dark .question-viewer {
 body.student-body.theme-dark .question-viewer h3,
 body.student-body.theme-dark .options-title,
 body.student-body.theme-dark .palette-head h3,
-body.student-body.theme-dark .result-card h3 {
+body.student-body.theme-dark .result-card h3,
+body.student-body.theme-dark .morale-card h3 {
   color: #e8f0ff;
 }
 
@@ -1274,7 +1427,8 @@ body.student-body.theme-dark #question-text {
 }
 
 body.student-body.theme-dark .palette-head p,
-body.student-body.theme-dark .legend-item {
+body.student-body.theme-dark .legend-item,
+body.student-body.theme-dark .morale-card p {
   color: #b5c6e3;
 }
 
@@ -1345,6 +1499,35 @@ body.student-body.theme-dark .result-card pre {
   border-color: #314764;
   background: #0d172a;
   color: #e6eefe;
+}
+
+body.student-body.theme-dark .result-placeholder,
+body.student-body.theme-dark .result-kpi {
+  border-color: #324865;
+  background: #132036;
+  color: #dce7ff;
+}
+
+body.student-body.theme-dark .result-kpi p,
+body.student-body.theme-dark .result-note {
+  color: #b7c8e5;
+}
+
+body.student-body.theme-dark .result-kpi h4,
+body.student-body.theme-dark .result-kpi.small h5 {
+  color: #ebf3ff;
+}
+
+body.student-body.theme-dark .result-pass {
+  background: rgba(29, 103, 63, 0.35);
+  color: #aef1c7;
+  border-color: rgba(94, 212, 144, 0.5);
+}
+
+body.student-body.theme-dark .result-fail {
+  background: rgba(146, 36, 36, 0.35);
+  color: #ffc7c7;
+  border-color: rgba(234, 120, 120, 0.5);
 }
 
 body.student-body.theme-dark .anti-cheat-warning {

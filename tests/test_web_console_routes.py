@@ -87,7 +87,7 @@ class WebConsoleRouteTests(unittest.TestCase):
                 for token in ("text/csv", "application/vnd.ms-excel")
             )
         )
-        self.assertIn("option1_is_correct", demo_question_csv_response.text)
+        self.assertIn("correct_option", demo_question_csv_response.text)
 
         self.assertEqual(demo_exam_pack_csv_response.status_code, 200)
         self.assertTrue(

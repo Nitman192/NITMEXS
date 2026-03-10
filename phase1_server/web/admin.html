@@ -21,8 +21,14 @@
     <div class="chips">
       <a class="portal-btn" href="/web">Gateway</a>
       <a class="portal-btn primary" href="/web/student.html">Student UI</a>
-      <span class="chip mono">Admin: <span id="session-admin">...</span></span>
-      <span class="chip mono">Server: <span id="version">...</span></span>
+      <div class="identity-chip">
+        <span class="identity-label">Admin</span>
+        <span id="session-admin" class="identity-value">...</span>
+      </div>
+      <div class="identity-chip">
+        <span class="identity-label">Server</span>
+        <span id="version" class="identity-value">...</span>
+      </div>
       <label class="theme-switch" for="theme-toggle">
         <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
         <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
@@ -180,6 +186,36 @@
                   </tr>
                 </thead>
                 <tbody id="questions-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Student ID Manager</h2>
+            <div class="row">
+              <input id="student-id-input" placeholder="Student ID (example: cadet-101)" style="flex:1 1 220px">
+              <input id="student-name-input" placeholder="Display Name (optional)" style="flex:1 1 220px">
+              <button id="create-student-id">Create Student ID</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="student-prefix" value="cadet" placeholder="Prefix (example: cadet)" style="width:130px">
+              <input id="student-count" type="number" min="1" max="200" value="10" style="width:90px">
+              <button id="generate-student-ids" class="alt">Generate Batch</button>
+              <button id="refresh-student-ids" class="alt">Refresh List</button>
+            </div>
+            <pre id="student-id-result" class="box mono" style="margin-top:8px">Student ID creation result will appear here.</pre>
+            <div class="table-wrap" style="margin-top:8px">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Created By</th>
+                    <th>Created At</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="students-body"></tbody>
               </table>
             </div>
           </article>

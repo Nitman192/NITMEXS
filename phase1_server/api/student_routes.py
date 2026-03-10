@@ -22,6 +22,7 @@ from phase1_server.services.grading_service import (
     GradingOwnershipError,
     ResultNotReadyError,
 )
+from phase1_server.services.student_morale_service import StudentMoraleService
 from phase1_server.services.exam_service import (
     ExamNotFoundError,
     ExamService,
@@ -140,6 +141,35 @@ def get_attempt_status(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}
+
+
+@router.get("/attempts/{attempt_id}/morale")
+def get_attempt_morale(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        delivery = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        morale_service = StudentMoraleService()
+        try:
+            status_data = delivery.get_attempt_status(attempt_id=attempt_id, student_id=student_id)
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        morale = morale_service.build_message(status_data)
+
+    return {"status": "success", "data": {"attempt_id": attempt_id, **morale}}
 
 
 @router.post("/attempts/{attempt_id}/answers")
