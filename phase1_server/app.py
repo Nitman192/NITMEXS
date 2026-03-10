@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from phase1_server.api.admin_routes import router as admin_router
 from phase1_server.api.student_routes import router as student_router
 from phase1_server.api.system_routes import router as system_router
+from phase1_server.api.web_routes import router as web_router
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.logging_config import configure_logging
 from phase1_server.schema_version import EXPECTED_SCHEMA_VERSION
@@ -74,6 +75,7 @@ def create_app(
     app.include_router(admin_router)
     app.include_router(student_router)
     app.include_router(system_router)
+    app.include_router(web_router)
     return app
 
 

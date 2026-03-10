@@ -22,10 +22,39 @@ from phase1_server.services.grading_service import (
     GradingOwnershipError,
     ResultNotReadyError,
 )
-from phase1_server.services.exam_service import ExamNotFoundError, ExamValidationError
+from phase1_server.services.exam_service import (
+    ExamNotFoundError,
+    ExamService,
+    ExamValidationError,
+)
 from phase1_server.uow import UnitOfWork
 
 router = APIRouter(prefix="/student", tags=["student"])
+
+
+@router.get("/exams")
+def list_available_exams(
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    _ = student_id
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        exams = ExamService(uow.exams, uow.questions).list_exams()
+
+    active = [
+        {
+            "id": exam.id,
+            "name": exam.name,
+            "duration_minutes": exam.duration_minutes,
+            "status": exam.status.value,
+            "published": exam.published,
+            "created_at": exam.created_at,
+        }
+        for exam in exams
+        if exam.published or exam.status.value == "ACTIVE"
+    ]
+    return {"status": "success", "data": active}
 
 
 @router.post("/exams/{exam_id}/start")
