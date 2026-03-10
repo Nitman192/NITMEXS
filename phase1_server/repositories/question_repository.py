@@ -24,6 +24,10 @@ class QuestionRepository(Protocol):
 
     def option_belongs_to_question(self, question_id: str, option_id: str) -> bool: ...
 
+    def get_question_marks(self, question_id: str) -> float | None: ...
+
+    def get_correct_option_id(self, question_id: str) -> str | None: ...
+
 
 class SQLiteQuestionRepository:
     def __init__(self, conn: sqlite3.Connection):
@@ -165,3 +169,22 @@ class SQLiteQuestionRepository:
             (option_id, question_id),
         ).fetchone()
         return row is not None
+
+    def get_question_marks(self, question_id: str) -> float | None:
+        row = self._conn.execute(
+            "SELECT marks FROM questions WHERE id = ?",
+            (question_id,),
+        ).fetchone()
+        return None if row is None else row["marks"]
+
+    def get_correct_option_id(self, question_id: str) -> str | None:
+        row = self._conn.execute(
+            """
+            SELECT id
+            FROM options
+            WHERE question_id = ? AND is_correct = 1
+            LIMIT 1
+            """,
+            (question_id,),
+        ).fetchone()
+        return None if row is None else row["id"]

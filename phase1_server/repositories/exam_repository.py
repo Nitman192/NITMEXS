@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Protocol
 
-from phase1_server.models import AttemptQuestionSnapshot, Exam
+from phase1_server.models import AttemptQuestionSnapshot, Exam, ExamStatus
 
 
 class ExamRepository(Protocol):
@@ -19,11 +19,20 @@ class ExamRepository(Protocol):
 
     def list_question_ids(self, exam_id: str) -> list[str]: ...
 
-    def set_published(self, exam_id: str, published: bool) -> None: ...
+    def set_status(self, exam_id: str, status: ExamStatus) -> None: ...
 
     def clear_snapshot(self, attempt_id: str) -> None: ...
 
     def store_snapshot(self, items: list[AttemptQuestionSnapshot]) -> None: ...
+
+    def log_exam_event(
+        self,
+        exam_id: str,
+        event_type: str,
+        timestamp: str,
+        actor_id: str,
+        actor_role: str,
+    ) -> None: ...
 
 
 class SQLiteExamRepository:
@@ -33,23 +42,29 @@ class SQLiteExamRepository:
     def create_exam(self, exam: Exam) -> None:
         self._conn.execute(
             """
-            INSERT INTO exams(id, name, duration_minutes, negative_marking, published, created_at)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO exams(
+                id, name, duration_minutes, negative_marking,
+                status, published, created_at, passing_percentage
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 exam.id,
                 exam.name,
                 exam.duration_minutes,
                 exam.negative_marking,
+                exam.status.value,
                 1 if exam.published else 0,
                 exam.created_at,
+                exam.passing_percentage,
             ),
         )
 
     def get_exam(self, exam_id: str) -> Exam | None:
         row = self._conn.execute(
             """
-            SELECT id, name, duration_minutes, negative_marking, published, created_at
+            SELECT id, name, duration_minutes, negative_marking,
+                   status, published, created_at, passing_percentage
             FROM exams
             WHERE id = ?
             """,
@@ -62,14 +77,17 @@ class SQLiteExamRepository:
             name=row["name"],
             duration_minutes=row["duration_minutes"],
             negative_marking=row["negative_marking"],
+            status=ExamStatus(row["status"]),
             published=bool(row["published"]),
             created_at=row["created_at"],
+            passing_percentage=row["passing_percentage"],
         )
 
     def list_exams(self) -> list[Exam]:
         rows = self._conn.execute(
             """
-            SELECT id, name, duration_minutes, negative_marking, published, created_at
+            SELECT id, name, duration_minutes, negative_marking,
+                   status, published, created_at, passing_percentage
             FROM exams
             ORDER BY created_at DESC
             """
@@ -80,8 +98,10 @@ class SQLiteExamRepository:
                 name=row["name"],
                 duration_minutes=row["duration_minutes"],
                 negative_marking=row["negative_marking"],
+                status=ExamStatus(row["status"]),
                 published=bool(row["published"]),
                 created_at=row["created_at"],
+                passing_percentage=row["passing_percentage"],
             )
             for row in rows
         ]
@@ -101,10 +121,10 @@ class SQLiteExamRepository:
         ).fetchall()
         return [row["question_id"] for row in rows]
 
-    def set_published(self, exam_id: str, published: bool) -> None:
+    def set_status(self, exam_id: str, status: ExamStatus) -> None:
         self._conn.execute(
-            "UPDATE exams SET published = ? WHERE id = ?",
-            (1 if published else 0, exam_id),
+            "UPDATE exams SET status = ?, published = ? WHERE id = ?",
+            (status.value, 1 if status is ExamStatus.ACTIVE else 0, exam_id),
         )
 
     def clear_snapshot(self, attempt_id: str) -> None:
@@ -130,4 +150,20 @@ class SQLiteExamRepository:
                 )
                 for item in items
             ],
+        )
+
+    def log_exam_event(
+        self,
+        exam_id: str,
+        event_type: str,
+        timestamp: str,
+        actor_id: str,
+        actor_role: str,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO exam_audit_logs(id, exam_id, event_type, timestamp, actor_id, actor_role)
+            VALUES(hex(randomblob(16)), ?, ?, ?, ?, ?)
+            """,
+            (exam_id, event_type, timestamp, actor_id, actor_role),
         )

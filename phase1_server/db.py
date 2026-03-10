@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from phase1_server.schema_version import EXPECTED_SCHEMA_VERSION
+
 
 @dataclass(frozen=True)
 class SQLiteConfig:
@@ -29,6 +31,13 @@ class Database:
         with self.connection() as conn:
             conn.executescript(
                 """
+
+
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS attempts (
                     id TEXT PRIMARY KEY,
                     candidate_id TEXT NOT NULL,
@@ -36,7 +45,9 @@ class Database:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    submitted_at TEXT
+                    version INTEGER NOT NULL DEFAULT 0,
+                    submitted_at TEXT,
+                    expires_at TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_attempts_candidate_id
@@ -76,8 +87,11 @@ class Database:
                     name TEXT NOT NULL,
                     duration_minutes INTEGER NOT NULL,
                     negative_marking REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'DRAFT'
+                        CHECK(status IN ('DRAFT', 'ACTIVE', 'CLOSED', 'ARCHIVED')),
                     published INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    passing_percentage REAL NOT NULL DEFAULT 40
                 );
 
                 CREATE TABLE IF NOT EXISTS exam_questions (
@@ -131,7 +145,186 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_attempt_responses_question_id
                 ON attempt_responses(question_id);
+
+
+                CREATE TABLE IF NOT EXISTS attempt_results (
+                    attempt_id TEXT PRIMARY KEY,
+                    total_score REAL NOT NULL,
+                    total_possible_marks REAL NOT NULL,
+                    percentage REAL NOT NULL,
+                    passed INTEGER NOT NULL,
+                    graded_at TEXT NOT NULL,
+                    FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE
+                );
+
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_attempt_results_attempt_id_unique
+                ON attempt_results(attempt_id);
+
+                CREATE TABLE IF NOT EXISTS attempt_question_results (
+                    attempt_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    selected_option_id TEXT,
+                    correct_option_id TEXT NOT NULL,
+                    marks_awarded REAL NOT NULL,
+                    max_marks REAL NOT NULL,
+                    is_correct INTEGER NOT NULL,
+                    PRIMARY KEY(attempt_id, question_id),
+                    FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_attempt_question_results_attempt_id
+                ON attempt_question_results(attempt_id);
+
+                CREATE INDEX IF NOT EXISTS idx_attempt_question_results_question_id
+                ON attempt_question_results(question_id);
+
+
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id TEXT PRIMARY KEY,
+                    attempt_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    actor_role TEXT NOT NULL,
+                    FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_audit_logs_attempt_id
+                ON audit_logs(attempt_id);
+
+                CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type
+                ON audit_logs(event_type);
+
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id TEXT PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    actor_type TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    version INTEGER
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_id
+                ON audit_events(entity_id);
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_created
+                ON audit_events(entity_type, entity_id, created_at);
+
+                CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_update
+                BEFORE UPDATE ON audit_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'audit_events is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_delete
+                BEFORE DELETE ON audit_events
+                BEGIN
+                    SELECT RAISE(ABORT, 'audit_events is immutable');
+                END;
+
+
+                CREATE TABLE IF NOT EXISTS system_metrics (
+                    metric_name TEXT NOT NULL,
+                    metric_key TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 0,
+                    total_value REAL NOT NULL DEFAULT 0,
+                    max_value REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(metric_name, metric_key)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_system_metrics_name
+                ON system_metrics(metric_name);
+
+
+
+                CREATE TABLE IF NOT EXISTS item_statistics (
+                    exam_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    attempts_count INTEGER NOT NULL DEFAULT 0,
+                    correct_count INTEGER NOT NULL DEFAULT 0,
+                    total_marks_awarded REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY(exam_id, question_id),
+                    FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+                    FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_item_statistics_exam_id
+                ON item_statistics(exam_id);
+
+                CREATE INDEX IF NOT EXISTS idx_item_statistics_question_id
+                ON item_statistics(question_id);
+
+                CREATE TABLE IF NOT EXISTS exam_audit_logs (
+                    id TEXT PRIMARY KEY,
+                    exam_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    actor_role TEXT NOT NULL,
+                    FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_exam_audit_logs_exam_id
+                ON exam_audit_logs(exam_id);
+
+                CREATE TRIGGER IF NOT EXISTS trg_attempt_results_no_update
+                BEFORE UPDATE ON attempt_results
+                BEGIN
+                    SELECT RAISE(ABORT, 'attempt_results is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_attempt_results_no_delete
+                BEFORE DELETE ON attempt_results
+                BEGIN
+                    SELECT RAISE(ABORT, 'attempt_results is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_attempt_question_results_no_update
+                BEFORE UPDATE ON attempt_question_results
+                BEGIN
+                    SELECT RAISE(ABORT, 'attempt_question_results is immutable');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_attempt_question_results_no_delete
+                BEFORE DELETE ON attempt_question_results
+                BEGIN
+                    SELECT RAISE(ABORT, 'attempt_question_results is immutable');
+                END;
                 """
+            )
+
+
+            attempt_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(attempts)").fetchall()
+            }
+            if "version" not in attempt_columns:
+                conn.execute(
+                    "ALTER TABLE attempts ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
+                )
+
+            exam_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(exams)").fetchall()
+            }
+            if "status" not in exam_columns:
+                conn.execute(
+                    "ALTER TABLE exams ADD COLUMN status TEXT NOT NULL DEFAULT 'DRAFT'"
+                )
+                conn.execute(
+                    "UPDATE exams SET status = CASE WHEN published = 1 THEN 'ACTIVE' ELSE 'DRAFT' END"
+                )
+
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",
+                (EXPECTED_SCHEMA_VERSION,),
             )
 
     @contextmanager
@@ -150,6 +343,23 @@ class Database:
             raise
         finally:
             conn.close()
+
+    def close(self) -> None:
+        """Database manager shutdown hook (no persistent connection to close)."""
+
+    def get_schema_version(self) -> int | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
+            ).fetchone()
+            return None if row is None else int(row["version"])
+
+    def ensure_expected_schema_version(self, expected_version: int) -> None:
+        actual = self.get_schema_version()
+        if actual != expected_version:
+            raise RuntimeError(
+                f"Schema version mismatch: expected {expected_version}, got {actual}"
+            )
 
     def _apply_pragmas(self, conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA journal_mode=WAL;")

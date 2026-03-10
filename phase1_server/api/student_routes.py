@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from phase1_server.api.deps import student_identity
 from phase1_server.schemas import AnswerSubmitSchema
+from phase1_server.services.audit_service import AuditService
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
     AttemptStateError,
@@ -13,6 +14,13 @@ from phase1_server.services.delivery_service import (
     DeliveryService,
     OwnershipError,
     SnapshotQuestionNotFoundError,
+)
+from phase1_server.services.metrics_service import MetricsService
+from phase1_server.services.grading_service import (
+    GradingError,
+    GradingNotFoundError,
+    GradingOwnershipError,
+    ResultNotReadyError,
 )
 from phase1_server.services.exam_service import ExamNotFoundError, ExamValidationError
 from phase1_server.uow import UnitOfWork
@@ -28,7 +36,14 @@ def start_attempt(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
         try:
             data = service.start_attempt(exam_id=exam_id, student_id=student_id)
         except ExamNotFoundError as exc:
@@ -48,7 +63,14 @@ def fetch_question(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
         try:
             data = service.fetch_question(
                 attempt_id=attempt_id,
@@ -74,7 +96,14 @@ def submit_answer(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
         try:
             data = service.submit_answer(
                 AnswerSubmissionPayload(
@@ -102,7 +131,14 @@ def finalize_attempt(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
-        service = DeliveryService(uow.attempts, uow.exams, uow.questions)
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
         try:
             data = service.finalize_attempt(attempt_id=attempt_id, student_id=student_id)
         except OwnershipError as exc:
@@ -111,3 +147,33 @@ def finalize_attempt(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}
+
+@router.get("/attempts/{attempt_id}/result")
+def get_attempt_result(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_result(attempt_id=attempt_id, student_id=student_id)
+        except GradingOwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ResultNotReadyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except GradingNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GradingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+

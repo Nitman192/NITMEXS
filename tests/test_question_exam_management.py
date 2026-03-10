@@ -2,10 +2,12 @@ import tempfile
 import unittest
 
 from phase1_server.db import Database, SQLiteConfig
+from phase1_server.models import ExamStatus
 from phase1_server.services.exam_service import (
     ExamAlreadyPublishedError,
     ExamCreatePayload,
     ExamService,
+    ExamValidationError,
 )
 from phase1_server.services.question_service import QuestionCreatePayload, QuestionService
 from phase1_server.uow import UnitOfWork
@@ -101,6 +103,49 @@ class QuestionExamManagementTests(unittest.TestCase):
 
         with UnitOfWork(self.db) as uow2:
             self.assertTrue(uow2.questions.question_exists(question_id))
+
+
+    def test_exam_close_changes_state_and_logs_event(self):
+        with UnitOfWork(self.db) as uow:
+            question_id = self._create_question(uow)
+            service = ExamService(uow.exams, uow.questions)
+            exam = service.create_exam(
+                ExamCreatePayload(
+                    name="Close Me",
+                    duration_minutes=60,
+                    negative_marking=0,
+                )
+            )
+            service.add_questions(exam.id, [question_id])
+            service.publish_exam(exam.id)
+            closed = service.close_exam(exam.id, actor_id="admin1")
+
+            events = uow.conn.execute(
+                "SELECT event_type FROM exam_audit_logs WHERE exam_id = ?",
+                (exam.id,),
+            ).fetchall()
+
+        self.assertEqual(closed.status, ExamStatus.CLOSED)
+        self.assertFalse(closed.published)
+        self.assertIn("EXAM_CLOSED", [row["event_type"] for row in events])
+
+    def test_cannot_publish_closed_exam(self):
+        with UnitOfWork(self.db) as uow:
+            question_id = self._create_question(uow)
+            service = ExamService(uow.exams, uow.questions)
+            exam = service.create_exam(
+                ExamCreatePayload(
+                    name="Closed Publish",
+                    duration_minutes=60,
+                    negative_marking=0,
+                )
+            )
+            service.add_questions(exam.id, [question_id])
+            service.publish_exam(exam.id)
+            service.close_exam(exam.id, actor_id="admin1")
+
+            with self.assertRaises(ExamValidationError):
+                service.publish_exam(exam.id)
 
 
 if __name__ == "__main__":

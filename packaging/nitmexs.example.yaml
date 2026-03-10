@@ -1,0 +1,8 @@
+# NITMEXS external runtime configuration example
+host: 127.0.0.1
+port: 8000
+db_path: ./data/exam_server.db
+log_level: INFO
+app_log_path: ./logs/app.log
+audit_log_path: ./logs/audit.log
+version: 1.0.0

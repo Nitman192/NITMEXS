@@ -16,6 +16,13 @@ class AttemptStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class ExamStatus(str, Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
+
+
 @dataclass
 class Attempt:
     id: str
@@ -24,7 +31,9 @@ class Attempt:
     status: AttemptStatus
     created_at: str
     updated_at: str
+    version: int = 0
     submitted_at: str | None = None
+    expires_at: str | None = None
 
 
 @dataclass
@@ -51,8 +60,10 @@ class Exam:
     name: str
     duration_minutes: int
     negative_marking: float
+    status: ExamStatus
     published: bool
     created_at: str
+    passing_percentage: float = 40.0
 
 
 @dataclass
