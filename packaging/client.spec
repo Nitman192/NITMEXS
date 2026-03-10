@@ -4,12 +4,12 @@ from pathlib import Path
 
 block_cipher = None
 
-project_root = Path(SPECPATH).parent
+repo_root = Path(SPECPATH).parent
 
 
 a = Analysis(
-    ['client_entry.py'],
-    pathex=[str(project_root)],
+    [str(repo_root / 'client_entry.py')],
+    pathex=[str(repo_root)],
     binaries=[],
     datas=[],
     hiddenimports=[],
