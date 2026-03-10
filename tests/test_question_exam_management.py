@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.models import ExamStatus
@@ -15,12 +16,13 @@ from phase1_server.uow import UnitOfWork
 
 class QuestionExamManagementTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(suffix=".db")
-        self.db = Database(SQLiteConfig(db_path=self.tmp.name))
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp_dir.name) / "question_exam.db")
+        self.db = Database(SQLiteConfig(db_path=self.db_path))
         self.db.initialize()
 
     def tearDown(self):
-        self.tmp.close()
+        self.tmp_dir.cleanup()
 
     def _create_question(self, uow, text: str = "What is 2+2?") -> str:
         service = QuestionService(uow.questions)

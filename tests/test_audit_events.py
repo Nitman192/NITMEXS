@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 try:
     from fastapi.testclient import TestClient
@@ -23,12 +24,13 @@ from phase1_server.uow import UnitOfWork
 
 class AuditEventsTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(suffix=".db")
-        self.db = Database(SQLiteConfig(db_path=self.tmp.name))
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp_dir.name) / "audit_events.db")
+        self.db = Database(SQLiteConfig(db_path=self.db_path))
         self.db.initialize()
 
     def tearDown(self):
-        self.tmp.close()
+        self.tmp_dir.cleanup()
 
     def _seed_exam(self) -> str:
         with UnitOfWork(self.db) as uow:
@@ -137,7 +139,7 @@ class AuditEventsTests(unittest.TestCase):
     @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI test client unavailable")
     def test_timeline_unauthorized_access_blocked(self):
         exam_id = self._seed_exam()
-        app = create_app(db_path=self.tmp.name)
+        app = create_app(db_path=self.db_path)
         with TestClient(app) as client:
             response = client.get(f"/admin/attempts/{exam_id}/timeline")
 

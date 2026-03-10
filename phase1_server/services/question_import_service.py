@@ -46,6 +46,12 @@ class QuestionCsvImportService:
         "option4",
         "option4_is_correct",
     ]
+    OPTIONAL_COLUMNS = [
+        "difficulty_level",
+        "discrimination_index",
+        "topic_tag",
+        "cognitive_level",
+    ]
 
     def __init__(self, question_service: QuestionService):
         self._question_service = question_service
@@ -89,6 +95,10 @@ class QuestionCsvImportService:
         topic = (row.get("topic") or "").strip()
         difficulty = (row.get("difficulty") or "").strip()
         marks_raw = (row.get("marks") or "").strip()
+        difficulty_level_raw = (row.get("difficulty_level") or "").strip()
+        discrimination_raw = (row.get("discrimination_index") or "").strip()
+        topic_tag = (row.get("topic_tag") or "").strip() or None
+        cognitive_level = (row.get("cognitive_level") or "").strip() or None
 
         if not text:
             raise CsvImportError("Question text cannot be empty")
@@ -99,6 +109,24 @@ class QuestionCsvImportService:
             marks = int(marks_raw)
         except ValueError as exc:
             raise CsvImportError("marks must be integer") from exc
+
+        difficulty_level: int | None = None
+        if difficulty_level_raw:
+            try:
+                difficulty_level = int(difficulty_level_raw)
+            except ValueError as exc:
+                raise CsvImportError("difficulty_level must be integer") from exc
+            if difficulty_level < 1 or difficulty_level > 10:
+                raise CsvImportError("difficulty_level must be between 1 and 10")
+
+        discrimination_index: float | None = None
+        if discrimination_raw:
+            try:
+                discrimination_index = float(discrimination_raw)
+            except ValueError as exc:
+                raise CsvImportError("discrimination_index must be numeric") from exc
+            if discrimination_index < 0 or discrimination_index > 1:
+                raise CsvImportError("discrimination_index must be between 0 and 1")
 
         options: list[tuple[str, bool]] = []
         for index in range(1, 5):
@@ -117,6 +145,10 @@ class QuestionCsvImportService:
             difficulty=difficulty,
             marks=marks,
             options=options,
+            difficulty_level=difficulty_level,
+            discrimination_index=discrimination_index,
+            topic_tag=topic_tag,
+            cognitive_level=cognitive_level,
         )
 
     @staticmethod

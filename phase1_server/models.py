@@ -44,6 +44,10 @@ class Question:
     difficulty: str
     marks: float
     created_at: str
+    difficulty_level: int | None = None
+    discrimination_index: float | None = None
+    topic_tag: str | None = None
+    cognitive_level: str | None = None
 
 
 @dataclass

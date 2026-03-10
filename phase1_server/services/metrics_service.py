@@ -42,6 +42,57 @@ class MetricsService:
             updated_at=utc_now_iso(),
         )
 
+    def increment_proctor_alert_raised(self, indicator_code: str) -> None:
+        self._metrics_repo.increment_counter(
+            metric_name="proctor_alert_raised_count",
+            metric_key=indicator_code,
+            delta=1,
+            updated_at=utc_now_iso(),
+        )
+
+    def increment_proctor_alert_acknowledged(self, indicator_code: str) -> None:
+        self._metrics_repo.increment_counter(
+            metric_name="proctor_alert_acknowledged_count",
+            metric_key=indicator_code,
+            delta=1,
+            updated_at=utc_now_iso(),
+        )
+
+    def increment_proctor_alert_resolved(
+        self,
+        indicator_code: str,
+        auto_resolved: bool = False,
+    ) -> None:
+        self._metrics_repo.increment_counter(
+            metric_name="proctor_alert_resolved_count",
+            metric_key=indicator_code,
+            delta=1,
+            updated_at=utc_now_iso(),
+        )
+        if auto_resolved:
+            self._metrics_repo.increment_counter(
+                metric_name="proctor_alert_auto_resolved_count",
+                metric_key=indicator_code,
+                delta=1,
+                updated_at=utc_now_iso(),
+            )
+
+    def record_proctor_alert_ack_duration(self, duration_ms: float) -> None:
+        self._metrics_repo.record_duration(
+            metric_name="proctor_alert_ack_ms",
+            metric_key="acknowledge",
+            duration_ms=duration_ms,
+            updated_at=utc_now_iso(),
+        )
+
+    def record_proctor_alert_resolution_duration(self, duration_ms: float) -> None:
+        self._metrics_repo.record_duration(
+            metric_name="proctor_alert_resolution_ms",
+            metric_key="resolve",
+            duration_ms=duration_ms,
+            updated_at=utc_now_iso(),
+        )
+
     def get_metrics(self) -> dict:
         rows = self._metrics_repo.list_metrics()
         grouped: dict[str, list[dict]] = {}

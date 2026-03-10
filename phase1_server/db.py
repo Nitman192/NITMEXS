@@ -68,8 +68,18 @@ class Database:
                     topic TEXT NOT NULL,
                     difficulty TEXT NOT NULL,
                     marks REAL NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    difficulty_level INTEGER,
+                    discrimination_index REAL,
+                    topic_tag TEXT,
+                    cognitive_level TEXT
                 );
+
+                CREATE INDEX IF NOT EXISTS idx_questions_topic_tag
+                ON questions(topic_tag);
+
+                CREATE INDEX IF NOT EXISTS idx_questions_cognitive_level
+                ON questions(cognitive_level);
 
                 CREATE TABLE IF NOT EXISTS options (
                     id TEXT PRIMARY KEY,
@@ -261,6 +271,89 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_item_statistics_question_id
                 ON item_statistics(question_id);
 
+                CREATE TABLE IF NOT EXISTS question_recalibration_runs (
+                    id TEXT PRIMARY KEY,
+                    exam_id TEXT NOT NULL,
+                    mode TEXT NOT NULL
+                        CHECK(mode IN ('preview', 'apply', 'rollback')),
+                    min_attempts INTEGER,
+                    total_questions INTEGER NOT NULL,
+                    eligible_questions INTEGER NOT NULL,
+                    updated_questions INTEGER NOT NULL,
+                    skipped_questions INTEGER NOT NULL,
+                    triggered_by TEXT NOT NULL,
+                    source_run_id TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+                    FOREIGN KEY(source_run_id) REFERENCES question_recalibration_runs(id) ON DELETE SET NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_question_recalibration_runs_exam_created
+                ON question_recalibration_runs(exam_id, created_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_question_recalibration_runs_source
+                ON question_recalibration_runs(source_run_id);
+
+                CREATE TABLE IF NOT EXISTS question_recalibration_items (
+                    id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    total_attempts INTEGER NOT NULL DEFAULT 0,
+                    observed_difficulty_index REAL,
+                    previous_difficulty TEXT,
+                    previous_difficulty_level INTEGER,
+                    previous_discrimination_index REAL,
+                    suggested_difficulty TEXT,
+                    suggested_difficulty_level INTEGER,
+                    suggested_discrimination_index REAL,
+                    applied INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(run_id) REFERENCES question_recalibration_runs(id) ON DELETE CASCADE,
+                    FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_question_recalibration_items_run
+                ON question_recalibration_items(run_id);
+
+                CREATE INDEX IF NOT EXISTS idx_question_recalibration_items_question
+                ON question_recalibration_items(question_id);
+
+                CREATE TABLE IF NOT EXISTS proctor_alerts (
+                    id TEXT PRIMARY KEY,
+                    attempt_id TEXT NOT NULL,
+                    exam_id TEXT NOT NULL,
+                    student_id TEXT NOT NULL,
+                    indicator_code TEXT NOT NULL,
+                    indicator_payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL
+                        CHECK(status IN ('open', 'acknowledged', 'resolved')),
+                    detection_count INTEGER NOT NULL DEFAULT 1,
+                    first_detected_at TEXT NOT NULL,
+                    last_detected_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    acknowledged_at TEXT,
+                    acknowledged_by TEXT,
+                    resolved_at TEXT,
+                    resolved_by TEXT,
+                    resolution_note TEXT,
+                    FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_proctor_alerts_exam_status_created
+                ON proctor_alerts(exam_id, status, created_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_proctor_alerts_status_created
+                ON proctor_alerts(status, created_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_proctor_alerts_attempt_status
+                ON proctor_alerts(attempt_id, status);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_proctor_alerts_open_unique
+                ON proctor_alerts(attempt_id, indicator_code)
+                WHERE status IN ('open', 'acknowledged');
+
                 CREATE TABLE IF NOT EXISTS exam_audit_logs (
                     id TEXT PRIMARY KEY,
                     exam_id TEXT NOT NULL,
@@ -321,6 +414,44 @@ class Database:
                 conn.execute(
                     "UPDATE exams SET status = CASE WHEN published = 1 THEN 'ACTIVE' ELSE 'DRAFT' END"
                 )
+
+            question_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(questions)").fetchall()
+            }
+            if "difficulty_level" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN difficulty_level INTEGER")
+            if "discrimination_index" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN discrimination_index REAL")
+            if "topic_tag" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN topic_tag TEXT")
+                conn.execute(
+                    "UPDATE questions SET topic_tag = topic WHERE topic_tag IS NULL"
+                )
+            if "cognitive_level" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN cognitive_level TEXT")
+
+            recalibration_run_columns = {
+                row["name"]
+                for row in conn.execute(
+                    "PRAGMA table_info(question_recalibration_runs)"
+                ).fetchall()
+            }
+            if recalibration_run_columns and "source_run_id" not in recalibration_run_columns:
+                conn.execute(
+                    "ALTER TABLE question_recalibration_runs ADD COLUMN source_run_id TEXT"
+                )
+
+            proctor_alert_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(proctor_alerts)").fetchall()
+            }
+            if proctor_alert_columns and "detection_count" not in proctor_alert_columns:
+                conn.execute(
+                    "ALTER TABLE proctor_alerts ADD COLUMN detection_count INTEGER NOT NULL DEFAULT 1"
+                )
+            if proctor_alert_columns and "resolution_note" not in proctor_alert_columns:
+                conn.execute("ALTER TABLE proctor_alerts ADD COLUMN resolution_note TEXT")
 
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",

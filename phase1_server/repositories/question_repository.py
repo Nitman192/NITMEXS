@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Protocol
+from typing import Any, Protocol
 
 from phase1_server.models import Option, Question
 
@@ -28,6 +28,14 @@ class QuestionRepository(Protocol):
 
     def get_correct_option_id(self, question_id: str) -> str | None: ...
 
+    def update_question_metadata(
+        self,
+        question_id: str,
+        changes: dict[str, Any],
+    ) -> bool: ...
+
+    def list_usage_statistics(self) -> list[dict[str, Any]]: ...
+
 
 class SQLiteQuestionRepository:
     def __init__(self, conn: sqlite3.Connection):
@@ -36,8 +44,11 @@ class SQLiteQuestionRepository:
     def create_question(self, question: Question, options: list[Option]) -> None:
         self._conn.execute(
             """
-            INSERT INTO questions(id, text, topic, difficulty, marks, created_at)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO questions(
+                id, text, topic, difficulty, marks, created_at,
+                difficulty_level, discrimination_index, topic_tag, cognitive_level
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 question.id,
@@ -46,6 +57,10 @@ class SQLiteQuestionRepository:
                 question.difficulty,
                 question.marks,
                 question.created_at,
+                question.difficulty_level,
+                question.discrimination_index,
+                question.topic_tag,
+                question.cognitive_level,
             ),
         )
         self._conn.executemany(
@@ -67,7 +82,9 @@ class SQLiteQuestionRepository:
     def list_questions(self) -> list[tuple[Question, list[Option]]]:
         question_rows = self._conn.execute(
             """
-            SELECT id, text, topic, difficulty, marks, created_at
+            SELECT
+                id, text, topic, difficulty, marks, created_at,
+                difficulty_level, discrimination_index, topic_tag, cognitive_level
             FROM questions
             ORDER BY created_at DESC
             """
@@ -100,6 +117,10 @@ class SQLiteQuestionRepository:
                 difficulty=row["difficulty"],
                 marks=row["marks"],
                 created_at=row["created_at"],
+                difficulty_level=row["difficulty_level"],
+                discrimination_index=row["discrimination_index"],
+                topic_tag=row["topic_tag"],
+                cognitive_level=row["cognitive_level"],
             )
             result.append((question, option_map.get(question.id, [])))
         return result
@@ -120,7 +141,9 @@ class SQLiteQuestionRepository:
     ) -> tuple[Question, list[Option]] | None:
         question_row = self._conn.execute(
             """
-            SELECT id, text, topic, difficulty, marks, created_at
+            SELECT
+                id, text, topic, difficulty, marks, created_at,
+                difficulty_level, discrimination_index, topic_tag, cognitive_level
             FROM questions
             WHERE id = ?
             """,
@@ -146,6 +169,10 @@ class SQLiteQuestionRepository:
             difficulty=question_row["difficulty"],
             marks=question_row["marks"],
             created_at=question_row["created_at"],
+            difficulty_level=question_row["difficulty_level"],
+            discrimination_index=question_row["discrimination_index"],
+            topic_tag=question_row["topic_tag"],
+            cognitive_level=question_row["cognitive_level"],
         )
         options = [
             Option(
@@ -188,3 +215,80 @@ class SQLiteQuestionRepository:
             (question_id,),
         ).fetchone()
         return None if row is None else row["id"]
+
+    def update_question_metadata(
+        self,
+        question_id: str,
+        changes: dict[str, Any],
+    ) -> bool:
+        allowed_columns = {
+            "difficulty",
+            "difficulty_level",
+            "discrimination_index",
+            "topic_tag",
+            "cognitive_level",
+        }
+        assignments: list[str] = []
+        values: list[Any] = []
+
+        for key, value in changes.items():
+            if key not in allowed_columns:
+                continue
+            assignments.append(f"{key} = ?")
+            values.append(value)
+
+        if not assignments:
+            return False
+
+        values.append(question_id)
+        cursor = self._conn.execute(
+            f"""
+            UPDATE questions
+            SET {", ".join(assignments)}
+            WHERE id = ?
+            """,
+            tuple(values),
+        )
+        return cursor.rowcount > 0
+
+    def list_usage_statistics(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                q.id AS question_id,
+                q.topic AS topic,
+                q.topic_tag AS topic_tag,
+                q.cognitive_level AS cognitive_level,
+                q.difficulty AS difficulty,
+                q.difficulty_level AS difficulty_level,
+                COUNT(aqr.attempt_id) AS usage_count,
+                SUM(CASE WHEN aqr.is_correct = 1 THEN 1 ELSE 0 END) AS correct_count
+            FROM questions q
+            LEFT JOIN attempt_question_results aqr
+                ON aqr.question_id = q.id
+            GROUP BY
+                q.id, q.topic, q.topic_tag, q.cognitive_level, q.difficulty, q.difficulty_level
+            ORDER BY q.created_at DESC
+            """
+        ).fetchall()
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            usage_count = int(row["usage_count"] or 0)
+            correct_count = int(row["correct_count"] or 0)
+            result.append(
+                {
+                    "question_id": row["question_id"],
+                    "topic": row["topic"],
+                    "topic_tag": row["topic_tag"],
+                    "cognitive_level": row["cognitive_level"],
+                    "difficulty": row["difficulty"],
+                    "difficulty_level": row["difficulty_level"],
+                    "usage_count": usage_count,
+                    "correct_count": correct_count,
+                    "correct_rate": (
+                        (correct_count / usage_count) * 100.0 if usage_count > 0 else 0.0
+                    ),
+                }
+            )
+        return result

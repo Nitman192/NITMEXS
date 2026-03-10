@@ -1,5 +1,18 @@
 # NITMEXS
 
+## Additional Integration Notes
+
+- Proctor event stream cursor polling:
+  - `PROCTOR_EVENT_STREAM_INTEGRATION.md`
+- Proctor alert lifecycle endpoints:
+  - `POST /admin/proctor/alerts/sync`
+  - `GET /admin/proctor/alerts`
+  - `GET /admin/proctor/alerts/summary`
+  - `GET /admin/proctor/alerts/metrics`
+  - `GET /admin/exams/{exam_id}/proctor-alerts/live`
+  - `POST /admin/proctor/alerts/{alert_id}/acknowledge`
+  - `POST /admin/proctor/alerts/{alert_id}/resolve`
+
 ## Windows Packaging (PyInstaller + Inno Setup)
 
 This repository includes packaging templates for both server and desktop client.

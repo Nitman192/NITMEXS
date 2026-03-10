@@ -17,9 +17,17 @@ from phase1_server.repositories.metrics_repository import (
     MetricsRepository,
     SQLiteMetricsRepository,
 )
+from phase1_server.repositories.proctor_alert_repository import (
+    ProctorAlertRepository,
+    SQLiteProctorAlertRepository,
+)
 from phase1_server.repositories.question_repository import (
     QuestionRepository,
     SQLiteQuestionRepository,
+)
+from phase1_server.repositories.question_recalibration_repository import (
+    QuestionRecalibrationRepository,
+    SQLiteQuestionRecalibrationRepository,
 )
 
 __all__ = [
@@ -29,10 +37,14 @@ __all__ = [
     "SQLiteAttemptRepository",
     "QuestionRepository",
     "SQLiteQuestionRepository",
+    "QuestionRecalibrationRepository",
+    "SQLiteQuestionRecalibrationRepository",
     "ExamRepository",
     "SQLiteExamRepository",
     "AuditEventRepository",
     "SQLiteAuditEventRepository",
     "MetricsRepository",
     "SQLiteMetricsRepository",
+    "ProctorAlertRepository",
+    "SQLiteProctorAlertRepository",
 ]

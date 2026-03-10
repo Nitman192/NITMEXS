@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.models import Attempt, AttemptStatus
@@ -53,12 +54,13 @@ class StaleAttemptRepository:
 
 class StudentDeliveryFlowTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(suffix=".db")
-        self.db = Database(SQLiteConfig(db_path=self.tmp.name))
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp_dir.name) / "student_delivery.db")
+        self.db = Database(SQLiteConfig(db_path=self.db_path))
         self.db.initialize()
 
     def tearDown(self):
-        self.tmp.close()
+        self.tmp_dir.cleanup()
 
     def _seed_exam(
         self,

@@ -24,6 +24,19 @@ class QuestionCreatePayload:
     difficulty: str
     marks: float
     options: list[tuple[str, bool]]
+    difficulty_level: int | None = None
+    discrimination_index: float | None = None
+    topic_tag: str | None = None
+    cognitive_level: str | None = None
+
+
+@dataclass(frozen=True)
+class QuestionMetadataUpdatePayload:
+    difficulty: str | None = None
+    difficulty_level: int | None = None
+    discrimination_index: float | None = None
+    topic_tag: str | None = None
+    cognitive_level: str | None = None
 
 
 class QuestionService:
@@ -34,6 +47,7 @@ class QuestionService:
         self._validate_options(payload.options)
         now = utc_now_iso()
         question_id = str(uuid.uuid4())
+        topic_tag = payload.topic_tag if payload.topic_tag else payload.topic
         question = Question(
             id=question_id,
             text=payload.text,
@@ -41,6 +55,10 @@ class QuestionService:
             difficulty=payload.difficulty,
             marks=payload.marks,
             created_at=now,
+            difficulty_level=payload.difficulty_level,
+            discrimination_index=payload.discrimination_index,
+            topic_tag=topic_tag,
+            cognitive_level=payload.cognitive_level,
         )
         options = [
             Option(
@@ -64,6 +82,10 @@ class QuestionService:
                 "difficulty": question.difficulty,
                 "marks": question.marks,
                 "created_at": question.created_at,
+                "difficulty_level": question.difficulty_level,
+                "discrimination_index": question.discrimination_index,
+                "topic_tag": question.topic_tag,
+                "cognitive_level": question.cognitive_level,
                 "options": [
                     {
                         "id": option.id,
@@ -81,6 +103,41 @@ class QuestionService:
         deleted = self._repo.delete_question(question_id)
         if not deleted:
             raise QuestionNotFoundError(f"Question '{question_id}' not found")
+
+    def update_question_metadata(
+        self,
+        question_id: str,
+        payload: QuestionMetadataUpdatePayload,
+    ) -> Question:
+        if not self._repo.question_exists(question_id):
+            raise QuestionNotFoundError(f"Question '{question_id}' not found")
+
+        changes = {
+            "difficulty": payload.difficulty,
+            "difficulty_level": payload.difficulty_level,
+            "discrimination_index": payload.discrimination_index,
+            "topic_tag": payload.topic_tag,
+            "cognitive_level": payload.cognitive_level,
+        }
+        filtered_changes = {
+            key: value
+            for key, value in changes.items()
+            if value is not None
+        }
+        if not filtered_changes:
+            raise QuestionValidationError("At least one metadata field must be provided")
+
+        updated = self._repo.update_question_metadata(question_id, filtered_changes)
+        if not updated:
+            raise QuestionValidationError("Question metadata update failed")
+
+        question_row = self._repo.get_question_with_options(question_id)
+        if question_row is None:
+            raise QuestionNotFoundError(f"Question '{question_id}' not found")
+        return question_row[0]
+
+    def get_question_usage_statistics(self) -> list[dict]:
+        return self._repo.list_usage_statistics()
 
     def _validate_options(self, options: list[tuple[str, bool]]) -> None:
         if len(options) < 2:

@@ -31,12 +31,22 @@ def _create_handler(path: str, level: str) -> RotatingFileHandler:
     return handler
 
 
+def _reset_logger_handlers(logger: logging.Logger) -> None:
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        try:
+            handler.flush()
+            handler.close()
+        except Exception:
+            continue
+
+
 def configure_logging(settings: AppSettings) -> None:
     app_logger = logging.getLogger("phase1_server")
     audit_logger = logging.getLogger("phase1_server.audit")
 
-    app_logger.handlers.clear()
-    audit_logger.handlers.clear()
+    _reset_logger_handlers(app_logger)
+    _reset_logger_handlers(audit_logger)
 
     app_logger.setLevel(settings.log_level)
     audit_logger.setLevel(settings.log_level)

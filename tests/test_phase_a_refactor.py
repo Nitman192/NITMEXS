@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.models import Attempt, AttemptStatus, utc_now_iso
@@ -12,12 +13,13 @@ from phase1_server.uow import UnitOfWork
 
 class PhaseARefactorTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(suffix=".db")
-        self.db = Database(SQLiteConfig(db_path=self.tmp.name))
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp_dir.name) / "phase_a_refactor.db")
+        self.db = Database(SQLiteConfig(db_path=self.db_path))
         self.db.initialize()
 
     def tearDown(self):
-        self.tmp.close()
+        self.tmp_dir.cleanup()
 
     def test_pragmas_are_applied(self):
         with self.db.connection() as conn:

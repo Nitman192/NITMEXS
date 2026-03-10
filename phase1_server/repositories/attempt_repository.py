@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from typing import Protocol
@@ -80,6 +81,22 @@ class AttemptRepository(Protocol):
     def list_audit_events(self, attempt_id: str) -> list[dict]: ...
 
     def is_expired(self, attempt_id: str, now_iso: str) -> bool: ...
+
+    def list_active_attempts_by_exam(self, exam_id: str) -> list[dict]: ...
+
+    def list_active_attempts(self, limit: int = 200) -> list[dict]: ...
+
+    def list_recent_finalize_events(self, exam_id: str, limit: int = 20) -> list[dict]: ...
+
+    def list_recent_finalize_events_global(self, limit: int = 50) -> list[dict]: ...
+
+    def list_attempt_events(
+        self,
+        limit: int = 100,
+        since: str | None = None,
+        exam_id: str | None = None,
+        cursor_event_id: str | None = None,
+    ) -> list[dict]: ...
 
     def get_exam_question_analytics(self, exam_id: str) -> list[dict]: ...
 
@@ -410,6 +427,222 @@ class SQLiteAttemptRepository:
         ).fetchone()
         return row is not None
 
+    def list_active_attempts_by_exam(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                a.id AS attempt_id,
+                a.candidate_id AS student_id,
+                a.exam_id AS exam_id,
+                a.created_at AS started_at,
+                a.updated_at AS updated_at,
+                a.expires_at AS expires_at,
+                a.version AS version,
+                COUNT(DISTINCT ar.question_id) AS answered_count,
+                COUNT(DISTINCT s.question_id) AS total_questions
+            FROM attempts a
+            LEFT JOIN attempt_responses ar
+                ON ar.attempt_id = a.id
+            LEFT JOIN attempt_question_snapshots s
+                ON s.attempt_id = a.id
+            WHERE a.exam_id = ? AND a.status = ?
+            GROUP BY
+                a.id, a.candidate_id, a.exam_id, a.created_at, a.updated_at, a.expires_at, a.version
+            ORDER BY a.created_at ASC
+            """,
+            (exam_id, AttemptStatus.ACTIVE.value),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "exam_id": row["exam_id"],
+                "started_at": row["started_at"],
+                "updated_at": row["updated_at"],
+                "expires_at": row["expires_at"],
+                "version": int(row["version"]),
+                "answered_count": int(row["answered_count"] or 0),
+                "total_questions": int(row["total_questions"] or 0),
+            }
+            for row in rows
+        ]
+
+    def list_active_attempts(self, limit: int = 200) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                a.id AS attempt_id,
+                a.candidate_id AS student_id,
+                a.exam_id AS exam_id,
+                a.created_at AS started_at,
+                a.updated_at AS updated_at,
+                a.expires_at AS expires_at,
+                a.version AS version,
+                COUNT(DISTINCT ar.question_id) AS answered_count,
+                COUNT(DISTINCT s.question_id) AS total_questions
+            FROM attempts a
+            LEFT JOIN attempt_responses ar
+                ON ar.attempt_id = a.id
+            LEFT JOIN attempt_question_snapshots s
+                ON s.attempt_id = a.id
+            WHERE a.status = ?
+            GROUP BY
+                a.id, a.candidate_id, a.exam_id, a.created_at, a.updated_at, a.expires_at, a.version
+            ORDER BY a.created_at ASC
+            LIMIT ?
+            """,
+            (AttemptStatus.ACTIVE.value, limit),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "exam_id": row["exam_id"],
+                "started_at": row["started_at"],
+                "updated_at": row["updated_at"],
+                "expires_at": row["expires_at"],
+                "version": int(row["version"]),
+                "answered_count": int(row["answered_count"] or 0),
+                "total_questions": int(row["total_questions"] or 0),
+            }
+            for row in rows
+        ]
+
+    def list_recent_finalize_events(self, exam_id: str, limit: int = 20) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                ae.entity_id AS attempt_id,
+                a.candidate_id AS student_id,
+                ae.actor_type AS actor_type,
+                ae.actor_id AS actor_id,
+                ae.created_at AS created_at
+            FROM audit_events ae
+            INNER JOIN attempts a
+                ON a.id = ae.entity_id
+            WHERE
+                ae.entity_type = 'attempt'
+                AND ae.event_type = 'FINALIZED'
+                AND a.exam_id = ?
+            ORDER BY ae.created_at DESC
+            LIMIT ?
+            """,
+            (exam_id, limit),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "exam_id": exam_id,
+                "actor_type": row["actor_type"],
+                "actor_id": row["actor_id"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def list_recent_finalize_events_global(self, limit: int = 50) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                ae.entity_id AS attempt_id,
+                a.candidate_id AS student_id,
+                a.exam_id AS exam_id,
+                ae.actor_type AS actor_type,
+                ae.actor_id AS actor_id,
+                ae.created_at AS created_at
+            FROM audit_events ae
+            INNER JOIN attempts a
+                ON a.id = ae.entity_id
+            WHERE
+                ae.entity_type = 'attempt'
+                AND ae.event_type = 'FINALIZED'
+            ORDER BY ae.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "exam_id": row["exam_id"],
+                "actor_type": row["actor_type"],
+                "actor_id": row["actor_id"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def list_attempt_events(
+        self,
+        limit: int = 100,
+        since: str | None = None,
+        exam_id: str | None = None,
+        cursor_event_id: str | None = None,
+    ) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                ae.id AS event_id,
+                ae.created_at AS created_at,
+                ae.event_type AS event_type,
+                ae.entity_id AS attempt_id,
+                ae.actor_type AS actor_type,
+                ae.actor_id AS actor_id,
+                ae.payload_json AS payload_json,
+                a.exam_id AS exam_id,
+                a.candidate_id AS student_id
+            FROM audit_events ae
+            INNER JOIN attempts a
+                ON a.id = ae.entity_id
+            WHERE
+                ae.entity_type = 'attempt'
+                AND (? IS NULL OR a.exam_id = ?)
+                AND (
+                    ? IS NULL
+                    OR ae.created_at > ?
+                    OR (
+                        ae.created_at = ?
+                        AND ? IS NOT NULL
+                        AND ae.id > ?
+                    )
+                )
+            ORDER BY ae.created_at ASC, ae.id ASC
+            LIMIT ?
+            """,
+            (
+                exam_id,
+                exam_id,
+                since,
+                since,
+                since,
+                cursor_event_id,
+                cursor_event_id,
+                limit,
+            ),
+        ).fetchall()
+
+        result: list[dict] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            result.append(
+                {
+                    "event_id": row["event_id"],
+                    "created_at": row["created_at"],
+                    "event_type": row["event_type"],
+                    "attempt_id": row["attempt_id"],
+                    "exam_id": row["exam_id"],
+                    "student_id": row["student_id"],
+                    "actor_type": row["actor_type"],
+                    "actor_id": row["actor_id"],
+                    "payload": payload,
+                }
+            )
+        return result
 
     def get_exam_question_analytics(self, exam_id: str) -> list[dict]:
         rows = self._conn.execute(

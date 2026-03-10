@@ -13,8 +13,9 @@ from phase1_server.services.maintenance_service import (
 
 class DurabilityMaintenanceTests(unittest.TestCase):
     def test_schema_version_validation(self):
-        with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
-            db = Database(SQLiteConfig(db_path=tmp.name))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "schema_validation.db")
+            db = Database(SQLiteConfig(db_path=db_path))
             db.initialize()
             db.ensure_expected_schema_version(EXPECTED_SCHEMA_VERSION)
             with self.assertRaises(RuntimeError):

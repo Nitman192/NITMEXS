@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import unittest
@@ -59,6 +60,9 @@ class DeploymentHardeningTests(unittest.TestCase):
 
             self.assertTrue(Path(app_log).exists())
             self.assertTrue(Path(audit_log).exists())
+            logging.shutdown()
+            logging.getLogger("phase1_server").handlers.clear()
+            logging.getLogger("phase1_server.audit").handlers.clear()
 
     @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI test client unavailable")
     def test_version_endpoint(self):

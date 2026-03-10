@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,12 @@ def wait_ready(base_url: str, timeout_s: float = 15.0) -> None:
             pass
         time.sleep(0.2)
     raise RuntimeError("Server not ready")
+
+
+def pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 @unittest.skipUnless(HTTPX_AVAILABLE, "httpx unavailable")
@@ -64,21 +71,23 @@ class RestartRecoveryIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "restart.db")
             exam_id = self._seed_exam(db_path)
+            port = pick_free_port()
+            base_url = f"http://127.0.0.1:{port}"
 
             env = os.environ.copy()
             env["NITMEXS_DB_PATH"] = db_path
             env["NITMEXS_HOST"] = "127.0.0.1"
-            env["NITMEXS_PORT"] = "8000"
+            env["NITMEXS_PORT"] = str(port)
 
             server = subprocess.Popen(
                 [sys.executable, "-m", "phase1_server.server_entry", "--mode", "foreground"],
                 env=env,
             )
             try:
-                wait_ready("http://127.0.0.1:8000")
+                wait_ready(base_url)
 
                 start = httpx.post(
-                    f"http://127.0.0.1:8000/student/exams/{exam_id}/start",
+                    f"{base_url}/student/exams/{exam_id}/start",
                     headers={"x-student-id": "recover-student"},
                     timeout=10.0,
                 )
@@ -86,14 +95,14 @@ class RestartRecoveryIntegrationTests(unittest.TestCase):
                 attempt_id = start.json()["data"]["attempt_id"]
 
                 q1 = httpx.get(
-                    f"http://127.0.0.1:8000/student/attempts/{attempt_id}/questions/1",
+                    f"{base_url}/student/attempts/{attempt_id}/questions/1",
                     headers={"x-student-id": "recover-student"},
                     timeout=10.0,
                 )
                 self.assertEqual(q1.status_code, 200)
                 q1_payload = q1.json()["data"]
                 submit = httpx.post(
-                    f"http://127.0.0.1:8000/student/attempts/{attempt_id}/answers",
+                    f"{base_url}/student/attempts/{attempt_id}/answers",
                     headers={"x-student-id": "recover-student"},
                     json={
                         "question_id": q1_payload["question"]["id"],
@@ -114,11 +123,11 @@ class RestartRecoveryIntegrationTests(unittest.TestCase):
                 env=env,
             )
             try:
-                wait_ready("http://127.0.0.1:8000")
+                wait_ready(base_url)
 
                 # Snapshot persistence
                 q1_after = httpx.get(
-                    f"http://127.0.0.1:8000/student/attempts/{attempt_id}/questions/1",
+                    f"{base_url}/student/attempts/{attempt_id}/questions/1",
                     headers={"x-student-id": "recover-student"},
                     timeout=10.0,
                 )
@@ -126,7 +135,7 @@ class RestartRecoveryIntegrationTests(unittest.TestCase):
 
                 # Attempt state preserved (still active)
                 q2_after = httpx.get(
-                    f"http://127.0.0.1:8000/student/attempts/{attempt_id}/questions/2",
+                    f"{base_url}/student/attempts/{attempt_id}/questions/2",
                     headers={"x-student-id": "recover-student"},
                     timeout=10.0,
                 )
@@ -134,7 +143,7 @@ class RestartRecoveryIntegrationTests(unittest.TestCase):
 
                 # Audit events preserved
                 timeline = httpx.get(
-                    f"http://127.0.0.1:8000/admin/attempts/{attempt_id}/timeline",
+                    f"{base_url}/admin/attempts/{attempt_id}/timeline",
                     headers={"x-admin": "true"},
                     timeout=10.0,
                 )

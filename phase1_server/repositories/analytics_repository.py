@@ -21,6 +21,12 @@ class AnalyticsRepository(Protocol):
 
     def get_student_performance(self, student_id: str) -> dict: ...
 
+    def get_question_difficulty_heatmap(self, exam_id: str) -> list[dict]: ...
+
+    def get_topic_performance_heatmap(self, exam_id: str) -> list[dict]: ...
+
+    def get_exam_score_percentages(self, exam_id: str) -> list[float]: ...
+
 
 class SQLiteAnalyticsRepository:
     def __init__(self, conn: sqlite3.Connection):
@@ -135,3 +141,102 @@ class SQLiteAnalyticsRepository:
             "average_percentage": avg_percentage,
             "attempts": attempts,
         }
+
+    def get_question_difficulty_heatmap(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                eq.question_id AS question_id,
+                q.topic AS topic,
+                COALESCE(q.topic_tag, q.topic) AS topic_tag,
+                q.cognitive_level AS cognitive_level,
+                q.difficulty AS difficulty,
+                q.difficulty_level AS difficulty_level,
+                q.discrimination_index AS discrimination_index,
+                COALESCE(s.attempts_count, 0) AS attempts_count,
+                COALESCE(s.correct_count, 0) AS correct_count,
+                COALESCE(s.total_marks_awarded, 0) AS total_marks_awarded
+            FROM exam_questions eq
+            INNER JOIN questions q
+                ON q.id = eq.question_id
+            LEFT JOIN item_statistics s
+                ON s.exam_id = eq.exam_id
+                AND s.question_id = eq.question_id
+            WHERE eq.exam_id = ?
+            ORDER BY topic_tag ASC, q.cognitive_level ASC, eq.question_id ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+
+        result: list[dict] = []
+        for row in rows:
+            attempts = int(row["attempts_count"] or 0)
+            correct = int(row["correct_count"] or 0)
+            total_marks_awarded = float(row["total_marks_awarded"] or 0.0)
+            result.append(
+                {
+                    "question_id": row["question_id"],
+                    "topic": row["topic"],
+                    "topic_tag": row["topic_tag"],
+                    "cognitive_level": row["cognitive_level"],
+                    "difficulty": row["difficulty"],
+                    "difficulty_level": row["difficulty_level"],
+                    "discrimination_index": row["discrimination_index"],
+                    "total_attempts": attempts,
+                    "difficulty_index": (correct / attempts) * 100.0 if attempts else 0.0,
+                    "average_score": (total_marks_awarded / attempts) if attempts else 0.0,
+                }
+            )
+        return result
+
+    def get_topic_performance_heatmap(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                COALESCE(q.topic_tag, q.topic) AS topic_tag,
+                COUNT(DISTINCT eq.question_id) AS question_count,
+                SUM(COALESCE(s.attempts_count, 0)) AS attempts_count,
+                SUM(COALESCE(s.correct_count, 0)) AS correct_count,
+                SUM(COALESCE(s.total_marks_awarded, 0)) AS total_marks_awarded
+            FROM exam_questions eq
+            INNER JOIN questions q
+                ON q.id = eq.question_id
+            LEFT JOIN item_statistics s
+                ON s.exam_id = eq.exam_id
+                AND s.question_id = eq.question_id
+            WHERE eq.exam_id = ?
+            GROUP BY COALESCE(q.topic_tag, q.topic)
+            ORDER BY topic_tag ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+
+        result: list[dict] = []
+        for row in rows:
+            attempts = int(row["attempts_count"] or 0)
+            correct = int(row["correct_count"] or 0)
+            total_marks_awarded = float(row["total_marks_awarded"] or 0.0)
+            result.append(
+                {
+                    "topic_tag": row["topic_tag"],
+                    "question_count": int(row["question_count"] or 0),
+                    "total_attempts": attempts,
+                    "performance_index": (correct / attempts) * 100.0 if attempts else 0.0,
+                    "average_score": (total_marks_awarded / attempts) if attempts else 0.0,
+                }
+            )
+        return result
+
+    def get_exam_score_percentages(self, exam_id: str) -> list[float]:
+        rows = self._conn.execute(
+            """
+            SELECT ar.percentage
+            FROM attempt_results ar
+            INNER JOIN attempts a
+                ON a.id = ar.attempt_id
+            WHERE a.exam_id = ?
+            ORDER BY ar.percentage ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+        return [float(row["percentage"]) for row in rows]

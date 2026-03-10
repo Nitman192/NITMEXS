@@ -10,6 +10,12 @@ from phase1_server.repositories.attempt_repository import SQLiteAttemptRepositor
 from phase1_server.repositories.audit_event_repository import SQLiteAuditEventRepository
 from phase1_server.repositories.exam_repository import SQLiteExamRepository
 from phase1_server.repositories.metrics_repository import SQLiteMetricsRepository
+from phase1_server.repositories.proctor_alert_repository import (
+    SQLiteProctorAlertRepository,
+)
+from phase1_server.repositories.question_recalibration_repository import (
+    SQLiteQuestionRecalibrationRepository,
+)
 from phase1_server.repositories.question_repository import SQLiteQuestionRepository
 
 
@@ -24,6 +30,8 @@ class UnitOfWork(AbstractContextManager):
         self.audit_events: SQLiteAuditEventRepository | None = None
         self.metrics: SQLiteMetricsRepository | None = None
         self.analytics: SQLiteAnalyticsRepository | None = None
+        self.recalibration_runs: SQLiteQuestionRecalibrationRepository | None = None
+        self.proctor_alerts: SQLiteProctorAlertRepository | None = None
 
     def __enter__(self):
         self._ctx = self._db.connection()
@@ -34,6 +42,8 @@ class UnitOfWork(AbstractContextManager):
         self.audit_events = SQLiteAuditEventRepository(self.conn)
         self.metrics = SQLiteMetricsRepository(self.conn)
         self.analytics = SQLiteAnalyticsRepository(self.conn)
+        self.recalibration_runs = SQLiteQuestionRecalibrationRepository(self.conn)
+        self.proctor_alerts = SQLiteProctorAlertRepository(self.conn)
         return self
 
     def __exit__(self, exc_type, exc, tb):

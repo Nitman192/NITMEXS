@@ -15,7 +15,32 @@ class QuestionCreateSchema(BaseModel):
     topic: str = Field(min_length=1, max_length=120)
     difficulty: str = Field(min_length=1, max_length=30)
     marks: confloat(gt=0)
+    difficulty_level: conint(ge=1, le=10) | None = None
+    discrimination_index: confloat(ge=0, le=1) | None = None
+    topic_tag: str | None = Field(default=None, min_length=1, max_length=120)
+    cognitive_level: str | None = Field(default=None, min_length=1, max_length=80)
     options: list[OptionCreateSchema] = Field(min_length=2, max_length=6)
+
+
+class QuestionMetadataUpdateSchema(BaseModel):
+    difficulty: str | None = Field(default=None, min_length=1, max_length=30)
+    difficulty_level: conint(ge=1, le=10) | None = None
+    discrimination_index: confloat(ge=0, le=1) | None = None
+    topic_tag: str | None = Field(default=None, min_length=1, max_length=120)
+    cognitive_level: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+class QuestionRecalibrationSchema(BaseModel):
+    min_attempts: conint(ge=1, le=1000) = 5
+    apply: bool = False
+
+
+class QuestionRecalibrationRollbackSchema(BaseModel):
+    reason: str | None = Field(default=None, max_length=400)
+
+
+class ProctorAlertResolveSchema(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
 
 
 class ExamCreateSchema(BaseModel):
