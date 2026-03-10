@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NITMEXS Student Cockpit</title>
+  <link rel="stylesheet" href="/web/theme.css">
+</head>
+<body>
+  <div class="nebula"></div>
+  <header class="topbar">
+    <div class="brand">NITMEXS STUDENT COCKPIT</div>
+    <div class="chips">
+      <a class="portal-btn" href="/web">Back To Gateway</a>
+      <span class="chip mono">Server: <span id="version">...</span></span>
+    </div>
+  </header>
+
+  <main class="page">
+    <h1 class="title">Candidate Attempt Interface</h1>
+    <p class="subtitle">Yahan student real exam attempt karega. Ye admin console nahi hai.</p>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Identity & Exam</h2>
+        <div class="stack">
+          <div class="row">
+            <input id="student-id" placeholder="Student ID (e.g. cadet-01)" style="flex:1 1 220px">
+            <button id="load-exams">Load Exams</button>
+          </div>
+          <div class="row">
+            <select id="exam-select" style="flex:1 1 220px">
+              <option value="">Select available exam...</option>
+            </select>
+            <button id="start-attempt">Start Attempt</button>
+          </div>
+          <div id="student-status" class="status">Ready.</div>
+          <div id="attempt-meta" class="box small">No active attempt.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Attempt Telemetry</h2>
+        <div class="stack">
+          <div class="box">
+            <p class="small">Attempt ID</p>
+            <p id="attempt-id" class="mono">-</p>
+          </div>
+          <div class="box">
+            <p class="small">Current Sequence</p>
+            <p id="sequence-number" class="mono">-</p>
+          </div>
+          <div class="box">
+            <p class="small">Remaining Time</p>
+            <p id="remaining-time" class="mono">-</p>
+          </div>
+          <div class="row">
+            <button id="prev-question" class="alt">Prev Question</button>
+            <button id="next-question" class="alt">Next Question</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel wide">
+        <h2>Question Deck</h2>
+        <div id="question-box" class="box">
+          <p class="small">Question not loaded.</p>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="submit-answer">Submit Answer</button>
+          <button id="finalize-attempt" class="warn">Finalize Attempt</button>
+          <button id="view-result" class="alt">View Result</button>
+        </div>
+        <pre id="result-box" class="box mono" style="margin-top:8px">Result will appear here.</pre>
+      </article>
+    </section>
+  </main>
+
+  <script src="/web/student.js"></script>
+</body>
+</html>

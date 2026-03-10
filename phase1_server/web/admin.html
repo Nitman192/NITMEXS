@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NITMEXS Admin Command Center</title>
+  <link rel="stylesheet" href="/web/theme.css">
+</head>
+<body>
+  <div class="nebula"></div>
+  <header class="topbar">
+    <div class="brand">NITMEXS ADMIN COMMAND CENTER</div>
+    <div class="chips">
+      <a class="portal-btn" href="/web">Back To Gateway</a>
+      <a class="portal-btn primary" href="/web/student.html">Open Student UI</a>
+      <span class="chip mono">Server: <span id="version">...</span></span>
+    </div>
+  </header>
+
+  <main class="page">
+    <h1 class="title">Proctor & Operations Dashboard</h1>
+    <p class="subtitle">Cursor-token polling + alert lifecycle + recalibration rollback controls.</p>
+
+    <section class="panel">
+      <h2>Exam Scope</h2>
+      <div class="row">
+        <button id="load-exams">Load Exams</button>
+        <select id="exam-select" style="flex:1 1 280px">
+          <option value="">Select exam...</option>
+        </select>
+      </div>
+      <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Live Monitoring</h2>
+        <div class="row">
+          <button id="refresh-live">Refresh Live</button>
+          <button id="sync-alerts" class="alt">Sync Alerts</button>
+          <button id="load-alerts" class="alt">Load Alerts</button>
+        </div>
+        <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
+        <p class="small">Active Attempts</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Attempt</th>
+                <th>Student</th>
+                <th>Remaining</th>
+                <th>Answered</th>
+                <th>Progress</th>
+              </tr>
+            </thead>
+            <tbody id="active-body"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Alert Queue</h2>
+        <p class="small">Open/Acknowledged/Resolved alerts with acknowledge/resolve actions.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Alert</th>
+                <th>Status</th>
+                <th>Indicator</th>
+                <th>Student</th>
+                <th>Detected</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="alert-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Exactly-Once Event Polling</h2>
+        <div class="row">
+          <button id="pull-events">Pull Page</button>
+          <button id="toggle-auto" class="alt">Start Auto Poll</button>
+          <span class="chip mono">Cursor: <span id="cursor-label">none</span></span>
+        </div>
+        <p class="small">Cursor token uses `created_at + event_id` boundary handling.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Event</th>
+                <th>Attempt</th>
+                <th>Student</th>
+                <th>Event ID</th>
+              </tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Bulk Recalibration + Rollback</h2>
+        <div class="stack">
+          <div class="row">
+            <input id="min-attempts" type="number" min="1" value="5" style="width:90px">
+            <label class="small row" style="gap:6px"><input id="apply-run" type="checkbox">Apply</label>
+            <button id="run-recalibration">Run</button>
+            <button id="load-history" class="alt">History</button>
+          </div>
+          <div class="row">
+            <input id="rollback-reason" placeholder="Rollback reason (optional)" style="flex:1 1 240px">
+          </div>
+          <pre id="run-summary" class="box mono">No run selected.</pre>
+        </div>
+        <p class="small">Runs</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Run ID</th>
+                <th>Mode</th>
+                <th>Updated</th>
+                <th>Eligible</th>
+                <th>Source</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Run Items</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Question</th>
+              <th>Attempts</th>
+              <th>Observed%</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="items-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/web/admin.js"></script>
+</body>
+</html>

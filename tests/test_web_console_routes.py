@@ -34,15 +34,36 @@ class WebConsoleRouteTests(unittest.TestCase):
         app = create_app(db_path=self.db_path)
         with TestClient(app) as client:
             index_response = client.get("/web")
-            js_response = client.get("/web/app.js")
+            index_js_response = client.get("/web/index.js")
+            theme_response = client.get("/web/theme.css")
+            student_response = client.get("/web/student.html")
+            student_js_response = client.get("/web/student.js")
+            admin_response = client.get("/web/admin.html")
+            admin_js_response = client.get("/web/admin.js")
 
         self.assertEqual(index_response.status_code, 200)
         self.assertIn("text/html", index_response.headers.get("content-type", ""))
-        self.assertIn("NITMEXS Web Console", index_response.text)
+        self.assertIn("Web Control Gateway", index_response.text)
 
-        self.assertEqual(js_response.status_code, 200)
-        self.assertIn("javascript", js_response.headers.get("content-type", ""))
-        self.assertIn("loadVersion", js_response.text)
+        self.assertEqual(index_js_response.status_code, 200)
+        self.assertIn("javascript", index_js_response.headers.get("content-type", ""))
+        self.assertIn("version-badge", index_js_response.text)
+
+        self.assertEqual(theme_response.status_code, 200)
+        self.assertIn("text/css", theme_response.headers.get("content-type", ""))
+        self.assertIn("--bg", theme_response.text)
+
+        self.assertEqual(student_response.status_code, 200)
+        self.assertIn("Student Cockpit", student_response.text)
+
+        self.assertEqual(student_js_response.status_code, 200)
+        self.assertIn("startAttempt", student_js_response.text)
+
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertIn("Admin Command Center", admin_response.text)
+
+        self.assertEqual(admin_js_response.status_code, 200)
+        self.assertIn("toggleAutoPolling", admin_js_response.text)
 
 
 if __name__ == "__main__":
