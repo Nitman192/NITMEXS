@@ -116,6 +116,32 @@ def fetch_question(
     return {"status": "success", "data": data}
 
 
+@router.get("/attempts/{attempt_id}/status")
+def get_attempt_status(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_attempt_status(attempt_id=attempt_id, student_id=student_id)
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
 @router.post("/attempts/{attempt_id}/answers")
 def submit_answer(
     attempt_id: str,

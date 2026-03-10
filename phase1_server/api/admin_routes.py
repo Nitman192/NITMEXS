@@ -53,6 +53,7 @@ from phase1_server.services.question_calibration_service import (
 )
 from phase1_server.services.question_import_service import (
     CsvImportError,
+    ExamQuestionPackageCsvImportService,
     QuestionCsvImportService,
 )
 from phase1_server.services.question_service import (
@@ -322,6 +323,54 @@ async def import_questions_csv(
             "total_rows": result.total_rows,
             "inserted": result.inserted,
             "failed": result.failed,
+            "errors": [
+                {"row": item.row, "error": item.error}
+                for item in result.errors
+            ],
+        },
+    }
+
+
+@router.post("/exams/import-question-pack-csv")
+async def import_exam_question_pack_csv(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    content = (await file.read()).decode("utf-8", errors="replace")
+
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        question_service = QuestionService(uow.questions)
+        exam_service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
+        import_service = ExamQuestionPackageCsvImportService(
+            question_service,
+            exam_service,
+        )
+        try:
+            result = import_service.import_csv(content)
+        except (
+            CsvImportError,
+            ExamValidationError,
+            ExamAlreadyPublishedError,
+            QuestionValidationError,
+        ) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "success",
+        "data": {
+            "exam_id": result.exam_id,
+            "exam_name": result.exam_name,
+            "duration_minutes": result.duration_minutes,
+            "negative_marking": result.negative_marking,
+            "published": result.published,
+            "total_rows": result.total_rows,
+            "inserted": result.inserted,
+            "failed": result.failed,
+            "question_ids": result.question_ids,
             "errors": [
                 {"row": item.row, "error": item.error}
                 for item in result.errors

@@ -6,158 +6,329 @@
   <title>NITMEXS Admin Command Center</title>
   <link rel="stylesheet" href="/web/theme.css">
 </head>
-<body>
+<body class="admin-shell" data-default-theme="dark">
   <div class="nebula"></div>
+
+  <div id="idle-overlay" class="idle-overlay">
+    <div class="idle-card">
+      <h2>Panel Idle Shield Active</h2>
+      <p>10s inactivity detect hui. Mouse move ya key press karo to unlock ho jayega.</p>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">NITMEXS ADMIN COMMAND CENTER</div>
     <div class="chips">
-      <a class="portal-btn" href="/web">Back To Gateway</a>
-      <a class="portal-btn primary" href="/web/student.html">Open Student UI</a>
+      <a class="portal-btn" href="/web">Gateway</a>
+      <a class="portal-btn primary" href="/web/student.html">Student UI</a>
+      <span class="chip mono">Admin: <span id="session-admin">...</span></span>
       <span class="chip mono">Server: <span id="version">...</span></span>
+      <label class="theme-switch" for="theme-toggle">
+        <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
+        <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+        <span class="theme-switch-text" data-theme-label>Dark</span>
+      </label>
+      <label class="chip row"><input type="checkbox" id="guided-toggle"> Guided Mode</label>
+      <button id="logout-admin" class="danger" type="button">Logout</button>
     </div>
   </header>
 
-  <main class="page">
-    <h1 class="title">Proctor & Operations Dashboard</h1>
-    <p class="subtitle">Cursor-token polling + alert lifecycle + recalibration rollback controls.</p>
-
+  <main class="page blur-target">
     <section class="panel">
       <h2>Exam Scope</h2>
       <div class="row">
         <button id="load-exams">Load Exams</button>
-        <select id="exam-select" style="flex:1 1 280px">
+        <select id="exam-select" style="flex:1 1 300px">
           <option value="">Select exam...</option>
         </select>
       </div>
       <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
     </section>
 
-    <section class="grid">
-      <article class="panel">
-        <h2>Live Monitoring</h2>
-        <div class="row">
-          <button id="refresh-live">Refresh Live</button>
-          <button id="sync-alerts" class="alt">Sync Alerts</button>
-          <button id="load-alerts" class="alt">Load Alerts</button>
-        </div>
-        <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
-        <p class="small">Active Attempts</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Attempt</th>
-                <th>Student</th>
-                <th>Remaining</th>
-                <th>Answered</th>
-                <th>Progress</th>
-              </tr>
-            </thead>
-            <tbody id="active-body"></tbody>
-          </table>
-        </div>
-      </article>
+    <section class="admin-layout">
+      <aside class="admin-sidebar">
+        <button class="nav-btn active" data-page="page-monitor">Live Monitor</button>
+        <button class="nav-btn" data-page="page-question-bank">Question Bank</button>
+        <button class="nav-btn" data-page="page-recalibration">Recalibration</button>
+        <button class="nav-btn" data-page="page-analytics">Analytics</button>
+        <button class="nav-btn" data-page="page-system">System Ops</button>
+      </aside>
 
-      <article class="panel">
-        <h2>Alert Queue</h2>
-        <p class="small">Open/Acknowledged/Resolved alerts with acknowledge/resolve actions.</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Alert</th>
-                <th>Status</th>
-                <th>Indicator</th>
-                <th>Student</th>
-                <th>Detected</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="alert-body"></tbody>
-          </table>
-        </div>
-      </article>
-    </section>
+      <div class="admin-content">
+        <section id="page-monitor" class="page-panel active">
+          <article class="panel">
+            <h2>Live Monitoring</h2>
+            <div class="row">
+              <button id="refresh-live">Refresh Live</button>
+              <button id="sync-alerts" class="alt">Sync Alerts</button>
+              <button id="load-alerts" class="alt">Load Alerts</button>
+            </div>
+            <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
+          </article>
 
-    <section class="grid">
-      <article class="panel">
-        <h2>Exactly-Once Event Polling</h2>
-        <div class="row">
-          <button id="pull-events">Pull Page</button>
-          <button id="toggle-auto" class="alt">Start Auto Poll</button>
-          <span class="chip mono">Cursor: <span id="cursor-label">none</span></span>
-        </div>
-        <p class="small">Cursor token uses `created_at + event_id` boundary handling.</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Event</th>
-                <th>Attempt</th>
-                <th>Student</th>
-                <th>Event ID</th>
-              </tr>
-            </thead>
-            <tbody id="events-body"></tbody>
-          </table>
-        </div>
-      </article>
+          <article class="panel">
+            <h2>Active Attempts</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Attempt</th>
+                    <th>Student</th>
+                    <th>Remaining</th>
+                    <th>Answered</th>
+                    <th>Progress</th>
+                  </tr>
+                </thead>
+                <tbody id="active-body"></tbody>
+              </table>
+            </div>
+          </article>
 
-      <article class="panel">
-        <h2>Bulk Recalibration + Rollback</h2>
-        <div class="stack">
-          <div class="row">
-            <input id="min-attempts" type="number" min="1" value="5" style="width:90px">
-            <label class="small row" style="gap:6px"><input id="apply-run" type="checkbox">Apply</label>
-            <button id="run-recalibration">Run</button>
-            <button id="load-history" class="alt">History</button>
-          </div>
-          <div class="row">
-            <input id="rollback-reason" placeholder="Rollback reason (optional)" style="flex:1 1 240px">
-          </div>
-          <pre id="run-summary" class="box mono">No run selected.</pre>
-        </div>
-        <p class="small">Runs</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Run ID</th>
-                <th>Mode</th>
-                <th>Updated</th>
-                <th>Eligible</th>
-                <th>Source</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="runs-body"></tbody>
-          </table>
-        </div>
-      </article>
-    </section>
+          <article class="panel">
+            <h2>Alert Queue</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Alert</th>
+                    <th>Status</th>
+                    <th>Indicator</th>
+                    <th>Student</th>
+                    <th>Detected</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="alert-body"></tbody>
+              </table>
+            </div>
+          </article>
 
-    <section class="panel">
-      <h2>Run Items</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Question</th>
-              <th>Attempts</th>
-              <th>Observed%</th>
-              <th>From</th>
-              <th>To</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="items-body"></tbody>
-        </table>
+          <article class="panel">
+            <h2>Exactly-Once Event Polling</h2>
+            <div class="row">
+              <button id="pull-events">Pull Page</button>
+              <button id="toggle-auto" class="alt">Start Auto Poll</button>
+              <span class="chip mono">Cursor: <span id="cursor-label">none</span></span>
+            </div>
+            <p class="small">Cursor boundary: <span class="mono">created_at + event_id</span>.</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Event</th>
+                    <th>Attempt</th>
+                    <th>Student</th>
+                    <th>Event ID</th>
+                  </tr>
+                </thead>
+                <tbody id="events-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="guide-only panel">
+            <h2>Guide: Live Monitor</h2>
+            <p class="small">1. Load exams karo. 2. Exam select karo. 3. Refresh Live se active attempts dekho.</p>
+            <p class="small">4. Sync Alerts chalakar suspicious flags raise/update karo. 5. Pull Events se chronological feed dekho.</p>
+          </article>
+        </section>
+
+        <section id="page-question-bank" class="page-panel">
+          <article class="panel">
+            <h2>CSV Templates</h2>
+            <div class="row">
+              <a class="portal-btn" href="/web/demo_question_bank.csv" download>Download Question Bank CSV</a>
+              <a class="portal-btn primary" href="/web/demo_exam_package.csv" download>Download Exam Package CSV</a>
+            </div>
+            <p class="small">Question Bank CSV = sirf questions. Exam Package CSV = exam + questions ek saath.</p>
+          </article>
+
+          <article class="panel">
+            <h2>Upload Question Bank CSV</h2>
+            <div class="row">
+              <input id="question-csv-file" type="file" accept=".csv" style="flex:1 1 260px">
+              <button id="upload-question-csv">Upload Questions</button>
+            </div>
+            <pre id="question-upload-result" class="box mono">Upload result will appear here.</pre>
+          </article>
+
+          <article class="panel">
+            <h2>Upload Exam Package CSV</h2>
+            <div class="row">
+              <input id="exam-pack-file" type="file" accept=".csv" style="flex:1 1 260px">
+              <button id="upload-exam-pack">Upload Exam Pack</button>
+            </div>
+            <pre id="exam-pack-result" class="box mono">Exam package result will appear here.</pre>
+          </article>
+
+          <article class="panel">
+            <h2>Question Library</h2>
+            <div class="row">
+              <button id="load-questions">Refresh Question List</button>
+              <span class="chip mono">Total: <span id="question-count">0</span></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Text</th>
+                    <th>Topic</th>
+                    <th>Difficulty</th>
+                    <th>Marks</th>
+                  </tr>
+                </thead>
+                <tbody id="questions-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="guide-only panel">
+            <h2>Guide: Question Bank</h2>
+            <p class="small">1. Template download karo. 2. CSV me row-wise questions bharo. 3. Upload Question Bank se sirf bank update hoga.</p>
+            <p class="small">4. Agar exam bhi auto-create karna hai to Exam Package CSV upload karo. Isse exam name, duration, questions sab import honge.</p>
+          </article>
+        </section>
+
+        <section id="page-recalibration" class="page-panel">
+          <article class="panel">
+            <h2>Bulk Recalibration</h2>
+            <div class="row">
+              <input id="min-attempts" type="number" min="1" value="5" style="width:90px">
+              <label class="small row"><input id="apply-run" type="checkbox"> Apply</label>
+              <button id="run-recalibration">Run</button>
+              <button id="load-history" class="alt">History</button>
+            </div>
+            <div class="row">
+              <input id="rollback-reason" placeholder="Rollback reason (optional)" style="flex:1 1 260px">
+            </div>
+            <pre id="run-summary" class="box mono">No run selected.</pre>
+          </article>
+
+          <article class="panel">
+            <h2>Recalibration Runs</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Run ID</th>
+                    <th>Mode</th>
+                    <th>Updated</th>
+                    <th>Eligible</th>
+                    <th>Source</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="runs-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Run Items</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Attempts</th>
+                    <th>Observed%</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="items-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="guide-only panel">
+            <h2>Guide: Recalibration</h2>
+            <p class="small">1. Exam select karke Preview run karo (Apply off). 2. Items verify karo. 3. Apply run only after review.</p>
+            <p class="small">4. Agar change rollback karna ho to apply-run row par Rollback click karo aur reason likho.</p>
+          </article>
+        </section>
+
+        <section id="page-analytics" class="page-panel">
+          <article class="panel">
+            <h2>Exam Analytics</h2>
+            <div class="row">
+              <button id="load-analytics">Load Analytics</button>
+            </div>
+            <pre id="analytics-summary" class="box mono">Analytics summary will appear here.</pre>
+          </article>
+
+          <article class="panel">
+            <h2>Difficulty Heatmap</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Difficulty%</th>
+                    <th>Total Attempts</th>
+                    <th>Correct</th>
+                  </tr>
+                </thead>
+                <tbody id="difficulty-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Topic Heatmap</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Topic</th>
+                    <th>Attempts</th>
+                    <th>Avg%</th>
+                    <th>Pass%</th>
+                  </tr>
+                </thead>
+                <tbody id="topic-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Score Distribution</h2>
+            <div id="distribution-body" class="stack"></div>
+          </article>
+
+          <article class="guide-only panel">
+            <h2>Guide: Analytics</h2>
+            <p class="small">1. Exam select karo. 2. Load Analytics click karo. 3. Difficulty/topic trends se weak areas identify karo.</p>
+            <p class="small">4. Score distribution se cohort spread aur pass threshold behavior assess karo.</p>
+          </article>
+        </section>
+
+        <section id="page-system" class="page-panel">
+          <article class="panel">
+            <h2>System Metrics</h2>
+            <div class="row">
+              <button id="load-metrics">Refresh Metrics</button>
+              <button id="load-dashboard" class="alt">Global Proctor Snapshot</button>
+            </div>
+            <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
+            <pre id="dashboard-box" class="box mono">Dashboard snapshot will appear here.</pre>
+          </article>
+
+          <article class="guide-only panel">
+            <h2>Guide: System Ops</h2>
+            <p class="small">1. Refresh Metrics se latency, conflict counters, operational values inspect karo.</p>
+            <p class="small">2. Global Proctor Snapshot se cross-exam activity aur finalize stream dekho.</p>
+          </article>
+        </section>
       </div>
     </section>
   </main>
 
+  <script src="/web/theme_toggle.js"></script>
   <script src="/web/admin.js"></script>
 </body>
 </html>

@@ -1,52 +1,360 @@
 (() => {
+  const STUDENT_SESSION_KEY = "nitmexs_student_session";
+  const ATTEMPT_CACHE_PREFIX = "nitmexs_attempt_cache_";
+
+  const st = {
+    studentId: "",
+    examId: "",
+    examName: "",
+    attemptId: "",
+    sequence: 1,
+    totalQuestions: 0,
+    currentQuestion: null,
+    warningCount: 0,
+    finalized: false,
+    syncIntervalId: null,
+    warningTimeoutId: null,
+  };
+
   const $ = (id) => document.getElementById(id);
+
+  const el = {
+    version: $("version"),
+    sessionStudent: $("session-student"),
+    logoutStudent: $("logout-student"),
+    loadExams: $("load-exams"),
+    examSelect: $("exam-select"),
+    startAttempt: $("start-attempt"),
+    status: $("student-status"),
+    attemptMeta: $("attempt-meta"),
+    examName: $("exam-name"),
+    questionProgress: $("question-progress"),
+    questionText: $("question-text"),
+    optionsList: $("options-list"),
+    markReview: $("mark-review"),
+    prevQuestion: $("prev-question"),
+    saveNext: $("save-next"),
+    remainingTime: $("remaining-time"),
+    paletteStats: $("palette-stats"),
+    questionPalette: $("question-palette"),
+    submitExam: $("submit-exam"),
+    viewResult: $("view-result"),
+    resultBox: $("result-box"),
+    antiCheatWarning: $("anti-cheat-warning"),
+    submitModal: $("submit-modal"),
+    submitSummary: $("submit-summary"),
+    cancelSubmit: $("cancel-submit"),
+    confirmSubmit: $("confirm-submit"),
+  };
+
+  function createTimerState(onTick) {
+    let timerId = null;
+    let expiresAt = null;
+
+    const asSeconds = () => {
+      if (!expiresAt) {
+        return 0;
+      }
+      const expiresAtMs = new Date(expiresAt).valueOf();
+      if (Number.isNaN(expiresAtMs)) {
+        return 0;
+      }
+      return Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+    };
+
+    const asText = () => {
+      const totalSeconds = asSeconds();
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    };
+
+    const tick = () => {
+      onTick(asText(), asSeconds());
+    };
+
+    return {
+      start(nextExpiresAt) {
+        expiresAt = nextExpiresAt || null;
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+        tick();
+        if (expiresAt) {
+          timerId = window.setInterval(tick, 1000);
+        }
+      },
+      stop() {
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+      },
+      getExpiresAt() {
+        return expiresAt;
+      },
+      getRemainingText() {
+        return asText();
+      },
+      getRemainingSeconds() {
+        return asSeconds();
+      },
+    };
+  }
+
+  function createAnswerState(onChange) {
+    let draftAnswers = {};
+    let markedSequences = new Set();
+    let answeredQuestionIds = new Set();
+    let sequenceQuestionMap = new Map();
+    let pendingQueue = [];
+
+    const persist = () => {
+      if (typeof onChange === "function") {
+        onChange();
+      }
+    };
+
+    const normalizePendingItem = (item) => {
+      if (!item || !item.question_id || !item.selected_option_id) {
+        return null;
+      }
+      return {
+        question_id: String(item.question_id),
+        selected_option_id: String(item.selected_option_id),
+        sequence_number: Number(item.sequence_number || 0),
+        saved_at: item.saved_at || new Date().toISOString(),
+      };
+    };
+
+    return {
+      clear() {
+        draftAnswers = {};
+        markedSequences = new Set();
+        answeredQuestionIds = new Set();
+        sequenceQuestionMap = new Map();
+        pendingQueue = [];
+        persist();
+      },
+      hydrate(cache) {
+        if (!cache || typeof cache !== "object") {
+          return;
+        }
+
+        if (cache.draft_answers && typeof cache.draft_answers === "object") {
+          draftAnswers = { ...draftAnswers, ...cache.draft_answers };
+        }
+
+        if (Array.isArray(cache.marked_sequences)) {
+          markedSequences = new Set(
+            cache.marked_sequences
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          );
+        }
+
+        if (Array.isArray(cache.answered_question_ids)) {
+          answeredQuestionIds = new Set(cache.answered_question_ids.map(String));
+        }
+
+        if (Array.isArray(cache.sequence_question_map)) {
+          sequenceQuestionMap = new Map(
+            cache.sequence_question_map
+              .map((pair) => [Number(pair[0]), String(pair[1])])
+              .filter(([sequence, questionId]) => sequence > 0 && questionId)
+          );
+        }
+
+        if (Array.isArray(cache.pending_queue)) {
+          pendingQueue = cache.pending_queue
+            .map(normalizePendingItem)
+            .filter((item) => item !== null);
+        }
+      },
+      serialize() {
+        return {
+          draft_answers: { ...draftAnswers },
+          marked_sequences: [...markedSequences],
+          answered_question_ids: [...answeredQuestionIds],
+          sequence_question_map: [...sequenceQuestionMap.entries()],
+          pending_queue: [...pendingQueue],
+        };
+      },
+      rememberSelection(questionId, selectedOptionId) {
+        if (!questionId || !selectedOptionId) {
+          return;
+        }
+        draftAnswers[String(questionId)] = String(selectedOptionId);
+        persist();
+      },
+      getSelection(questionId) {
+        if (!questionId) {
+          return "";
+        }
+        return draftAnswers[String(questionId)] || "";
+      },
+      setSequenceQuestion(sequenceNumber, questionId) {
+        const sequence = Number(sequenceNumber);
+        if (!sequence || !questionId) {
+          return;
+        }
+        sequenceQuestionMap.set(sequence, String(questionId));
+        persist();
+      },
+      getQuestionId(sequenceNumber) {
+        return sequenceQuestionMap.get(Number(sequenceNumber)) || "";
+      },
+      recordServerAnswered(answeredRows) {
+        if (!Array.isArray(answeredRows)) {
+          return;
+        }
+        for (const row of answeredRows) {
+          const sequence = Number(row.sequence_number);
+          const questionId = String(row.question_id || "");
+          const selectedOptionId = String(row.selected_option_id || "");
+          if (!sequence || !questionId) {
+            continue;
+          }
+          sequenceQuestionMap.set(sequence, questionId);
+          answeredQuestionIds.add(questionId);
+          if (selectedOptionId && !draftAnswers[questionId]) {
+            draftAnswers[questionId] = selectedOptionId;
+          }
+        }
+        persist();
+      },
+      markSubmitted(questionId) {
+        if (!questionId) {
+          return;
+        }
+        answeredQuestionIds.add(String(questionId));
+        persist();
+      },
+      isAnsweredSequence(sequenceNumber) {
+        const questionId = sequenceQuestionMap.get(Number(sequenceNumber));
+        if (!questionId) {
+          return false;
+        }
+        return answeredQuestionIds.has(questionId) || Boolean(draftAnswers[questionId]);
+      },
+      getAnsweredCount(totalQuestions) {
+        let count = 0;
+        for (let sequence = 1; sequence <= Number(totalQuestions || 0); sequence += 1) {
+          if (this.isAnsweredSequence(sequence)) {
+            count += 1;
+          }
+        }
+        return count;
+      },
+      toggleMarked(sequenceNumber) {
+        const sequence = Number(sequenceNumber);
+        if (!sequence) {
+          return false;
+        }
+        if (markedSequences.has(sequence)) {
+          markedSequences.delete(sequence);
+        } else {
+          markedSequences.add(sequence);
+        }
+        persist();
+        return markedSequences.has(sequence);
+      },
+      isMarked(sequenceNumber) {
+        return markedSequences.has(Number(sequenceNumber));
+      },
+      getMarkedCount() {
+        return markedSequences.size;
+      },
+      queuePending(item) {
+        const normalized = normalizePendingItem(item);
+        if (!normalized) {
+          return;
+        }
+        pendingQueue = pendingQueue.filter((entry) => entry.question_id !== normalized.question_id);
+        pendingQueue.push(normalized);
+        persist();
+      },
+      removePending(questionId) {
+        if (!questionId) {
+          return;
+        }
+        pendingQueue = pendingQueue.filter((entry) => entry.question_id !== String(questionId));
+        persist();
+      },
+      getPendingQueue() {
+        return [...pendingQueue];
+      },
+      getPendingCount() {
+        return pendingQueue.length;
+      },
+    };
+  }
+
+  const timerState = createTimerState((remainingText, remainingSeconds) => {
+    el.remainingTime.textContent = remainingText;
+    if (remainingSeconds === 0 && st.attemptId && !st.finalized) {
+      setStatus("Time is over. Submit Exam to lock your attempt.");
+    }
+  });
+
+  const answerState = createAnswerState(() => {
+    persistAttemptCache();
+    updateProgress();
+    renderPalette();
+  });
+
   const esc = (value) =>
     String(value ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
 
-  const st = {
-    studentId: "",
-    examId: "",
-    attemptId: "",
-    sequence: 1,
-    currentQuestion: null,
-    expiresAt: null,
-    timerId: null,
-  };
-
-  const el = {
-    version: $("version"),
-    studentId: $("student-id"),
-    loadExams: $("load-exams"),
-    examSelect: $("exam-select"),
-    startAttempt: $("start-attempt"),
-    status: $("student-status"),
-    meta: $("attempt-meta"),
-    attemptId: $("attempt-id"),
-    sequence: $("sequence-number"),
-    remaining: $("remaining-time"),
-    prev: $("prev-question"),
-    next: $("next-question"),
-    questionBox: $("question-box"),
-    submit: $("submit-answer"),
-    finalize: $("finalize-attempt"),
-    result: $("view-result"),
-    resultBox: $("result-box"),
-  };
-
   const setStatus = (message) => {
     el.status.textContent = message;
   };
 
-  function studentHeaders() {
-    const id = el.studentId.value.trim();
-    if (!id) {
-      throw new Error("Student ID required");
+  function showAntiCheatWarning(message) {
+    el.antiCheatWarning.textContent = message;
+    el.antiCheatWarning.hidden = false;
+    if (st.warningTimeoutId) {
+      clearTimeout(st.warningTimeoutId);
     }
-    st.studentId = id;
-    return { "x-student-id": id };
+    st.warningTimeoutId = window.setTimeout(() => {
+      el.antiCheatWarning.hidden = true;
+      st.warningTimeoutId = null;
+    }, 3600);
+  }
+
+  function parseSession() {
+    try {
+      const raw = localStorage.getItem(STUDENT_SESSION_KEY);
+      if (!raw) {
+        return null;
+      }
+      const payload = JSON.parse(raw);
+      if (!payload?.student_id) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  function ensureSession() {
+    const session = parseSession();
+    if (!session) {
+      window.location.href = "/web?target=student&reason=login_required";
+      throw new Error("Student login required");
+    }
+    st.studentId = String(session.student_id);
+    el.sessionStudent.textContent = st.studentId;
+  }
+
+  function studentHeaders() {
+    return { "x-student-id": st.studentId };
   }
 
   async function api(path, options = {}) {
@@ -55,88 +363,342 @@
       request.headers["Content-Type"] = "application/json";
       request.body = JSON.stringify(request.body);
     }
+
     const response = await fetch(path, request);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+      const error = new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+      error.httpStatus = response.status;
+      throw error;
     }
     return payload.data ?? payload;
   }
 
-  function formatDate(iso) {
-    if (!iso) {
+  function attemptCacheKey() {
+    if (!st.attemptId) {
+      return "";
+    }
+    return `${ATTEMPT_CACHE_PREFIX}${st.attemptId}`;
+  }
+
+  function persistAttemptCache() {
+    if (!st.attemptId) {
+      return;
+    }
+    const key = attemptCacheKey();
+    const payload = {
+      student_id: st.studentId,
+      attempt_id: st.attemptId,
+      exam_id: st.examId,
+      exam_name: st.examName,
+      sequence: st.sequence,
+      total_questions: st.totalQuestions,
+      expires_at: timerState.getExpiresAt(),
+      updated_at: new Date().toISOString(),
+      ...answerState.serialize(),
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  }
+
+  function clearAttemptCache() {
+    const key = attemptCacheKey();
+    if (!key) {
+      return;
+    }
+    localStorage.removeItem(key);
+  }
+
+  function applyCachedAttemptState() {
+    const key = attemptCacheKey();
+    if (!key) {
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        return;
+      }
+      const cache = JSON.parse(raw);
+      if (!cache || cache.attempt_id !== st.attemptId) {
+        return;
+      }
+      answerState.hydrate(cache);
+      if (Number.isInteger(cache.sequence) && cache.sequence > 0) {
+        st.sequence = cache.sequence;
+      }
+      if (Number.isInteger(cache.total_questions) && cache.total_questions > 0) {
+        st.totalQuestions = cache.total_questions;
+      }
+      if (cache.exam_name) {
+        st.examName = String(cache.exam_name);
+      }
+      if (cache.expires_at) {
+        timerState.start(cache.expires_at);
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function findLatestCachedAttemptForStudent() {
+    let latest = null;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(ATTEMPT_CACHE_PREFIX)) {
+        continue;
+      }
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+          continue;
+        }
+        const payload = JSON.parse(raw);
+        if (payload?.student_id !== st.studentId || !payload?.attempt_id) {
+          continue;
+        }
+        if (!latest) {
+          latest = payload;
+          continue;
+        }
+        if (String(payload.updated_at || "") > String(latest.updated_at || "")) {
+          latest = payload;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return latest;
+  }
+
+  function formatDate(isoValue) {
+    if (!isoValue) {
       return "-";
     }
-    const date = new Date(iso);
+    const date = new Date(isoValue);
     if (Number.isNaN(date.valueOf())) {
-      return iso;
+      return isoValue;
     }
     return date.toLocaleString();
   }
 
-  function formatRemaining(expiresAt) {
-    if (!expiresAt) {
-      return "-";
+  function updateMarkReviewLabel() {
+    if (answerState.isMarked(st.sequence)) {
+      el.markReview.textContent = "Unmark Review";
+    } else {
+      el.markReview.textContent = "Mark for Review";
     }
-    const expires = new Date(expiresAt).valueOf();
-    const diff = Math.max(0, Math.floor((expires - Date.now()) / 1000));
-    const mins = Math.floor(diff / 60);
-    const secs = diff % 60;
-    return `${mins}m ${secs}s`;
   }
 
-  function startTimer() {
-    if (st.timerId) {
-      clearInterval(st.timerId);
-      st.timerId = null;
+  function updateProgress() {
+    const total = Number(st.totalQuestions || 0);
+    const answered = answerState.getAnsweredCount(total);
+    el.questionProgress.textContent = `Question ${st.sequence} of ${total || "-"}`;
+    el.paletteStats.textContent = `Answered ${answered} / ${total}`;
+    el.prevQuestion.disabled = st.sequence <= 1 || st.finalized;
+  }
+
+  function renderPalette() {
+    const total = Number(st.totalQuestions || 0);
+    if (!total) {
+      el.questionPalette.innerHTML = '<p class="palette-placeholder">Question palette will appear after exam start.</p>';
+      return;
     }
-    el.remaining.textContent = formatRemaining(st.expiresAt);
-    st.timerId = window.setInterval(() => {
-      el.remaining.textContent = formatRemaining(st.expiresAt);
-    }, 1000);
+
+    const paletteButtons = [];
+    for (let sequence = 1; sequence <= total; sequence += 1) {
+      const marked = answerState.isMarked(sequence);
+      const answered = answerState.isAnsweredSequence(sequence);
+      const stateClass = marked ? "review" : answered ? "answered" : "unanswered";
+      const currentClass = sequence === st.sequence ? "current" : "";
+      paletteButtons.push(
+        `<button type="button" class="palette-btn ${stateClass} ${currentClass}" data-sequence="${sequence}">${sequence}</button>`
+      );
+    }
+    el.questionPalette.innerHTML = paletteButtons.join("");
   }
 
   function renderExamOptions(exams) {
-    const previous = el.examSelect.value;
-    el.examSelect.innerHTML = '<option value="">Select available exam...</option>';
+    const previousValue = el.examSelect.value;
+    el.examSelect.innerHTML = '<option value="">Choose an available exam...</option>';
+
     for (const exam of exams) {
-      el.examSelect.insertAdjacentHTML(
-        "beforeend",
-        `<option value="${esc(exam.id)}">${esc(exam.name)} [${esc(exam.status)}]</option>`
-      );
+      const option = document.createElement("option");
+      option.value = exam.id;
+      option.dataset.examName = exam.name;
+      option.textContent = `${exam.name} (${exam.duration_minutes} min)`;
+      el.examSelect.appendChild(option);
     }
-    if (previous && exams.some((exam) => exam.id === previous)) {
-      el.examSelect.value = previous;
+
+    if (previousValue && exams.some((exam) => exam.id === previousValue)) {
+      el.examSelect.value = previousValue;
     }
+  }
+
+  function renderAttemptMeta(statusPayload = null) {
+    const metaLines = [
+      `Attempt ID: ${st.attemptId || "-"}`,
+      `Exam: ${st.examName || st.examId || "-"}`,
+    ];
+
+    if (statusPayload) {
+      metaLines.push(`Started: ${formatDate(statusPayload.started_at)}`);
+      metaLines.push(`Ends: ${formatDate(statusPayload.expires_at)}`);
+      metaLines.push(`Status: ${statusPayload.status || "-"}`);
+    }
+
+    const pendingCount = answerState.getPendingCount();
+    metaLines.push(`Pending Sync: ${pendingCount}`);
+
+    el.attemptMeta.textContent = metaLines.join(" | ");
   }
 
   function renderQuestion(payload) {
     st.currentQuestion = payload.question;
-    el.sequence.textContent = String(st.sequence);
-    const options = (payload.options || [])
-      .map(
-        (option) => `
-          <label class="option">
-            <input type="radio" name="selected-option" value="${esc(option.id)}">
-            <span>${esc(option.option_text)}</span>
-          </label>
-        `
-      )
-      .join("");
-    el.questionBox.innerHTML = `
-      <p class="small">Question #${esc(st.sequence)}</p>
-      <p class="question">${esc(payload.question.text)}</p>
-      <p class="small">Topic: ${esc(payload.question.topic)} | Difficulty: ${esc(payload.question.difficulty)} | Marks: ${esc(payload.question.marks)}</p>
-      <div class="stack">${options}</div>
-    `;
+    st.sequence = Number(payload.sequence_number);
+    answerState.setSequenceQuestion(st.sequence, payload.question.id);
+
+    el.examName.textContent = st.examName || st.examId || "Exam";
+    el.questionText.textContent = payload.question.text || "Question text unavailable.";
+
+    const selectedOptionId = answerState.getSelection(payload.question.id);
+    el.optionsList.innerHTML = "";
+
+    for (const option of payload.options || []) {
+      const label = document.createElement("label");
+      label.className = "choice-option";
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "selected-option";
+      radio.value = option.id;
+      radio.checked = selectedOptionId === option.id;
+
+      const text = document.createElement("span");
+      text.textContent = option.option_text;
+
+      label.appendChild(radio);
+      label.appendChild(text);
+      el.optionsList.appendChild(label);
+    }
+
+    updateMarkReviewLabel();
+    updateProgress();
+    renderPalette();
+    persistAttemptCache();
+  }
+
+  function setAttemptControlsEnabled(enabled) {
+    const active = Boolean(enabled) && !st.finalized;
+    el.markReview.disabled = !active;
+    el.prevQuestion.disabled = !active || st.sequence <= 1;
+    el.saveNext.disabled = !active;
+    el.submitExam.disabled = !active;
+  }
+
+  function currentlySelectedOptionId() {
+    const selected = el.optionsList.querySelector('input[name="selected-option"]:checked');
+    return selected ? selected.value : "";
+  }
+
+  function rememberCurrentSelection() {
+    if (!st.currentQuestion) {
+      return "";
+    }
+    const selectedOptionId = currentlySelectedOptionId();
+    if (!selectedOptionId) {
+      return "";
+    }
+    answerState.rememberSelection(st.currentQuestion.id, selectedOptionId);
+    return selectedOptionId;
+  }
+
+  async function submitAnswerToServer(questionId, selectedOptionId, sequenceNumber) {
+    if (!questionId || !selectedOptionId || !st.attemptId) {
+      return false;
+    }
+
+    const queueItem = {
+      question_id: questionId,
+      selected_option_id: selectedOptionId,
+      sequence_number: sequenceNumber,
+      saved_at: new Date().toISOString(),
+    };
+
+    if (!navigator.onLine) {
+      answerState.queuePending(queueItem);
+      setStatus("LAN temporary unavailable. Answer saved locally and queued.");
+      return false;
+    }
+
+    try {
+      await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/answers`, {
+        method: "POST",
+        headers: studentHeaders(),
+        body: {
+          question_id: questionId,
+          selected_option_id: selectedOptionId,
+        },
+      });
+      answerState.markSubmitted(questionId);
+      answerState.removePending(questionId);
+      return true;
+    } catch (error) {
+      if (error?.httpStatus && error.httpStatus < 500) {
+        setStatus(error.message);
+        return false;
+      }
+      answerState.queuePending(queueItem);
+      setStatus("LAN issue detected. Answer saved locally and will auto-sync.");
+      return false;
+    }
+  }
+
+  async function flushPendingQueue() {
+    if (!st.attemptId) {
+      return;
+    }
+
+    const pending = answerState.getPendingQueue();
+    if (!pending.length || !navigator.onLine) {
+      return;
+    }
+
+    let synced = 0;
+    for (const item of pending) {
+      try {
+        await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/answers`, {
+          method: "POST",
+          headers: studentHeaders(),
+          body: {
+            question_id: item.question_id,
+            selected_option_id: item.selected_option_id,
+          },
+        });
+        answerState.markSubmitted(item.question_id);
+        answerState.removePending(item.question_id);
+        synced += 1;
+      } catch (error) {
+        if (error?.httpStatus && error.httpStatus < 500) {
+          answerState.removePending(item.question_id);
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (synced > 0) {
+      setStatus(`${synced} locally saved answer(s) synced successfully.`);
+    }
+
+    renderAttemptMeta();
   }
 
   async function loadVersion() {
     try {
-      const data = await api("/system/version");
-      el.version.textContent = data.version;
+      const versionPayload = await api("/system/version");
+      el.version.textContent = versionPayload.version || "n/a";
     } catch {
-      el.version.textContent = "n/a";
+      el.version.textContent = "unreachable";
     }
   }
 
@@ -150,124 +712,365 @@
     }
   }
 
-  async function startAttempt() {
-    try {
-      const examId = el.examSelect.value;
-      if (!examId) {
-        throw new Error("Select exam first");
-      }
-      const data = await api(`/student/exams/${encodeURIComponent(examId)}/start`, {
-        method: "POST",
-        headers: studentHeaders(),
-      });
-      st.examId = examId;
-      st.attemptId = data.attempt_id;
-      st.sequence = 1;
-      st.expiresAt = data.expires_at;
-      el.attemptId.textContent = data.attempt_id;
-      el.meta.innerHTML = `
-        Exam: <span class="mono">${esc(examId)}</span><br>
-        Started: ${esc(formatDate(data.started_at))}<br>
-        Expires: ${esc(formatDate(data.expires_at))}<br>
-        Status: ${esc(data.status)}
-      `;
-      startTimer();
-      renderQuestion(data.first_question);
-      setStatus("Attempt started. Best of luck.");
-    } catch (error) {
-      setStatus(error.message);
+  async function refreshAttemptStatus() {
+    if (!st.attemptId) {
+      return null;
     }
+    const statusPayload = await api(
+      `/student/attempts/${encodeURIComponent(st.attemptId)}/status`,
+      { headers: studentHeaders() }
+    );
+
+    st.totalQuestions = Number(statusPayload.total_question_count || 0);
+    timerState.start(statusPayload.expires_at || timerState.getExpiresAt());
+    answerState.recordServerAnswered(statusPayload.answered || []);
+    renderAttemptMeta(statusPayload);
+
+    if ((statusPayload.status || "").toUpperCase() !== "ACTIVE") {
+      st.finalized = true;
+      setAttemptControlsEnabled(false);
+    }
+
+    updateProgress();
+    renderPalette();
+    return statusPayload;
   }
 
-  async function fetchQuestion(sequence) {
+  async function fetchQuestion(sequenceNumber) {
+    if (!st.attemptId) {
+      setStatus("Start exam first.");
+      return;
+    }
+
+    const sequence = Number(sequenceNumber);
+    if (!Number.isInteger(sequence) || sequence <= 0) {
+      setStatus("Invalid question number.");
+      return;
+    }
+
+    if (st.totalQuestions > 0 && sequence > st.totalQuestions) {
+      setStatus("You have reached the last question.");
+      return;
+    }
+
     try {
-      if (!st.attemptId) {
-        throw new Error("Start an attempt first");
-      }
-      if (sequence < 1) {
-        throw new Error("Invalid sequence");
-      }
       const data = await api(
         `/student/attempts/${encodeURIComponent(st.attemptId)}/questions/${sequence}`,
         { headers: studentHeaders() }
       );
-      st.sequence = sequence;
       renderQuestion(data);
-      setStatus(`Question #${sequence} loaded.`);
+      setStatus(`Question ${sequence} loaded.`);
     } catch (error) {
       setStatus(error.message);
     }
   }
 
-  async function submitAnswer() {
+  async function startAttempt() {
     try {
-      if (!st.attemptId || !st.currentQuestion) {
-        throw new Error("No active question context");
+      const examId = el.examSelect.value;
+      if (!examId) {
+        throw new Error("Please select an exam first.");
       }
-      const selected = document.querySelector('input[name="selected-option"]:checked');
-      if (!selected) {
-        throw new Error("Select an option first");
-      }
-      await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/answers`, {
+
+      const selectedOption = el.examSelect.options[el.examSelect.selectedIndex];
+      st.examId = examId;
+      st.examName = selectedOption?.dataset?.examName || selectedOption?.textContent || "Exam";
+
+      const startPayload = await api(`/student/exams/${encodeURIComponent(examId)}/start`, {
         method: "POST",
         headers: studentHeaders(),
-        body: {
-          question_id: st.currentQuestion.id,
-          selected_option_id: selected.value,
-        },
       });
-      setStatus(`Answer submitted for question #${st.sequence}.`);
+
+      st.attemptId = startPayload.attempt_id;
+      st.sequence = 1;
+      st.totalQuestions = 0;
+      st.currentQuestion = null;
+      st.finalized = false;
+      answerState.clear();
+
+      timerState.start(startPayload.expires_at);
+      await refreshAttemptStatus();
+      applyCachedAttemptState();
+
+      setAttemptControlsEnabled(true);
+      if (st.sequence > 1) {
+        await fetchQuestion(st.sequence);
+      } else {
+        renderQuestion(startPayload.first_question);
+      }
+
+      await flushPendingQueue();
+      setStatus("Exam started successfully. Read each question carefully.");
     } catch (error) {
       setStatus(error.message);
     }
   }
 
-  async function finalizeAttempt() {
+  async function saveAndNext() {
+    if (!st.attemptId || !st.currentQuestion || st.finalized) {
+      setStatus("Active exam attempt required.");
+      return;
+    }
+
+    const selectedOptionId = rememberCurrentSelection();
+    if (!selectedOptionId) {
+      setStatus("Please select an option before Save & Next.");
+      return;
+    }
+
+    await submitAnswerToServer(st.currentQuestion.id, selectedOptionId, st.sequence);
+    renderAttemptMeta();
+
+    if (st.totalQuestions > 0 && st.sequence >= st.totalQuestions) {
+      setStatus("Answer saved. You are on the last question.");
+      return;
+    }
+
+    await fetchQuestion(st.sequence + 1);
+    await flushPendingQueue();
+  }
+
+  function toggleMarkForReview() {
+    if (!st.attemptId || st.finalized) {
+      return;
+    }
+
+    const marked = answerState.toggleMarked(st.sequence);
+    if (marked) {
+      setStatus(`Question ${st.sequence} marked for review.`);
+    } else {
+      setStatus(`Question ${st.sequence} removed from review list.`);
+    }
+    updateMarkReviewLabel();
+    renderPalette();
+  }
+
+  function openSubmitModal() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("No active exam to submit.");
+      return;
+    }
+
+    const total = Number(st.totalQuestions || 0);
+    const answered = answerState.getAnsweredCount(total);
+    const marked = answerState.getMarkedCount();
+    const unanswered = Math.max(0, total - answered);
+    const pendingSync = answerState.getPendingCount();
+
+    el.submitSummary.innerHTML = `
+      <div class="summary-row"><span>Total Questions</span><strong>${esc(total)}</strong></div>
+      <div class="summary-row"><span>Answered</span><strong>${esc(answered)}</strong></div>
+      <div class="summary-row"><span>Unanswered</span><strong>${esc(unanswered)}</strong></div>
+      <div class="summary-row"><span>Marked for Review</span><strong>${esc(marked)}</strong></div>
+      <div class="summary-row"><span>Pending Sync</span><strong>${esc(pendingSync)}</strong></div>
+      <div class="summary-row"><span>Time Left</span><strong>${esc(timerState.getRemainingText())}</strong></div>
+      <div class="summary-row"><span>Tab Switch Warnings</span><strong>${esc(st.warningCount)}</strong></div>
+    `;
+
+    el.submitModal.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+
+  function closeSubmitModal() {
+    el.submitModal.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  async function confirmSubmitExam() {
+    if (!st.attemptId || st.finalized) {
+      closeSubmitModal();
+      return;
+    }
+
+    el.confirmSubmit.disabled = true;
     try {
-      if (!st.attemptId) {
-        throw new Error("No active attempt");
+      await flushPendingQueue();
+      if (answerState.getPendingCount() > 0) {
+        setStatus("Some answers are still waiting for LAN sync. Please wait and retry submit.");
+        return;
       }
-      const data = await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/finalize`, {
-        method: "POST",
-        headers: studentHeaders(),
+
+      const finalizePayload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/finalize`,
+        {
+          method: "POST",
+          headers: studentHeaders(),
+        }
+      );
+
+      st.finalized = true;
+      setAttemptControlsEnabled(false);
+      timerState.stop();
+      clearAttemptCache();
+
+      el.resultBox.textContent = JSON.stringify(finalizePayload.result || finalizePayload, null, 2);
+      setStatus("Exam submitted successfully.");
+      renderAttemptMeta({
+        started_at: null,
+        expires_at: timerState.getExpiresAt(),
+        status: "FINALIZED",
       });
-      el.resultBox.textContent = JSON.stringify(data.result, null, 2);
-      setStatus("Attempt finalized. Grading completed.");
+      closeSubmitModal();
     } catch (error) {
       setStatus(error.message);
+    } finally {
+      el.confirmSubmit.disabled = false;
     }
   }
 
   async function viewResult() {
+    if (!st.attemptId) {
+      setStatus("No attempt found.");
+      return;
+    }
     try {
-      if (!st.attemptId) {
-        throw new Error("No active attempt");
-      }
-      const data = await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/result`, {
-        headers: studentHeaders(),
-      });
-      el.resultBox.textContent = JSON.stringify(data, null, 2);
-      setStatus("Result fetched.");
+      const resultPayload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/result`,
+        { headers: studentHeaders() }
+      );
+      el.resultBox.textContent = JSON.stringify(resultPayload, null, 2);
+      setStatus("Result loaded.");
     } catch (error) {
       setStatus(error.message);
     }
   }
 
-  function bindEvents() {
-    el.loadExams.addEventListener("click", loadExams);
-    el.startAttempt.addEventListener("click", startAttempt);
-    el.prev.addEventListener("click", () => fetchQuestion(st.sequence - 1));
-    el.next.addEventListener("click", () => fetchQuestion(st.sequence + 1));
-    el.submit.addEventListener("click", submitAnswer);
-    el.finalize.addEventListener("click", finalizeAttempt);
-    el.result.addEventListener("click", viewResult);
-    window.addEventListener("beforeunload", () => {
-      if (st.timerId) {
-        clearInterval(st.timerId);
-      }
-    });
+  function logoutStudent() {
+    timerState.stop();
+    if (st.syncIntervalId) {
+      clearInterval(st.syncIntervalId);
+      st.syncIntervalId = null;
+    }
+    localStorage.removeItem(STUDENT_SESSION_KEY);
+    window.location.href = "/web?target=student&reason=login_required";
   }
 
-  bindEvents();
-  loadVersion();
+  async function restoreLatestCachedAttempt() {
+    const cached = findLatestCachedAttemptForStudent();
+    if (!cached) {
+      return;
+    }
+
+    st.attemptId = String(cached.attempt_id);
+    st.examId = String(cached.exam_id || "");
+    st.examName = String(cached.exam_name || st.examId || "Exam");
+    st.sequence = Number(cached.sequence || 1);
+    st.totalQuestions = Number(cached.total_questions || 0);
+    st.finalized = false;
+
+    answerState.hydrate(cached);
+    timerState.start(cached.expires_at || null);
+
+    try {
+      const statusPayload = await refreshAttemptStatus();
+      if (statusPayload && (statusPayload.status || "").toUpperCase() === "ACTIVE") {
+        setAttemptControlsEnabled(true);
+        const sequenceToLoad = Math.max(1, Math.min(st.sequence, st.totalQuestions || st.sequence));
+        await fetchQuestion(sequenceToLoad);
+        await flushPendingQueue();
+        setStatus("Recovered your local in-progress attempt.");
+      }
+    } catch {
+      renderAttemptMeta();
+      updateProgress();
+      renderPalette();
+      setStatus("Recovered local answer draft. Start exam to continue syncing.");
+    }
+  }
+
+  function bindEvents() {
+    el.logoutStudent.addEventListener("click", logoutStudent);
+    el.loadExams.addEventListener("click", loadExams);
+    el.startAttempt.addEventListener("click", startAttempt);
+
+    el.prevQuestion.addEventListener("click", () => {
+      fetchQuestion(st.sequence - 1);
+    });
+
+    el.saveNext.addEventListener("click", saveAndNext);
+    el.markReview.addEventListener("click", toggleMarkForReview);
+    el.submitExam.addEventListener("click", openSubmitModal);
+    el.cancelSubmit.addEventListener("click", closeSubmitModal);
+    el.confirmSubmit.addEventListener("click", confirmSubmitExam);
+    el.viewResult.addEventListener("click", viewResult);
+
+    el.optionsList.addEventListener("change", (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+      if (input.name !== "selected-option") {
+        return;
+      }
+      rememberCurrentSelection();
+      setStatus("Answer saved locally.");
+    });
+
+    el.questionPalette.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const button = target.closest("button[data-sequence]");
+      if (!button) {
+        return;
+      }
+      const sequence = Number(button.dataset.sequence);
+      fetchQuestion(sequence);
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        return;
+      }
+      st.warningCount += 1;
+      showAntiCheatWarning(
+        `Warning ${st.warningCount}: Tab switch detected. Stay on exam screen.`
+      );
+    });
+
+    document.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showAntiCheatWarning("Right-click is disabled during the exam.");
+    });
+
+    window.addEventListener("online", () => {
+      flushPendingQueue();
+      setStatus("LAN reconnected. Syncing saved answers...");
+    });
+
+    window.addEventListener("beforeunload", () => {
+      timerState.stop();
+      if (st.syncIntervalId) {
+        clearInterval(st.syncIntervalId);
+      }
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !el.submitModal.hidden) {
+        closeSubmitModal();
+      }
+    });
+
+    st.syncIntervalId = window.setInterval(() => {
+      flushPendingQueue();
+    }, 8000);
+  }
+
+  async function initialize() {
+    ensureSession();
+    el.examName.textContent = "Exam Name";
+    renderPalette();
+    updateProgress();
+    setAttemptControlsEnabled(false);
+    bindEvents();
+
+    await loadVersion();
+    await loadExams();
+    await restoreLatestCachedAttempt();
+  }
+
+  initialize().catch((error) => {
+    setStatus(error.message || "Initialization failed.");
+  });
 })();

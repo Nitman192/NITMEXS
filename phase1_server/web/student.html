@@ -3,79 +3,122 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NITMEXS Student Cockpit</title>
+  <title>NITMEXS Student Dashboard</title>
   <link rel="stylesheet" href="/web/theme.css">
 </head>
-<body>
-  <div class="nebula"></div>
-  <header class="topbar">
-    <div class="brand">NITMEXS STUDENT COCKPIT</div>
-    <div class="chips">
-      <a class="portal-btn" href="/web">Back To Gateway</a>
-      <span class="chip mono">Server: <span id="version">...</span></span>
-    </div>
-  </header>
+<body class="student-body" data-default-theme="light">
+  <main class="student-shell">
+    <header class="student-header">
+      <div>
+        <p class="student-kicker">NITMEXS EXAM MODE</p>
+        <h1>Student Dashboard</h1>
+        <p class="student-subtitle">Simple and distraction-free exam workspace.</p>
+      </div>
+      <div class="student-header-actions">
+        <span class="student-pill">Student: <strong id="session-student">...</strong></span>
+        <span class="student-pill">Server: <span id="version">...</span></span>
+        <label class="theme-switch" for="theme-toggle">
+          <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
+          <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+          <span class="theme-switch-text" data-theme-label>Dark</span>
+        </label>
+        <button id="logout-student" class="btn-outline" type="button">Logout</button>
+      </div>
+    </header>
 
-  <main class="page">
-    <h1 class="title">Candidate Attempt Interface</h1>
-    <p class="subtitle">Yahan student real exam attempt karega. Ye admin console nahi hai.</p>
+    <section class="student-launch card">
+      <div class="launch-grid">
+        <div class="launch-field">
+          <label for="exam-select">Select Exam</label>
+          <select id="exam-select">
+            <option value="">Choose an available exam...</option>
+          </select>
+        </div>
+        <div class="launch-actions">
+          <button id="load-exams" class="btn-outline" type="button">Refresh Exams</button>
+          <button id="start-attempt" class="btn-primary" type="button">Start Exam</button>
+        </div>
+      </div>
+      <div class="exam-status-row">
+        <span class="status-label">Exam Status:</span>
+        <span id="student-status">Ready. Select an exam and click Start Exam.</span>
+      </div>
+      <p id="attempt-meta" class="attempt-meta">No active attempt.</p>
+    </section>
 
-    <section class="grid">
-      <article class="panel">
-        <h2>Identity & Exam</h2>
-        <div class="stack">
-          <div class="row">
-            <input id="student-id" placeholder="Student ID (e.g. cadet-01)" style="flex:1 1 220px">
-            <button id="load-exams">Load Exams</button>
-          </div>
-          <div class="row">
-            <select id="exam-select" style="flex:1 1 220px">
-              <option value="">Select available exam...</option>
-            </select>
-            <button id="start-attempt">Start Attempt</button>
-          </div>
-          <div id="student-status" class="status">Ready.</div>
-          <div id="attempt-meta" class="box small">No active attempt.</div>
+    <section class="exam-layout">
+      <section class="exam-main card">
+        <div class="exam-main-top">
+          <h2 id="exam-name">Exam Name</h2>
+          <p id="question-progress">Question 0 of 0</p>
         </div>
-      </article>
 
-      <article class="panel">
-        <h2>Attempt Telemetry</h2>
-        <div class="stack">
-          <div class="box">
-            <p class="small">Attempt ID</p>
-            <p id="attempt-id" class="mono">-</p>
-          </div>
-          <div class="box">
-            <p class="small">Current Sequence</p>
-            <p id="sequence-number" class="mono">-</p>
-          </div>
-          <div class="box">
-            <p class="small">Remaining Time</p>
-            <p id="remaining-time" class="mono">-</p>
-          </div>
-          <div class="row">
-            <button id="prev-question" class="alt">Prev Question</button>
-            <button id="next-question" class="alt">Next Question</button>
-          </div>
-        </div>
-      </article>
+        <article class="question-viewer">
+          <h3>Question Viewer</h3>
+          <p id="question-text">Question will appear here after starting the exam.</p>
+        </article>
 
-      <article class="panel wide">
-        <h2>Question Deck</h2>
-        <div id="question-box" class="box">
-          <p class="small">Question not loaded.</p>
+        <section>
+          <h3 class="options-title">Choose One Option</h3>
+          <div id="options-list" class="option-list"></div>
+        </section>
+
+        <footer class="main-actions">
+          <button id="mark-review" class="btn-outline" type="button">Mark for Review</button>
+          <button id="prev-question" class="btn-outline" type="button">Previous</button>
+          <button id="save-next" class="btn-primary strong" type="button">Save &amp; Next</button>
+        </footer>
+      </section>
+
+      <aside class="exam-sidebar">
+        <div class="sidebar-stack">
+          <section class="card timer-card">
+            <p class="section-label">Time Left</p>
+            <p id="remaining-time" class="timer-display">--:--</p>
+          </section>
+
+          <section class="card palette-card">
+            <div class="palette-head">
+              <h3>Question Palette</h3>
+              <p id="palette-stats">Answered 0 / 0</p>
+            </div>
+            <div id="question-palette" class="palette-grid"></div>
+            <div class="palette-legend">
+              <span class="legend-item"><span class="dot answered"></span>Answered</span>
+              <span class="legend-item"><span class="dot unanswered"></span>Unanswered</span>
+              <span class="legend-item"><span class="dot review"></span>Marked</span>
+            </div>
+          </section>
+
+          <section class="card submit-card">
+            <button id="submit-exam" class="btn-danger" type="button">Submit Exam</button>
+            <button id="view-result" class="btn-outline" type="button">View Result</button>
+          </section>
         </div>
-        <div class="row" style="margin-top:8px">
-          <button id="submit-answer">Submit Answer</button>
-          <button id="finalize-attempt" class="warn">Finalize Attempt</button>
-          <button id="view-result" class="alt">View Result</button>
-        </div>
-        <pre id="result-box" class="box mono" style="margin-top:8px">Result will appear here.</pre>
-      </article>
+      </aside>
+    </section>
+
+    <section class="card result-card">
+      <h3>Result Summary</h3>
+      <pre id="result-box">Result will appear here after submission.</pre>
     </section>
   </main>
 
+  <div id="anti-cheat-warning" class="anti-cheat-warning" hidden></div>
+
+  <div id="submit-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="submit-modal-title">
+      <h3 id="submit-modal-title">Confirm Submit Exam</h3>
+      <p class="modal-subtitle">Please review your progress before final submission.</p>
+      <div id="submit-summary" class="submit-summary"></div>
+      <div class="modal-actions">
+        <button id="cancel-submit" class="btn-outline" type="button">Continue Exam</button>
+        <button id="confirm-submit" class="btn-danger" type="button">Confirm Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/web/theme_toggle.js"></script>
   <script src="/web/student.js"></script>
 </body>
 </html>

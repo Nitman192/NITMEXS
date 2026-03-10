@@ -319,6 +319,42 @@ class DeliveryService:
         )
         return result
 
+    def get_attempt_status(self, attempt_id: str, student_id: str) -> dict:
+        attempt = self._attempt_repo.get(attempt_id)
+        if attempt is None:
+            raise DeliveryError(f"Attempt '{attempt_id}' not found")
+        if attempt.candidate_id != student_id:
+            raise OwnershipError("Attempt does not belong to student")
+
+        snapshot_question_ids = self._attempt_repo.list_snapshot_question_ids(attempt.id)
+        responses = self._attempt_repo.get_responses(attempt.id)
+
+        sequence_by_question_id = {
+            question_id: sequence
+            for sequence, question_id in enumerate(snapshot_question_ids, start=1)
+        }
+        answered = [
+            {
+                "sequence_number": sequence_by_question_id[question_id],
+                "question_id": question_id,
+                "selected_option_id": selected_option_id,
+            }
+            for question_id, selected_option_id in responses.items()
+            if question_id in sequence_by_question_id
+        ]
+        answered.sort(key=lambda item: item["sequence_number"])
+
+        return {
+            "attempt_id": attempt.id,
+            "exam_id": attempt.exam_id,
+            "status": attempt.status.value,
+            "started_at": attempt.created_at,
+            "expires_at": attempt.expires_at,
+            "total_question_count": len(snapshot_question_ids),
+            "answered_question_count": len(answered),
+            "answered": answered,
+        }
+
     def _grade_and_build_finalize_response(self, attempt_id: str, finalized_at: str) -> dict:
         grading_engine = GradingEngine(
             self._attempt_repo,

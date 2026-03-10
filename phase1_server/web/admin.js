@@ -1,4 +1,8 @@
 (() => {
+  const ADMIN_SESSION_KEY = "nitmexs_admin_session";
+  const GUIDED_MODE_KEY = "nitmexs_admin_guided_mode";
+  const IDLE_LOCK_MS = 10_000;
+
   const $ = (id) => document.getElementById(id);
   const esc = (value) =>
     String(value ?? "")
@@ -7,18 +11,25 @@
       .replaceAll(">", "&gt;");
 
   const st = {
+    adminId: "",
     examId: "",
     cursor: null,
     polling: false,
-    timerId: null,
+    pollTimerId: null,
+    idleTimerId: null,
     seenEventIds: new Set(),
   };
 
   const el = {
+    sessionAdmin: $("session-admin"),
     version: $("version"),
+    guidedToggle: $("guided-toggle"),
+    logoutAdmin: $("logout-admin"),
     loadExams: $("load-exams"),
     examSelect: $("exam-select"),
     status: $("admin-status"),
+    navButtons: Array.from(document.querySelectorAll(".nav-btn")),
+    pages: Array.from(document.querySelectorAll(".page-panel")),
     refreshLive: $("refresh-live"),
     syncAlerts: $("sync-alerts"),
     loadAlerts: $("load-alerts"),
@@ -29,6 +40,15 @@
     toggleAuto: $("toggle-auto"),
     cursorLabel: $("cursor-label"),
     eventsBody: $("events-body"),
+    questionCsvFile: $("question-csv-file"),
+    uploadQuestionCsv: $("upload-question-csv"),
+    questionUploadResult: $("question-upload-result"),
+    examPackFile: $("exam-pack-file"),
+    uploadExamPack: $("upload-exam-pack"),
+    examPackResult: $("exam-pack-result"),
+    loadQuestions: $("load-questions"),
+    questionCount: $("question-count"),
+    questionsBody: $("questions-body"),
     minAttempts: $("min-attempts"),
     applyRun: $("apply-run"),
     runRecalibration: $("run-recalibration"),
@@ -37,16 +57,59 @@
     runSummary: $("run-summary"),
     runsBody: $("runs-body"),
     itemsBody: $("items-body"),
+    loadAnalytics: $("load-analytics"),
+    analyticsSummary: $("analytics-summary"),
+    difficultyBody: $("difficulty-body"),
+    topicBody: $("topic-body"),
+    distributionBody: $("distribution-body"),
+    loadMetrics: $("load-metrics"),
+    loadDashboard: $("load-dashboard"),
+    metricsBox: $("metrics-box"),
+    dashboardBox: $("dashboard-box"),
   };
 
-  const adminHeaders = () => ({ "x-admin": "true", "x-admin-id": "web-admin" });
   const setStatus = (message) => {
     el.status.textContent = message;
   };
 
+  function parseAdminSession() {
+    try {
+      const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+      if (!raw) {
+        return null;
+      }
+      const payload = JSON.parse(raw);
+      if (!payload?.admin_id) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  function ensureAdminSession() {
+    const session = parseAdminSession();
+    if (!session) {
+      window.location.href = "/web?target=admin&reason=login_required";
+      throw new Error("Admin login required");
+    }
+    st.adminId = session.admin_id;
+    el.sessionAdmin.textContent = session.admin_id;
+    return session;
+  }
+
+  function adminHeaders() {
+    return { "x-admin": "true", "x-admin-id": st.adminId };
+  }
+
   async function api(path, options = {}) {
     const request = { ...options, headers: { ...(options.headers || {}) } };
-    if (request.body && typeof request.body !== "string") {
+    if (
+      request.body &&
+      typeof request.body !== "string" &&
+      !(request.body instanceof FormData)
+    ) {
       request.headers["Content-Type"] = "application/json";
       request.body = JSON.stringify(request.body);
     }
@@ -79,6 +142,54 @@
     return `${mins}m ${secs}s`;
   }
 
+  function readGuidedMode() {
+    return localStorage.getItem(GUIDED_MODE_KEY) === "on";
+  }
+
+  function applyGuidedMode(enabled) {
+    document.body.classList.toggle("guided-on", enabled);
+    el.guidedToggle.checked = enabled;
+    localStorage.setItem(GUIDED_MODE_KEY, enabled ? "on" : "off");
+  }
+
+  function activatePage(pageId) {
+    el.navButtons.forEach((button) => {
+      button.classList.toggle("active", button.dataset.page === pageId);
+    });
+    el.pages.forEach((page) => {
+      page.classList.toggle("active", page.id === pageId);
+    });
+  }
+
+  function lockIdleShield() {
+    document.body.classList.add("idle-lock");
+  }
+
+  function unlockIdleShield() {
+    document.body.classList.remove("idle-lock");
+  }
+
+  function resetIdleTimer() {
+    unlockIdleShield();
+    if (st.idleTimerId) {
+      clearTimeout(st.idleTimerId);
+    }
+    st.idleTimerId = window.setTimeout(lockIdleShield, IDLE_LOCK_MS);
+  }
+
+  function bindIdleActivityListeners() {
+    const events = ["mousemove", "keydown", "mousedown", "wheel", "touchstart"];
+    events.forEach((eventName) => {
+      document.addEventListener(eventName, resetIdleTimer, { passive: true });
+    });
+    resetIdleTimer();
+  }
+
+  function logoutAdmin() {
+    localStorage.removeItem(ADMIN_SESSION_KEY);
+    window.location.href = "/web?target=admin&reason=login_required";
+  }
+
   function renderExamOptions(exams) {
     const previous = el.examSelect.value;
     el.examSelect.innerHTML = '<option value="">Select exam...</option>';
@@ -102,10 +213,28 @@
     return examId;
   }
 
+  async function loadVersion() {
+    try {
+      const data = await api("/system/version");
+      el.version.textContent = data.version;
+    } catch {
+      el.version.textContent = "n/a";
+    }
+  }
+
+  async function loadExams() {
+    try {
+      const exams = await api("/admin/exams", { headers: adminHeaders() });
+      renderExamOptions(exams);
+      setStatus(`Loaded ${exams.length} exam(s).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function renderActiveAttempts(rows) {
     if (!rows.length) {
-      el.activeBody.innerHTML =
-        '<tr><td colspan="5" class="small">No active attempts.</td></tr>';
+      el.activeBody.innerHTML = '<tr><td colspan="5" class="small">No active attempts.</td></tr>';
       return;
     }
     el.activeBody.innerHTML = rows
@@ -149,8 +278,7 @@
 
   function renderEvents(events) {
     if (!events.length && !el.eventsBody.children.length) {
-      el.eventsBody.innerHTML =
-        '<tr><td colspan="5" class="small">No events yet.</td></tr>';
+      el.eventsBody.innerHTML = '<tr><td colspan="5" class="small">No events yet.</td></tr>';
       return;
     }
     if (!events.length) {
@@ -176,71 +304,6 @@
       fragment.appendChild(row);
     }
     el.eventsBody.appendChild(fragment);
-  }
-
-  function renderRuns(runs) {
-    if (!runs.length) {
-      el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
-      return;
-    }
-    el.runsBody.innerHTML = runs
-      .map(
-        (run) => `
-          <tr>
-            <td>${esc(formatDate(run.created_at))}</td>
-            <td class="mono">${esc(run.run_id)}</td>
-            <td>${esc(run.mode)}</td>
-            <td>${esc(String(run.updated_questions))}</td>
-            <td>${esc(String(run.eligible_questions))}</td>
-            <td class="mono">${esc(run.source_run_id || "-")}</td>
-            <td>
-              <button class="alt js-view-run" data-run-id="${esc(run.run_id)}">View</button>
-              <button class="warn js-rollback-run" data-run-id="${esc(run.run_id)}" ${run.mode === "apply" ? "" : "disabled"}>Rollback</button>
-            </td>
-          </tr>
-        `
-      )
-      .join("");
-  }
-
-  function renderRunItems(items) {
-    if (!items.length) {
-      el.itemsBody.innerHTML = '<tr><td colspan="6" class="small">No run items.</td></tr>';
-      return;
-    }
-    el.itemsBody.innerHTML = items
-      .map(
-        (item) => `
-          <tr>
-            <td class="mono">${esc(item.question_id)}</td>
-            <td>${esc(String(item.total_attempts ?? 0))}</td>
-            <td>${esc(Number(item.observed_difficulty_index ?? 0).toFixed(2))}</td>
-            <td>${esc(`${item.current?.difficulty ?? "-"} / L${item.current?.difficulty_level ?? "-"} / D${item.current?.discrimination_index ?? "-"}`)}</td>
-            <td>${esc(`${item.suggested?.difficulty ?? "-"} / L${item.suggested?.difficulty_level ?? "-"} / D${item.suggested?.discrimination_index ?? "-"}`)}</td>
-            <td>${esc(item.status)}</td>
-          </tr>
-        `
-      )
-      .join("");
-  }
-
-  async function loadVersion() {
-    try {
-      const data = await api("/system/version");
-      el.version.textContent = data.version;
-    } catch {
-      el.version.textContent = "n/a";
-    }
-  }
-
-  async function loadExams() {
-    try {
-      const data = await api("/admin/exams", { headers: adminHeaders() });
-      renderExamOptions(data);
-      setStatus(`Loaded ${data.length} exam(s).`);
-    } catch (error) {
-      setStatus(error.message);
-    }
   }
 
   async function refreshLive() {
@@ -337,7 +400,7 @@
       renderEvents(data.events || []);
       st.cursor = data.next_cursor || st.cursor;
       el.cursorLabel.textContent = st.cursor || "none";
-      setStatus(`Fetched ${(data.events || []).length} event(s) with cursor paging.`);
+      setStatus(`Fetched ${(data.events || []).length} event(s) with cursor pagination.`);
     } catch (error) {
       setStatus(error.message);
     }
@@ -346,20 +409,139 @@
   function toggleAutoPolling() {
     if (st.polling) {
       st.polling = false;
-      if (st.timerId) {
-        clearInterval(st.timerId);
+      if (st.pollTimerId) {
+        clearInterval(st.pollTimerId);
       }
-      st.timerId = null;
+      st.pollTimerId = null;
       el.toggleAuto.textContent = "Start Auto Poll";
       setStatus("Auto polling stopped.");
       return;
     }
     st.polling = true;
-    st.timerId = window.setInterval(() => {
+    st.pollTimerId = window.setInterval(() => {
       pullEvents();
     }, 3000);
     el.toggleAuto.textContent = "Stop Auto Poll";
     setStatus("Auto polling started (3s interval).");
+  }
+
+  function getSelectedFile(input) {
+    const file = input.files?.[0];
+    if (!file) {
+      throw new Error("Select CSV file first");
+    }
+    return file;
+  }
+
+  async function uploadQuestionCsv() {
+    try {
+      const file = getSelectedFile(el.questionCsvFile);
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await api("/admin/questions/import-csv", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: formData,
+      });
+      el.questionUploadResult.textContent = JSON.stringify(data, null, 2);
+      setStatus("Question bank CSV imported.");
+      await loadQuestions();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function uploadExamPack() {
+    try {
+      const file = getSelectedFile(el.examPackFile);
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await api("/admin/exams/import-question-pack-csv", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: formData,
+      });
+      el.examPackResult.textContent = JSON.stringify(data, null, 2);
+      setStatus("Exam package CSV imported.");
+      await loadExams();
+      el.examSelect.value = data.exam_id;
+      await loadQuestions();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function loadQuestions() {
+    try {
+      const data = await api("/admin/questions", { headers: adminHeaders() });
+      el.questionCount.textContent = String(data.length);
+      if (!data.length) {
+        el.questionsBody.innerHTML = '<tr><td colspan="5" class="small">No questions available.</td></tr>';
+        return;
+      }
+      el.questionsBody.innerHTML = data
+        .map(
+          (question) => `
+            <tr>
+              <td class="mono">${esc(question.id)}</td>
+              <td>${esc(question.text)}</td>
+              <td>${esc(question.topic)}</td>
+              <td>${esc(question.difficulty)}</td>
+              <td>${esc(question.marks)}</td>
+            </tr>
+          `
+        )
+        .join("");
+      setStatus(`Loaded ${data.length} question(s).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function renderRuns(runs) {
+    if (!runs.length) {
+      el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
+      return;
+    }
+    el.runsBody.innerHTML = runs
+      .map(
+        (run) => `
+          <tr>
+            <td>${esc(formatDate(run.created_at))}</td>
+            <td class="mono">${esc(run.run_id)}</td>
+            <td>${esc(run.mode)}</td>
+            <td>${esc(String(run.updated_questions))}</td>
+            <td>${esc(String(run.eligible_questions))}</td>
+            <td class="mono">${esc(run.source_run_id || "-")}</td>
+            <td>
+              <button class="alt js-view-run" data-run-id="${esc(run.run_id)}">View</button>
+              <button class="warn js-rollback-run" data-run-id="${esc(run.run_id)}" ${run.mode === "apply" ? "" : "disabled"}>Rollback</button>
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  function renderRunItems(items) {
+    if (!items.length) {
+      el.itemsBody.innerHTML = '<tr><td colspan="6" class="small">No run items.</td></tr>';
+      return;
+    }
+    el.itemsBody.innerHTML = items
+      .map(
+        (item) => `
+          <tr>
+            <td class="mono">${esc(item.question_id)}</td>
+            <td>${esc(String(item.total_attempts ?? 0))}</td>
+            <td>${esc(Number(item.observed_difficulty_index ?? 0).toFixed(2))}</td>
+            <td>${esc(`${item.current?.difficulty ?? "-"} / L${item.current?.difficulty_level ?? "-"} / D${item.current?.discrimination_index ?? "-"}`)}</td>
+            <td>${esc(`${item.suggested?.difficulty ?? "-"} / L${item.suggested?.difficulty_level ?? "-"} / D${item.suggested?.discrimination_index ?? "-"}`)}</td>
+            <td>${esc(item.status)}</td>
+          </tr>
+        `
+      )
+      .join("");
   }
 
   async function runRecalibration() {
@@ -461,22 +643,132 @@
     }
   }
 
-  function bindEvents() {
-    el.loadExams.addEventListener("click", loadExams);
-    el.refreshLive.addEventListener("click", refreshLive);
-    el.syncAlerts.addEventListener("click", syncAlerts);
-    el.loadAlerts.addEventListener("click", loadAlerts);
-    el.pullEvents.addEventListener("click", pullEvents);
-    el.toggleAuto.addEventListener("click", toggleAutoPolling);
-    el.runRecalibration.addEventListener("click", runRecalibration);
-    el.loadHistory.addEventListener("click", loadHistory);
+  async function loadAnalytics() {
+    try {
+      const examId = currentExamId();
+      const [summary, difficulty, topic, distribution] = await Promise.all([
+        api(`/admin/exams/${encodeURIComponent(examId)}/analytics`, {
+          headers: adminHeaders(),
+        }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/analytics/difficulty-heatmap`, {
+          headers: adminHeaders(),
+        }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/analytics/topic-heatmap`, {
+          headers: adminHeaders(),
+        }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/analytics/score-distribution`, {
+          headers: adminHeaders(),
+        }),
+      ]);
 
+      el.analyticsSummary.textContent = JSON.stringify(summary, null, 2);
+
+      const difficultyCells = difficulty.cells || [];
+      el.difficultyBody.innerHTML = difficultyCells.length
+        ? difficultyCells
+            .map(
+              (cell) => {
+                const totalAttempts = Number(cell.total_attempts || 0);
+                const difficultyIndex = Number(cell.difficulty_index || 0);
+                const correctCount = Math.round((totalAttempts * difficultyIndex) / 100);
+                return `
+                <tr>
+                  <td class="mono">${esc(cell.question_id)}</td>
+                  <td>${esc(difficultyIndex.toFixed(2))}</td>
+                  <td>${esc(String(totalAttempts))}</td>
+                  <td>${esc(String(correctCount))}</td>
+                </tr>
+              `;
+              }
+            )
+            .join("")
+        : '<tr><td colspan="4" class="small">No difficulty heatmap data.</td></tr>';
+
+      const topicCells = topic.cells || [];
+      el.topicBody.innerHTML = topicCells.length
+        ? topicCells
+            .map(
+              (cell) => `
+                <tr>
+                  <td>${esc(cell.topic_tag)}</td>
+                  <td>${esc(String(cell.total_attempts || 0))}</td>
+                  <td>${esc(Number(cell.average_score || 0).toFixed(2))}</td>
+                  <td>${esc(Number(cell.performance_index || 0).toFixed(2))}</td>
+                </tr>
+              `
+            )
+            .join("")
+        : '<tr><td colspan="4" class="small">No topic heatmap data.</td></tr>';
+
+      const buckets = distribution.buckets || [];
+      const maxCount = Math.max(1, ...buckets.map((bucket) => Number(bucket.count || 0)));
+      el.distributionBody.innerHTML = buckets.length
+        ? buckets
+            .map((bucket) => {
+              const count = Number(bucket.count || 0);
+              const width = Math.round((count / maxCount) * 100);
+              return `
+                <div class="dist-row">
+                  <span class="mono">${esc(bucket.label)}</span>
+                  <div class="dist-bar"><div style="width:${width}%"></div></div>
+                  <span class="mono">${esc(count)}</span>
+                </div>
+              `;
+            })
+            .join("")
+        : '<p class="small">No distribution data.</p>';
+
+      setStatus("Analytics loaded.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function loadMetrics() {
+    try {
+      const metrics = await api("/admin/system/metrics", { headers: adminHeaders() });
+      el.metricsBox.textContent = JSON.stringify(metrics, null, 2);
+      setStatus("System metrics loaded.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function loadGlobalDashboard() {
+    try {
+      const dashboard = await api("/admin/proctor/dashboard?active_limit=200&finalize_limit=50", {
+        headers: adminHeaders(),
+      });
+      el.dashboardBox.textContent = JSON.stringify(dashboard, null, 2);
+      setStatus("Global proctor snapshot loaded.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function bindEvents() {
+    el.logoutAdmin.addEventListener("click", logoutAdmin);
+    el.guidedToggle.addEventListener("change", () => {
+      applyGuidedMode(el.guidedToggle.checked);
+    });
+    el.navButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        activatePage(button.dataset.page);
+      });
+    });
+    el.loadExams.addEventListener("click", loadExams);
     el.examSelect.addEventListener("change", () => {
       st.cursor = null;
       st.seenEventIds.clear();
       el.cursorLabel.textContent = "none";
       el.eventsBody.innerHTML = "";
     });
+
+    el.refreshLive.addEventListener("click", refreshLive);
+    el.syncAlerts.addEventListener("click", syncAlerts);
+    el.loadAlerts.addEventListener("click", loadAlerts);
+    el.pullEvents.addEventListener("click", pullEvents);
+    el.toggleAuto.addEventListener("click", toggleAutoPolling);
 
     el.alertBody.addEventListener("click", (event) => {
       const target = event.target;
@@ -495,6 +787,12 @@
       }
     });
 
+    el.uploadQuestionCsv.addEventListener("click", uploadQuestionCsv);
+    el.uploadExamPack.addEventListener("click", uploadExamPack);
+    el.loadQuestions.addEventListener("click", loadQuestions);
+
+    el.runRecalibration.addEventListener("click", runRecalibration);
+    el.loadHistory.addEventListener("click", loadHistory);
     el.runsBody.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
@@ -512,9 +810,16 @@
       }
     });
 
+    el.loadAnalytics.addEventListener("click", loadAnalytics);
+    el.loadMetrics.addEventListener("click", loadMetrics);
+    el.loadDashboard.addEventListener("click", loadGlobalDashboard);
+
     window.addEventListener("beforeunload", () => {
-      if (st.timerId) {
-        clearInterval(st.timerId);
+      if (st.pollTimerId) {
+        clearInterval(st.pollTimerId);
+      }
+      if (st.idleTimerId) {
+        clearTimeout(st.idleTimerId);
       }
     });
   }
@@ -523,11 +828,22 @@
     el.activeBody.innerHTML = '<tr><td colspan="5" class="small">No active attempts.</td></tr>';
     el.alertBody.innerHTML = '<tr><td colspan="6" class="small">No alerts.</td></tr>';
     el.eventsBody.innerHTML = '<tr><td colspan="5" class="small">No events yet.</td></tr>';
+    el.questionsBody.innerHTML = '<tr><td colspan="5" class="small">No questions available.</td></tr>';
     el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
     el.itemsBody.innerHTML = '<tr><td colspan="6" class="small">No run items.</td></tr>';
+    el.difficultyBody.innerHTML = '<tr><td colspan="4" class="small">No difficulty heatmap data.</td></tr>';
+    el.topicBody.innerHTML = '<tr><td colspan="4" class="small">No topic heatmap data.</td></tr>';
+    el.distributionBody.innerHTML = '<p class="small">No distribution data.</p>';
   }
 
-  bindEvents();
+  ensureAdminSession();
+  applyGuidedMode(readGuidedMode());
+  activatePage("page-monitor");
   seedTables();
+  bindEvents();
+  bindIdleActivityListeners();
   loadVersion();
+  loadExams();
+  loadQuestions();
+  loadMetrics();
 })();
