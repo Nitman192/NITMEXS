@@ -17,6 +17,7 @@
       <div class="student-header-actions">
         <span class="student-pill">Student: <strong id="session-student">...</strong></span>
         <span class="student-pill">Server: <span id="version">...</span></span>
+        <button id="open-onboarding" class="btn-outline" type="button">Guide</button>
         <label class="theme-switch" for="theme-toggle">
           <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
           <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
@@ -43,6 +44,23 @@
         <span class="status-label">Exam Status:</span>
         <span id="student-status">Ready. Select an exam and click Start Exam.</span>
       </div>
+      <div class="student-utility-row">
+        <label class="utility-field" for="font-size-select">
+          Font Size
+          <select id="font-size-select">
+            <option value="normal">Normal</option>
+            <option value="large">Large</option>
+            <option value="xlarge">Extra Large</option>
+          </select>
+        </label>
+        <label class="utility-check">
+          <input id="high-contrast-toggle" type="checkbox">
+          High Contrast
+        </label>
+        <span id="autosave-indicator" class="status-pill autosave-synced">Autosave: Synced</span>
+        <span id="sync-health-indicator" class="status-pill sync-online">LAN: Healthy</span>
+      </div>
+      <div id="low-time-alert" class="low-time-alert" hidden></div>
       <p id="attempt-meta" class="attempt-meta">No active attempt.</p>
     </section>
 
@@ -54,7 +72,15 @@
         </div>
 
         <article class="question-viewer">
-          <h3>Question Viewer</h3>
+          <div class="question-toolbar">
+            <h3>Question Viewer</h3>
+            <div class="zoom-controls">
+              <button id="question-zoom-out" class="btn-outline" type="button">A-</button>
+              <button id="question-zoom-reset" class="btn-outline" type="button">Reset</button>
+              <button id="question-zoom-in" class="btn-outline" type="button">A+</button>
+              <span id="question-zoom-label" class="zoom-label">100%</span>
+            </div>
+          </div>
           <p id="question-text">Question will appear here after starting the exam.</p>
         </article>
 
@@ -90,6 +116,9 @@
               <h3>Question Palette</h3>
               <p id="palette-stats">Answered 0 / 0</p>
             </div>
+            <button id="jump-unanswered" class="btn-outline jump-unanswered-btn" type="button">
+              Jump to First Unanswered
+            </button>
             <div id="question-palette" class="palette-grid"></div>
             <div class="palette-legend">
               <span class="legend-item"><span class="dot answered"></span>Answered</span>
@@ -113,6 +142,31 @@
   </main>
 
   <div id="anti-cheat-warning" class="anti-cheat-warning" hidden></div>
+
+  <div id="onboarding-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+      <h3 id="onboarding-title">Student Quick Guide</h3>
+      <ol class="guide-list">
+        <li>Exam choose karo aur Start Exam dabao.</li>
+        <li>Option select karte hi answer local autosave ho jayega.</li>
+        <li>Hotkeys: <strong>M</strong> = Mark Review, <strong>N</strong> = Save &amp; Next, <strong>J</strong> = First Unanswered.</li>
+        <li>Submit se pehle palette aur summary check karo.</li>
+      </ol>
+      <div class="modal-actions">
+        <button id="dismiss-onboarding" class="btn-primary" type="button">Start Using Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="inactivity-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="inactivity-title">
+      <h3 id="inactivity-title">Inactivity Detected</h3>
+      <p class="modal-subtitle">Aap kuch time se inactive ho. Continue par click karke exam flow resume karo.</p>
+      <div class="modal-actions">
+        <button id="continue-after-inactive" class="btn-primary" type="button">Continue Exam</button>
+      </div>
+    </div>
+  </div>
 
   <div id="submit-modal" class="modal-backdrop" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="submit-modal-title">

@@ -1,6 +1,9 @@
 (() => {
   const STUDENT_SESSION_KEY = "nitmexs_student_session";
   const ATTEMPT_CACHE_PREFIX = "nitmexs_attempt_cache_";
+  const STUDENT_ONBOARDING_KEY = "nitmexs_student_onboarding_seen";
+  const STUDENT_UI_PREFS_KEY = "nitmexs_student_ui_prefs";
+  const INACTIVITY_TIMEOUT_MS = 120000;
 
   const st = {
     studentId: "",
@@ -15,6 +18,9 @@
     syncIntervalId: null,
     warningTimeoutId: null,
     moraleTimerId: null,
+    inactivityTimerId: null,
+    inactivityModalOpen: false,
+    lowTimeAlerted: new Set(),
   };
 
   const $ = (id) => document.getElementById(id);
@@ -50,6 +56,27 @@
     submitSummary: $("submit-summary"),
     cancelSubmit: $("cancel-submit"),
     confirmSubmit: $("confirm-submit"),
+    onboardingModal: $("onboarding-modal"),
+    dismissOnboarding: $("dismiss-onboarding"),
+    openOnboarding: $("open-onboarding"),
+    fontSizeSelect: $("font-size-select"),
+    highContrastToggle: $("high-contrast-toggle"),
+    autosaveIndicator: $("autosave-indicator"),
+    syncHealthIndicator: $("sync-health-indicator"),
+    lowTimeAlert: $("low-time-alert"),
+    questionZoomOut: $("question-zoom-out"),
+    questionZoomIn: $("question-zoom-in"),
+    questionZoomReset: $("question-zoom-reset"),
+    questionZoomLabel: $("question-zoom-label"),
+    jumpUnanswered: $("jump-unanswered"),
+    inactivityModal: $("inactivity-modal"),
+    continueAfterInactive: $("continue-after-inactive"),
+  };
+
+  const uiPrefs = {
+    fontScale: "normal",
+    highContrast: false,
+    questionZoom: 100,
   };
 
   function createTimerState(onTick) {
@@ -299,6 +326,9 @@
 
   const timerState = createTimerState((remainingText, remainingSeconds) => {
     el.remainingTime.textContent = remainingText;
+    if (st.attemptId && !st.finalized && remainingSeconds > 0) {
+      evaluateLowTimeAlerts(remainingSeconds);
+    }
     if (remainingSeconds === 0 && st.attemptId && !st.finalized) {
       setStatus("Time is over. Submit Exam to lock your attempt.");
     }
@@ -308,6 +338,7 @@
     persistAttemptCache();
     updateProgress();
     renderPalette();
+    updateSyncHealthIndicator();
   });
 
   const esc = (value) =>
@@ -319,6 +350,190 @@
   const setStatus = (message) => {
     el.status.textContent = message;
   };
+
+  function readUiPrefs() {
+    try {
+      const raw = localStorage.getItem(STUDENT_UI_PREFS_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.font_scale === "normal" || parsed.font_scale === "large" || parsed.font_scale === "xlarge") {
+          uiPrefs.fontScale = parsed.font_scale;
+        }
+        uiPrefs.highContrast = Boolean(parsed.high_contrast);
+        const nextZoom = Number(parsed.question_zoom);
+        if (!Number.isNaN(nextZoom)) {
+          uiPrefs.questionZoom = Math.min(160, Math.max(80, Math.round(nextZoom)));
+        }
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function persistUiPrefs() {
+    localStorage.setItem(
+      STUDENT_UI_PREFS_KEY,
+      JSON.stringify({
+        font_scale: uiPrefs.fontScale,
+        high_contrast: uiPrefs.highContrast,
+        question_zoom: uiPrefs.questionZoom,
+      })
+    );
+  }
+
+  function applyUiPrefs() {
+    document.body.dataset.fontScale = uiPrefs.fontScale;
+    document.body.classList.toggle("student-high-contrast", uiPrefs.highContrast);
+    if (el.fontSizeSelect) {
+      el.fontSizeSelect.value = uiPrefs.fontScale;
+    }
+    if (el.highContrastToggle) {
+      el.highContrastToggle.checked = uiPrefs.highContrast;
+    }
+    if (el.questionZoomLabel) {
+      el.questionZoomLabel.textContent = `${uiPrefs.questionZoom}%`;
+    }
+    const zoomScale = (uiPrefs.questionZoom / 100).toFixed(2);
+    document.documentElement.style.setProperty("--student-question-zoom", zoomScale);
+  }
+
+  function setQuestionZoom(nextZoom) {
+    uiPrefs.questionZoom = Math.min(160, Math.max(80, Math.round(nextZoom)));
+    applyUiPrefs();
+    persistUiPrefs();
+  }
+
+  function openOnboardingModal() {
+    el.onboardingModal.hidden = false;
+    syncModalOpenState();
+  }
+
+  function dismissOnboardingModal(markSeen) {
+    el.onboardingModal.hidden = true;
+    syncModalOpenState();
+    if (markSeen) {
+      localStorage.setItem(STUDENT_ONBOARDING_KEY, "seen");
+    }
+  }
+
+  function maybeShowOnboarding() {
+    if (localStorage.getItem(STUDENT_ONBOARDING_KEY) === "seen") {
+      return;
+    }
+    openOnboardingModal();
+  }
+
+  function syncModalOpenState() {
+    const anyOpen =
+      !el.submitModal.hidden ||
+      !el.onboardingModal.hidden ||
+      !el.inactivityModal.hidden;
+    document.body.classList.toggle("modal-open", anyOpen);
+  }
+
+  function setAutosaveIndicator(mode, message) {
+    if (!el.autosaveIndicator) {
+      return;
+    }
+    el.autosaveIndicator.classList.remove(
+      "autosave-synced",
+      "autosave-local",
+      "autosave-pending"
+    );
+    if (mode === "pending") {
+      el.autosaveIndicator.classList.add("autosave-pending");
+    } else if (mode === "local") {
+      el.autosaveIndicator.classList.add("autosave-local");
+    } else {
+      el.autosaveIndicator.classList.add("autosave-synced");
+    }
+    el.autosaveIndicator.textContent = `Autosave: ${message}`;
+  }
+
+  function updateSyncHealthIndicator() {
+    if (!el.syncHealthIndicator) {
+      return;
+    }
+    const pendingCount = answerState.getPendingCount();
+    el.syncHealthIndicator.classList.remove("sync-online", "sync-offline", "sync-degraded");
+
+    if (!navigator.onLine) {
+      el.syncHealthIndicator.classList.add("sync-offline");
+      el.syncHealthIndicator.textContent = "LAN: Offline";
+      return;
+    }
+
+    if (pendingCount > 0) {
+      el.syncHealthIndicator.classList.add("sync-degraded");
+      el.syncHealthIndicator.textContent = `LAN: Syncing (${pendingCount})`;
+      return;
+    }
+
+    el.syncHealthIndicator.classList.add("sync-online");
+    el.syncHealthIndicator.textContent = "LAN: Healthy";
+  }
+
+  function showLowTimeAlert(message) {
+    if (!el.lowTimeAlert) {
+      return;
+    }
+    el.lowTimeAlert.textContent = message;
+    el.lowTimeAlert.hidden = false;
+    window.setTimeout(() => {
+      if (el.lowTimeAlert.textContent === message) {
+        el.lowTimeAlert.hidden = true;
+      }
+    }, 7000);
+  }
+
+  function evaluateLowTimeAlerts(remainingSeconds) {
+    const thresholds = [
+      { seconds: 300, message: "5 minutes left. High-confidence questions pe focus karo." },
+      { seconds: 120, message: "2 minutes left. Review complete karke submit readiness check karo." },
+      { seconds: 60, message: "Final 60 seconds. Pending doubts skip karo aur finalize plan banao." },
+    ];
+
+    for (const item of thresholds) {
+      if (remainingSeconds <= item.seconds && !st.lowTimeAlerted.has(item.seconds)) {
+        st.lowTimeAlerted.add(item.seconds);
+        showLowTimeAlert(item.message);
+        setStatus(item.message);
+      }
+    }
+  }
+
+  function openInactivityModal() {
+    if (!st.attemptId || st.finalized || st.inactivityModalOpen) {
+      return;
+    }
+    st.inactivityModalOpen = true;
+    el.inactivityModal.hidden = false;
+    syncModalOpenState();
+    setStatus("Inactivity warning: continue exam to resume active session tracking.");
+  }
+
+  function closeInactivityModal() {
+    st.inactivityModalOpen = false;
+    el.inactivityModal.hidden = true;
+    syncModalOpenState();
+  }
+
+  function resetInactivityTimer() {
+    if (st.inactivityTimerId) {
+      clearTimeout(st.inactivityTimerId);
+      st.inactivityTimerId = null;
+    }
+    if (!st.attemptId || st.finalized) {
+      return;
+    }
+    if (st.inactivityModalOpen) {
+      closeInactivityModal();
+    }
+    st.inactivityTimerId = window.setTimeout(openInactivityModal, INACTIVITY_TIMEOUT_MS);
+  }
 
   function setMoralePlaceholder() {
     el.moraleTitle.textContent = "Stay focused";
@@ -649,6 +864,7 @@
     updateProgress();
     renderPalette();
     persistAttemptCache();
+    resetInactivityTimer();
   }
 
   function setAttemptControlsEnabled(enabled) {
@@ -657,6 +873,7 @@
     el.prevQuestion.disabled = !active || st.sequence <= 1;
     el.saveNext.disabled = !active;
     el.submitExam.disabled = !active;
+    el.jumpUnanswered.disabled = !active;
   }
 
   function currentlySelectedOptionId() {
@@ -673,6 +890,7 @@
       return "";
     }
     answerState.rememberSelection(st.currentQuestion.id, selectedOptionId);
+    setAutosaveIndicator("local", "Saved Locally");
     return selectedOptionId;
   }
 
@@ -690,7 +908,9 @@
 
     if (!navigator.onLine) {
       answerState.queuePending(queueItem);
+      setAutosaveIndicator("pending", "Pending LAN Sync");
       setStatus("LAN temporary unavailable. Answer saved locally and queued.");
+      updateSyncHealthIndicator();
       return false;
     }
 
@@ -705,6 +925,8 @@
       });
       answerState.markSubmitted(questionId);
       answerState.removePending(questionId);
+      setAutosaveIndicator("synced", "Synced");
+      updateSyncHealthIndicator();
       return true;
     } catch (error) {
       if (error?.httpStatus && error.httpStatus < 500) {
@@ -712,7 +934,9 @@
         return false;
       }
       answerState.queuePending(queueItem);
+      setAutosaveIndicator("pending", "Pending LAN Sync");
       setStatus("LAN issue detected. Answer saved locally and will auto-sync.");
+      updateSyncHealthIndicator();
       return false;
     }
   }
@@ -751,10 +975,16 @@
     }
 
     if (synced > 0) {
+      if (answerState.getPendingCount() === 0) {
+        setAutosaveIndicator("synced", "Synced");
+      } else {
+        setAutosaveIndicator("pending", "Pending LAN Sync");
+      }
       setStatus(`${synced} locally saved answer(s) synced successfully.`);
     }
 
     renderAttemptMeta();
+    updateSyncHealthIndicator();
   }
 
   async function loadVersion() {
@@ -789,6 +1019,7 @@
     timerState.start(statusPayload.expires_at || timerState.getExpiresAt());
     answerState.recordServerAnswered(statusPayload.answered || []);
     renderAttemptMeta(statusPayload);
+    updateSyncHealthIndicator();
 
     if ((statusPayload.status || "").toUpperCase() !== "ACTIVE") {
       st.finalized = true;
@@ -867,7 +1098,11 @@
       st.totalQuestions = 0;
       st.currentQuestion = null;
       st.finalized = false;
+      st.lowTimeAlerted.clear();
       answerState.clear();
+      setAutosaveIndicator("local", "Local Draft");
+      updateSyncHealthIndicator();
+      resetInactivityTimer();
 
       timerState.start(startPayload.expires_at);
       await refreshAttemptStatus();
@@ -928,6 +1163,27 @@
     renderPalette();
   }
 
+  async function jumpToFirstUnanswered() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("Active exam attempt required.");
+      return;
+    }
+    const total = Number(st.totalQuestions || 0);
+    if (!total) {
+      setStatus("Question palette is not ready yet.");
+      return;
+    }
+
+    for (let sequence = 1; sequence <= total; sequence += 1) {
+      if (!answerState.isAnsweredSequence(sequence)) {
+        await fetchQuestion(sequence);
+        setStatus(`Jumped to first unanswered question (#${sequence}).`);
+        return;
+      }
+    }
+    setStatus("Great work. No unanswered questions found.");
+  }
+
   function openSubmitModal() {
     if (!st.attemptId || st.finalized) {
       setStatus("No active exam to submit.");
@@ -951,12 +1207,12 @@
     `;
 
     el.submitModal.hidden = false;
-    document.body.classList.add("modal-open");
+    syncModalOpenState();
   }
 
   function closeSubmitModal() {
     el.submitModal.hidden = true;
-    document.body.classList.remove("modal-open");
+    syncModalOpenState();
   }
 
   async function confirmSubmitExam() {
@@ -984,11 +1240,20 @@
       st.finalized = true;
       setAttemptControlsEnabled(false);
       timerState.stop();
+      if (st.inactivityTimerId) {
+        clearTimeout(st.inactivityTimerId);
+        st.inactivityTimerId = null;
+      }
+      closeInactivityModal();
       if (st.moraleTimerId) {
         clearInterval(st.moraleTimerId);
         st.moraleTimerId = null;
       }
       clearAttemptCache();
+      setAutosaveIndicator("synced", "Finalized");
+      if (el.lowTimeAlert) {
+        el.lowTimeAlert.hidden = true;
+      }
 
       renderResultSummary(finalizePayload.result || finalizePayload);
       setStatus("Exam submitted successfully.");
@@ -1032,6 +1297,11 @@
       clearInterval(st.moraleTimerId);
       st.moraleTimerId = null;
     }
+    if (st.inactivityTimerId) {
+      clearTimeout(st.inactivityTimerId);
+      st.inactivityTimerId = null;
+    }
+    closeInactivityModal();
     localStorage.removeItem(STUDENT_SESSION_KEY);
     window.location.href = "/web?target=student&reason=login_required";
   }
@@ -1048,6 +1318,7 @@
     st.sequence = Number(cached.sequence || 1);
     st.totalQuestions = Number(cached.total_questions || 0);
     st.finalized = false;
+    st.lowTimeAlerted.clear();
 
     answerState.hydrate(cached);
     timerState.start(cached.expires_at || null);
@@ -1060,6 +1331,12 @@
         await fetchQuestion(sequenceToLoad);
         await flushPendingQueue();
         await loadMoraleCoach();
+        resetInactivityTimer();
+        setAutosaveIndicator(
+          answerState.getPendingCount() > 0 ? "pending" : "local",
+          answerState.getPendingCount() > 0 ? "Pending LAN Sync" : "Recovered Draft"
+        );
+        updateSyncHealthIndicator();
         setStatus("Recovered your local in-progress attempt.");
       }
     } catch {
@@ -1074,6 +1351,36 @@
     el.logoutStudent.addEventListener("click", logoutStudent);
     el.loadExams.addEventListener("click", loadExams);
     el.startAttempt.addEventListener("click", startAttempt);
+    el.openOnboarding.addEventListener("click", () => {
+      openOnboardingModal();
+    });
+    el.dismissOnboarding.addEventListener("click", () => {
+      dismissOnboardingModal(true);
+    });
+    el.continueAfterInactive.addEventListener("click", () => {
+      closeInactivityModal();
+      resetInactivityTimer();
+      setStatus("Inactivity warning cleared. Continue answering.");
+    });
+    el.fontSizeSelect.addEventListener("change", () => {
+      uiPrefs.fontScale = el.fontSizeSelect.value;
+      applyUiPrefs();
+      persistUiPrefs();
+    });
+    el.highContrastToggle.addEventListener("change", () => {
+      uiPrefs.highContrast = Boolean(el.highContrastToggle.checked);
+      applyUiPrefs();
+      persistUiPrefs();
+    });
+    el.questionZoomIn.addEventListener("click", () => {
+      setQuestionZoom(uiPrefs.questionZoom + 10);
+    });
+    el.questionZoomOut.addEventListener("click", () => {
+      setQuestionZoom(uiPrefs.questionZoom - 10);
+    });
+    el.questionZoomReset.addEventListener("click", () => {
+      setQuestionZoom(100);
+    });
 
     el.prevQuestion.addEventListener("click", () => {
       fetchQuestion(st.sequence - 1);
@@ -1081,6 +1388,7 @@
 
     el.saveNext.addEventListener("click", saveAndNext);
     el.markReview.addEventListener("click", toggleMarkForReview);
+    el.jumpUnanswered.addEventListener("click", jumpToFirstUnanswered);
     el.submitExam.addEventListener("click", openSubmitModal);
     el.cancelSubmit.addEventListener("click", closeSubmitModal);
     el.confirmSubmit.addEventListener("click", confirmSubmitExam);
@@ -1097,6 +1405,7 @@
       }
       rememberCurrentSelection();
       setStatus("Answer saved locally.");
+      resetInactivityTimer();
     });
 
     el.questionPalette.addEventListener("click", (event) => {
@@ -1110,10 +1419,12 @@
       }
       const sequence = Number(button.dataset.sequence);
       fetchQuestion(sequence);
+      resetInactivityTimer();
     });
 
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
+        resetInactivityTimer();
         return;
       }
       st.warningCount += 1;
@@ -1127,9 +1438,19 @@
       showAntiCheatWarning("Right-click is disabled during the exam.");
     });
 
+    const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "wheel"];
+    activityEvents.forEach((eventName) => {
+      document.addEventListener(eventName, resetInactivityTimer, { passive: true });
+    });
+
     window.addEventListener("online", () => {
       flushPendingQueue();
       setStatus("LAN reconnected. Syncing saved answers...");
+      updateSyncHealthIndicator();
+    });
+
+    window.addEventListener("offline", () => {
+      updateSyncHealthIndicator();
     });
 
     window.addEventListener("beforeunload", () => {
@@ -1140,16 +1461,54 @@
       if (st.moraleTimerId) {
         clearInterval(st.moraleTimerId);
       }
+      if (st.inactivityTimerId) {
+        clearTimeout(st.inactivityTimerId);
+      }
     });
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !el.submitModal.hidden) {
         closeSubmitModal();
+        return;
+      }
+      if (event.key === "Escape" && !el.onboardingModal.hidden) {
+        dismissOnboardingModal(true);
+        return;
+      }
+      if (event.key === "Escape" && !el.inactivityModal.hidden) {
+        closeInactivityModal();
+        resetInactivityTimer();
+        return;
+      }
+      if (!st.attemptId || st.finalized) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLButtonElement
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        toggleMarkForReview();
+      } else if (key === "n") {
+        event.preventDefault();
+        saveAndNext();
+      } else if (key === "j") {
+        event.preventDefault();
+        jumpToFirstUnanswered();
       }
     });
 
     st.syncIntervalId = window.setInterval(() => {
       flushPendingQueue();
+      updateSyncHealthIndicator();
     }, 8000);
 
     st.moraleTimerId = window.setInterval(() => {
@@ -1159,12 +1518,20 @@
 
   async function initialize() {
     ensureSession();
+    readUiPrefs();
+    applyUiPrefs();
     el.examName.textContent = "Exam Name";
     setMoralePlaceholder();
     renderPalette();
     updateProgress();
     setAttemptControlsEnabled(false);
+    if (el.lowTimeAlert) {
+      el.lowTimeAlert.hidden = true;
+    }
+    setAutosaveIndicator("synced", "Waiting");
+    updateSyncHealthIndicator();
     bindEvents();
+    maybeShowOnboarding();
 
     await loadVersion();
     await loadExams();

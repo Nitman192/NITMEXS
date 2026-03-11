@@ -146,6 +146,7 @@
             <div class="row">
               <a class="portal-btn" href="/web/demo_question_bank.csv" download>Download Question Bank CSV</a>
               <a class="portal-btn primary" href="/web/demo_exam_package.csv" download>Download Exam Package CSV</a>
+              <a class="portal-btn" href="/web/demo_student_ids.csv" download>Download Student IDs CSV</a>
             </div>
             <p class="small">Question Bank CSV = sirf questions. Exam Package CSV = exam + questions ek saath.</p>
           </article>
@@ -203,7 +204,13 @@
               <button id="generate-student-ids" class="alt">Generate Batch</button>
               <button id="refresh-student-ids" class="alt">Refresh List</button>
             </div>
+            <div class="row" style="margin-top:8px">
+              <input id="student-csv-file" type="file" accept=".csv" style="flex:1 1 260px">
+              <button id="upload-student-csv" class="alt">Import Student CSV</button>
+              <button id="export-student-csv" class="alt">Export Student CSV</button>
+            </div>
             <pre id="student-id-result" class="box mono" style="margin-top:8px">Student ID creation result will appear here.</pre>
+            <pre id="student-csv-result" class="box mono" style="margin-top:8px">Student CSV import/export result will appear here.</pre>
             <div class="table-wrap" style="margin-top:8px">
               <table>
                 <thead>
@@ -349,6 +356,11 @@
             <div class="row">
               <button id="load-metrics">Refresh Metrics</button>
               <button id="load-dashboard" class="alt">Global Proctor Snapshot</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label for="idle-timeout-seconds" class="small">Idle lock timeout (seconds)</label>
+              <input id="idle-timeout-seconds" type="number" min="10" max="3600" value="10" style="width:120px">
+              <button id="apply-idle-timeout" class="alt">Apply Timeout Policy</button>
             </div>
             <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
             <pre id="dashboard-box" class="box mono">Dashboard snapshot will appear here.</pre>

@@ -1,7 +1,8 @@
 (() => {
   const ADMIN_SESSION_KEY = "nitmexs_admin_session";
   const GUIDED_MODE_KEY = "nitmexs_admin_guided_mode";
-  const IDLE_LOCK_MS = 10_000;
+  const IDLE_TIMEOUT_POLICY_KEY = "nitmexs_admin_idle_timeout_ms";
+  const IDLE_TIMEOUT_DEFAULT_MS = 10_000;
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) =>
@@ -17,6 +18,7 @@
     polling: false,
     pollTimerId: null,
     idleTimerId: null,
+    idleLockMs: IDLE_TIMEOUT_DEFAULT_MS,
     seenEventIds: new Set(),
   };
 
@@ -56,7 +58,11 @@
     studentCount: $("student-count"),
     generateStudentIds: $("generate-student-ids"),
     refreshStudentIds: $("refresh-student-ids"),
+    studentCsvFile: $("student-csv-file"),
+    uploadStudentCsv: $("upload-student-csv"),
+    exportStudentCsv: $("export-student-csv"),
     studentIdResult: $("student-id-result"),
+    studentCsvResult: $("student-csv-result"),
     studentsBody: $("students-body"),
     minAttempts: $("min-attempts"),
     applyRun: $("apply-run"),
@@ -73,6 +79,8 @@
     distributionBody: $("distribution-body"),
     loadMetrics: $("load-metrics"),
     loadDashboard: $("load-dashboard"),
+    idleTimeoutSeconds: $("idle-timeout-seconds"),
+    applyIdleTimeout: $("apply-idle-timeout"),
     metricsBox: $("metrics-box"),
     dashboardBox: $("dashboard-box"),
   };
@@ -155,6 +163,38 @@
     return localStorage.getItem(GUIDED_MODE_KEY) === "on";
   }
 
+  function normalizeIdleTimeoutMs(secondsInput) {
+    const parsedSeconds = Number(secondsInput);
+    if (Number.isNaN(parsedSeconds)) {
+      return IDLE_TIMEOUT_DEFAULT_MS;
+    }
+    const clampedSeconds = Math.min(3600, Math.max(10, Math.round(parsedSeconds)));
+    return clampedSeconds * 1000;
+  }
+
+  function readIdleTimeoutPolicy() {
+    const stored = localStorage.getItem(IDLE_TIMEOUT_POLICY_KEY);
+    if (!stored) {
+      return IDLE_TIMEOUT_DEFAULT_MS;
+    }
+    const storedMs = Number(stored);
+    if (Number.isNaN(storedMs)) {
+      return IDLE_TIMEOUT_DEFAULT_MS;
+    }
+    return normalizeIdleTimeoutMs(storedMs / 1000);
+  }
+
+  function applyIdleTimeoutPolicy(nextTimeoutMs, persist) {
+    st.idleLockMs = normalizeIdleTimeoutMs(nextTimeoutMs / 1000);
+    if (el.idleTimeoutSeconds) {
+      el.idleTimeoutSeconds.value = String(Math.round(st.idleLockMs / 1000));
+    }
+    if (persist) {
+      localStorage.setItem(IDLE_TIMEOUT_POLICY_KEY, String(st.idleLockMs));
+    }
+    resetIdleTimer();
+  }
+
   function applyGuidedMode(enabled) {
     document.body.classList.toggle("guided-on", enabled);
     el.guidedToggle.checked = enabled;
@@ -183,7 +223,7 @@
     if (st.idleTimerId) {
       clearTimeout(st.idleTimerId);
     }
-    st.idleTimerId = window.setTimeout(lockIdleShield, IDLE_LOCK_MS);
+    st.idleTimerId = window.setTimeout(lockIdleShield, st.idleLockMs);
   }
 
   function bindIdleActivityListeners() {
@@ -579,6 +619,55 @@
     }
   }
 
+  async function uploadStudentCsv() {
+    try {
+      const file = getSelectedFile(el.studentCsvFile);
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await api("/admin/students/import-csv", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: formData,
+      });
+      el.studentCsvResult.textContent = JSON.stringify(data, null, 2);
+      await loadStudentIds();
+      setStatus(
+        `Student CSV processed. Inserted ${data.inserted}, failed ${data.failed}.`
+      );
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function exportStudentCsv() {
+    try {
+      const response = await fetch("/admin/students/export-csv?limit=2000", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+      }
+
+      const content = await response.text();
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "student_accounts.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+
+      el.studentCsvResult.textContent =
+        "Student export ready: downloaded student_accounts.csv";
+      setStatus("Student CSV export downloaded.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function renderRuns(runs) {
     if (!runs.length) {
       el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
@@ -827,6 +916,13 @@
     }
   }
 
+  function updateIdleTimeoutPolicy() {
+    const secondsInput = el.idleTimeoutSeconds?.value || "10";
+    const timeoutMs = normalizeIdleTimeoutMs(secondsInput);
+    applyIdleTimeoutPolicy(timeoutMs, true);
+    setStatus(`Idle timeout policy updated to ${Math.round(timeoutMs / 1000)} seconds.`);
+  }
+
   function bindEvents() {
     el.logoutAdmin.addEventListener("click", logoutAdmin);
     el.guidedToggle.addEventListener("change", () => {
@@ -874,6 +970,8 @@
     el.createStudentId.addEventListener("click", createStudentId);
     el.generateStudentIds.addEventListener("click", generateStudentIds);
     el.refreshStudentIds.addEventListener("click", loadStudentIds);
+    el.uploadStudentCsv.addEventListener("click", uploadStudentCsv);
+    el.exportStudentCsv.addEventListener("click", exportStudentCsv);
 
     el.runRecalibration.addEventListener("click", runRecalibration);
     el.loadHistory.addEventListener("click", loadHistory);
@@ -897,6 +995,7 @@
     el.loadAnalytics.addEventListener("click", loadAnalytics);
     el.loadMetrics.addEventListener("click", loadMetrics);
     el.loadDashboard.addEventListener("click", loadGlobalDashboard);
+    el.applyIdleTimeout.addEventListener("click", updateIdleTimeoutPolicy);
 
     window.addEventListener("beforeunload", () => {
       if (st.pollTimerId) {
@@ -919,9 +1018,13 @@
     el.difficultyBody.innerHTML = '<tr><td colspan="4" class="small">No difficulty heatmap data.</td></tr>';
     el.topicBody.innerHTML = '<tr><td colspan="4" class="small">No topic heatmap data.</td></tr>';
     el.distributionBody.innerHTML = '<p class="small">No distribution data.</p>';
+    if (el.studentCsvResult) {
+      el.studentCsvResult.textContent = "Student CSV import/export result will appear here.";
+    }
   }
 
   ensureAdminSession();
+  applyIdleTimeoutPolicy(readIdleTimeoutPolicy(), false);
   applyGuidedMode(readGuidedMode());
   activatePage("page-monitor");
   seedTables();

@@ -43,6 +43,7 @@ class WebConsoleRouteTests(unittest.TestCase):
             admin_js_response = client.get("/web/admin.js")
             demo_question_csv_response = client.get("/web/demo_question_bank.csv")
             demo_exam_pack_csv_response = client.get("/web/demo_exam_package.csv")
+            demo_student_csv_response = client.get("/web/demo_student_ids.csv")
 
         self.assertEqual(index_response.status_code, 200)
         self.assertIn("text/html", index_response.headers.get("content-type", ""))
@@ -66,6 +67,8 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("Student Dashboard", student_response.text)
         self.assertIn("Question Viewer", student_response.text)
         self.assertIn("Submit Exam", student_response.text)
+        self.assertIn("High Contrast", student_response.text)
+        self.assertIn("Jump to First Unanswered", student_response.text)
         self.assertNotIn("Student Cockpit", student_response.text)
         self.assertNotIn("Question Deck", student_response.text)
 
@@ -73,12 +76,18 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("startAttempt", student_js_response.text)
         self.assertIn("createTimerState", student_js_response.text)
         self.assertIn("createAnswerState", student_js_response.text)
+        self.assertIn("STUDENT_ONBOARDING_KEY", student_js_response.text)
+        self.assertIn("jumpToFirstUnanswered", student_js_response.text)
 
         self.assertEqual(admin_response.status_code, 200)
         self.assertIn("Admin Command Center", admin_response.text)
+        self.assertIn("Idle lock timeout", admin_response.text)
+        self.assertIn("Import Student CSV", admin_response.text)
 
         self.assertEqual(admin_js_response.status_code, 200)
         self.assertIn("toggleAutoPolling", admin_js_response.text)
+        self.assertIn("IDLE_TIMEOUT_POLICY_KEY", admin_js_response.text)
+        self.assertIn("/admin/students/import-csv", admin_js_response.text)
 
         self.assertEqual(demo_question_csv_response.status_code, 200)
         self.assertTrue(
@@ -97,6 +106,15 @@ class WebConsoleRouteTests(unittest.TestCase):
             )
         )
         self.assertIn("exam_name", demo_exam_pack_csv_response.text)
+
+        self.assertEqual(demo_student_csv_response.status_code, 200)
+        self.assertTrue(
+            any(
+                token in demo_student_csv_response.headers.get("content-type", "")
+                for token in ("text/csv", "application/vnd.ms-excel")
+            )
+        )
+        self.assertIn("student_id", demo_student_csv_response.text)
 
 
 if __name__ == "__main__":

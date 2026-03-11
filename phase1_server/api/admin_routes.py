@@ -13,6 +13,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import Response
 
 from phase1_server.api.deps import admin_only
 from phase1_server.schemas import (
@@ -71,6 +72,10 @@ from phase1_server.services.student_registry_service import (
     StudentRegisterPayload,
     StudentRegistryService,
     StudentValidationError,
+)
+from phase1_server.services.student_registry_csv_service import (
+    StudentCsvError,
+    StudentRegistryCsvService,
 )
 from phase1_server.uow import UnitOfWork
 
@@ -646,6 +651,60 @@ def generate_student_accounts(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}
+
+
+@router.post("/students/import-csv")
+async def import_student_accounts_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    x_admin_id: str = Header(default="admin"),
+):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    content = (await file.read()).decode("utf-8", errors="replace")
+
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        registry_service = StudentRegistryService(uow.student_accounts)
+        csv_service = StudentRegistryCsvService(registry_service)
+        try:
+            result = csv_service.import_csv(content, default_created_by=x_admin_id)
+        except StudentCsvError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "success",
+        "data": {
+            "total_rows": result.total_rows,
+            "inserted": result.inserted,
+            "failed": result.failed,
+            "errors": [
+                {"row": item.row, "error": item.error}
+                for item in result.errors
+            ],
+        },
+    }
+
+
+@router.get("/students/export-csv")
+def export_student_accounts_csv(
+    request: Request,
+    limit: int = Query(default=1000, ge=1, le=5000),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        registry_service = StudentRegistryService(uow.student_accounts)
+        csv_service = StudentRegistryCsvService(registry_service)
+        content = csv_service.export_csv(limit=limit)
+
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="student_accounts.csv"',
+        },
+    )
 
 
 @router.get("/students/{student_id}/performance")
