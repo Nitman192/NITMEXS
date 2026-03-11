@@ -316,6 +316,32 @@ class DeliveryService:
             finalized_at=finalized_at,
         )
 
+    def auto_submit_expired_attempt_for_student(
+        self,
+        attempt_id: str,
+        student_id: str,
+    ) -> dict:
+        attempt = self._attempt_repo.get(attempt_id)
+        if attempt is None:
+            raise DeliveryError(f"Attempt '{attempt_id}' not found")
+        if attempt.candidate_id != student_id:
+            raise OwnershipError("Attempt does not belong to student")
+
+        if attempt.status is AttemptStatus.FINALIZED:
+            return self._grade_and_build_finalize_response(
+                attempt_id=attempt.id,
+                finalized_at=attempt.updated_at,
+            )
+
+        if not self._attempt_repo.is_expired(attempt.id, self._now_iso()):
+            raise AttemptStateError("Attempt timer has not elapsed yet")
+
+        result = self.force_finalize_expired_attempt(attempt.id)
+        return {
+            **result,
+            "auto_submitted": True,
+        }
+
     def force_finalize_attempt_by_admin(
         self,
         attempt_id: str,
@@ -601,15 +627,20 @@ class DeliveryService:
             "message": normalized_message,
             "severity": normalized_severity,
         }
-        self._log_event_safely(
-            entity_type="exam",
-            entity_id=exam_id,
-            actor_type="admin",
-            actor_id=actor_id,
-            event_type=AuditEventType.EXAM_BROADCAST,
-            payload=payload,
-            created_at=created_at,
-        )
+        if self._audit_service is None:
+            raise DeliveryError("Audit service unavailable for broadcast persistence")
+        try:
+            self._audit_service.log_event(
+                entity_type="exam",
+                entity_id=exam_id,
+                actor_type="admin",
+                actor_id=actor_id,
+                event_type=AuditEventType.EXAM_BROADCAST,
+                payload=payload,
+                created_at=created_at,
+            )
+        except Exception as exc:
+            raise DeliveryError("Unable to persist broadcast event") from exc
         return {
             "exam_id": exam_id,
             "exam_name": exam.name,

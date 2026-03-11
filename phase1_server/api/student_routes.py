@@ -364,6 +364,35 @@ def finalize_attempt(
 
     return {"status": "success", "data": data}
 
+
+@router.post("/attempts/{attempt_id}/auto-submit")
+def auto_submit_attempt(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.auto_submit_expired_attempt_for_student(
+                attempt_id=attempt_id,
+                student_id=student_id,
+            )
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
 @router.get("/attempts/{attempt_id}/result")
 def get_attempt_result(
     attempt_id: str,

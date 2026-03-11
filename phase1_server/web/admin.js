@@ -29,6 +29,7 @@
     sessionAdmin: $("session-admin"),
     version: $("version"),
     guidedToggle: $("guided-toggle"),
+    emergencyStop: $("emergency-stop-btn"),
     logoutAdmin: $("logout-admin"),
     loadExams: $("load-exams"),
     examSelect: $("exam-select"),
@@ -275,13 +276,27 @@
     }
   }
 
-  function currentExamId() {
-    const examId = el.examSelect.value;
-    if (!examId) {
-      throw new Error("Select exam first");
+  function currentExamId(optional = false) {
+    const selected = (el.examSelect?.value || "").trim();
+    if (selected) {
+      st.examId = selected;
+      return selected;
     }
-    st.examId = examId;
-    return examId;
+    if (st.examId) {
+      return st.examId;
+    }
+    const firstExamOption = Array.from(el.examSelect?.options || []).find(
+      (option) => option.value
+    );
+    if (firstExamOption) {
+      el.examSelect.value = firstExamOption.value;
+      st.examId = firstExamOption.value;
+      return firstExamOption.value;
+    }
+    if (optional) {
+      return "";
+    }
+    throw new Error("Exam select nahi hai. Pehle Load Exams karo, phir exam choose karo.");
   }
 
   async function loadVersion() {
@@ -299,6 +314,9 @@
       renderExamOptions(exams);
       setStatus(`Loaded ${exams.length} exam(s).`);
     } catch (error) {
+      if (el.forceSubmitResult) {
+        el.forceSubmitResult.textContent = `ERROR: ${error.message}`;
+      }
       setStatus(error.message);
     }
   }
@@ -422,6 +440,9 @@
       );
       setStatus("Live status refreshed.");
     } catch (error) {
+      if (el.forceSubmitResult) {
+        el.forceSubmitResult.textContent = `ERROR: ${error.message}`;
+      }
       setStatus(error.message);
     }
   }
@@ -441,6 +462,9 @@
       );
       await loadAlerts();
     } catch (error) {
+      if (el.forceSubmitResult) {
+        el.forceSubmitResult.textContent = `ERROR: ${error.message}`;
+      }
       setStatus(error.message);
     }
   }
@@ -455,6 +479,9 @@
       renderAlerts(data.alerts || []);
       setStatus(`Loaded ${data.count} alert(s).`);
     } catch (error) {
+      if (el.forceSubmitResult) {
+        el.forceSubmitResult.textContent = `ERROR: ${error.message}`;
+      }
       setStatus(error.message);
     }
   }
@@ -471,6 +498,9 @@
       });
       await loadAlerts();
     } catch (error) {
+      if (el.broadcastResult) {
+        el.broadcastResult.textContent = `ERROR: ${error.message}`;
+      }
       setStatus(error.message);
     }
   }
@@ -500,9 +530,13 @@
 
   async function forceSubmitExpired() {
     try {
-      const examId = currentExamId();
+      const examId = currentExamId(true);
+      const query = new URLSearchParams({ limit: "1000" });
+      if (examId) {
+        query.set("exam_id", examId);
+      }
       const data = await api(
-        `/admin/attempts/force-submit-expired?exam_id=${encodeURIComponent(examId)}&limit=1000`,
+        `/admin/attempts/force-submit-expired?${query.toString()}`,
         {
           method: "POST",
           headers: adminHeaders(),
@@ -510,7 +544,7 @@
       );
       el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
       setStatus(
-        `Expired force-submit complete: finalized=${data.finalized_count}, failed=${data.failed_count}.`
+        `Expired force-submit complete: processed=${data.processed_count}, finalized=${data.finalized_count}, failed=${data.failed_count}.`
       );
       await refreshLive();
       await loadAlerts();
@@ -575,6 +609,13 @@
           body: { message, severity },
         }
       );
+      const auditCheck = await api(
+        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&event_type=EXAM_BROADCAST&limit=1`,
+        { headers: adminHeaders() }
+      );
+      if (!auditCheck.count) {
+        throw new Error("Broadcast was sent but audit verification failed.");
+      }
       el.broadcastResult.textContent = JSON.stringify(data, null, 2);
       el.broadcastMessage.value = "";
       setStatus(`Broadcast sent (${severity}) to exam candidates.`);
@@ -1181,35 +1222,47 @@
     setStatus(`Idle timeout policy updated to ${Math.round(timeoutMs / 1000)} seconds.`);
   }
 
+  function bindClick(element, handler) {
+    if (!element) {
+      return;
+    }
+    element.addEventListener("click", handler);
+  }
+
   function bindEvents() {
-    el.logoutAdmin.addEventListener("click", logoutAdmin);
-    el.guidedToggle.addEventListener("change", () => {
-      applyGuidedMode(el.guidedToggle.checked);
-    });
+    bindClick(el.logoutAdmin, logoutAdmin);
+    if (el.guidedToggle) {
+      el.guidedToggle.addEventListener("change", () => {
+        applyGuidedMode(el.guidedToggle.checked);
+      });
+    }
     el.navButtons.forEach((button) => {
       button.addEventListener("click", () => {
         activatePage(button.dataset.page);
       });
     });
-    el.loadExams.addEventListener("click", loadExams);
-    el.examSelect.addEventListener("change", () => {
-      st.cursor = null;
-      st.seenEventIds.clear();
-      el.cursorLabel.textContent = "none";
-      el.eventsBody.innerHTML = "";
-    });
+    bindClick(el.loadExams, loadExams);
+    if (el.examSelect) {
+      el.examSelect.addEventListener("change", () => {
+        st.cursor = null;
+        st.seenEventIds.clear();
+        el.cursorLabel.textContent = "none";
+        el.eventsBody.innerHTML = "";
+      });
+    }
 
-    el.refreshLive.addEventListener("click", refreshLive);
-    el.syncAlerts.addEventListener("click", syncAlerts);
-    el.loadAlerts.addEventListener("click", loadAlerts);
-    el.forceSubmitAttempt.addEventListener("click", forceSubmitAttempt);
-    el.forceSubmitExpired.addEventListener("click", forceSubmitExpired);
-    el.pauseExam.addEventListener("click", pauseExam);
-    el.resumeExam.addEventListener("click", resumeExam);
-    el.sendBroadcast.addEventListener("click", sendBroadcast);
-    el.pullEvents.addEventListener("click", pullEvents);
-    el.toggleAuto.addEventListener("click", toggleAutoPolling);
-    el.loadAuditEvents.addEventListener("click", loadAuditEvents);
+    bindClick(el.refreshLive, refreshLive);
+    bindClick(el.syncAlerts, syncAlerts);
+    bindClick(el.loadAlerts, loadAlerts);
+    bindClick(el.forceSubmitAttempt, forceSubmitAttempt);
+    bindClick(el.forceSubmitExpired, forceSubmitExpired);
+    bindClick(el.pauseExam, pauseExam);
+    bindClick(el.emergencyStop, pauseExam);
+    bindClick(el.resumeExam, resumeExam);
+    bindClick(el.sendBroadcast, sendBroadcast);
+    bindClick(el.pullEvents, pullEvents);
+    bindClick(el.toggleAuto, toggleAutoPolling);
+    bindClick(el.loadAuditEvents, loadAuditEvents);
 
     el.alertBody.addEventListener("click", (event) => {
       const target = event.target;
@@ -1228,17 +1281,17 @@
       }
     });
 
-    el.uploadQuestionCsv.addEventListener("click", uploadQuestionCsv);
-    el.uploadExamPack.addEventListener("click", uploadExamPack);
-    el.loadQuestions.addEventListener("click", loadQuestions);
-    el.createStudentId.addEventListener("click", createStudentId);
-    el.generateStudentIds.addEventListener("click", generateStudentIds);
-    el.refreshStudentIds.addEventListener("click", loadStudentIds);
-    el.uploadStudentCsv.addEventListener("click", uploadStudentCsv);
-    el.exportStudentCsv.addEventListener("click", exportStudentCsv);
+    bindClick(el.uploadQuestionCsv, uploadQuestionCsv);
+    bindClick(el.uploadExamPack, uploadExamPack);
+    bindClick(el.loadQuestions, loadQuestions);
+    bindClick(el.createStudentId, createStudentId);
+    bindClick(el.generateStudentIds, generateStudentIds);
+    bindClick(el.refreshStudentIds, loadStudentIds);
+    bindClick(el.uploadStudentCsv, uploadStudentCsv);
+    bindClick(el.exportStudentCsv, exportStudentCsv);
 
-    el.runRecalibration.addEventListener("click", runRecalibration);
-    el.loadHistory.addEventListener("click", loadHistory);
+    bindClick(el.runRecalibration, runRecalibration);
+    bindClick(el.loadHistory, loadHistory);
     el.runsBody.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
@@ -1256,10 +1309,10 @@
       }
     });
 
-    el.loadAnalytics.addEventListener("click", loadAnalytics);
-    el.loadMetrics.addEventListener("click", loadMetrics);
-    el.loadDashboard.addEventListener("click", loadGlobalDashboard);
-    el.applyIdleTimeout.addEventListener("click", updateIdleTimeoutPolicy);
+    bindClick(el.loadAnalytics, loadAnalytics);
+    bindClick(el.loadMetrics, loadMetrics);
+    bindClick(el.loadDashboard, loadGlobalDashboard);
+    bindClick(el.applyIdleTimeout, updateIdleTimeoutPolicy);
 
     el.questionsBody.addEventListener("click", (event) => {
       const target = event.target;

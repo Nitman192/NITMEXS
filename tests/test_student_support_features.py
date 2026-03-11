@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from phase1_server.db import Database, SQLiteConfig
@@ -101,6 +102,32 @@ class StudentSupportFeatureTests(unittest.TestCase):
         self.assertIn("QUESTION_ISSUE_REPORTED", event_types)
         self.assertIn("TECHNICAL_ISSUE_REPORTED", event_types)
 
+    def test_service_auto_submit_expired_attempt_for_student(self):
+        exam_id = self._seed_exam()
+        attempt_id = self._start_attempt(exam_id, "timeout-student")
+        expired_ts = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        with UnitOfWork(self.db) as uow:
+            uow.conn.execute(
+                "UPDATE attempts SET expires_at = ? WHERE id = ?",
+                (expired_ts, attempt_id),
+            )
+
+        with UnitOfWork(self.db) as uow:
+            delivery = DeliveryService(
+                uow.attempts,
+                uow.exams,
+                uow.questions,
+                audit_service=AuditService(uow.audit_events),
+                analytics_repo=uow.analytics,
+            )
+            result = delivery.auto_submit_expired_attempt_for_student(
+                attempt_id=attempt_id,
+                student_id="timeout-student",
+            )
+
+        self.assertEqual(result["status"], "finalized")
+        self.assertTrue(result["auto_submitted"])
+
     @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI test client unavailable")
     def test_student_support_endpoints(self):
         exam_id = self._seed_exam()
@@ -149,16 +176,27 @@ class StudentSupportFeatureTests(unittest.TestCase):
                 f"/student/attempts/{attempt_id}/broadcasts?limit=20",
                 headers=student_headers,
             )
+            expired_ts = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+            with UnitOfWork(self.db) as uow:
+                uow.conn.execute(
+                    "UPDATE attempts SET expires_at = ? WHERE id = ?",
+                    (expired_ts, attempt_id),
+                )
+            auto_submit_resp = client.post(
+                f"/student/attempts/{attempt_id}/auto-submit",
+                headers=student_headers,
+            )
 
         self.assertEqual(question_issue.status_code, 200)
         self.assertEqual(technical_issue.status_code, 200)
         self.assertEqual(rules_resp.status_code, 200)
         self.assertEqual(broadcast_resp.status_code, 200)
         self.assertEqual(broadcasts.status_code, 200)
+        self.assertEqual(auto_submit_resp.status_code, 200)
         self.assertEqual(broadcast_resp.json()["data"]["severity"], "info")
         self.assertGreaterEqual(broadcasts.json()["data"]["count"], 1)
+        self.assertTrue(auto_submit_resp.json()["data"]["auto_submitted"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

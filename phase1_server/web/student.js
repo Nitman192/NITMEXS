@@ -31,6 +31,7 @@
     revisionMode: false,
     breathingTimerId: null,
     breathingSecondsLeft: 0,
+    autoSubmitInProgress: false,
     receipt: null,
     diagnostics: {
       keyboardSeen: false,
@@ -405,7 +406,7 @@
       evaluateLowTimeAlerts(remainingSeconds);
     }
     if (remainingSeconds === 0 && st.attemptId && !st.finalized) {
-      setStatus("Time is over. Submit Exam to lock your attempt.");
+      autoSubmitExpiredAttempt();
     }
   });
 
@@ -1641,6 +1642,7 @@
       st.receipt = null;
       st.broadcastCursor = null;
       st.revisionMode = false;
+      st.autoSubmitInProgress = false;
       st.lowTimeAlerted.clear();
       answerState.clear();
       setAutosaveIndicator("local", "Local Draft");
@@ -1826,6 +1828,65 @@
     syncModalOpenState();
   }
 
+  function applyFinalizationUi(finalizePayload, statusMessage) {
+    st.finalized = true;
+    st.autoSubmitInProgress = false;
+    setAttemptControlsEnabled(false);
+    timerState.stop();
+    if (st.inactivityTimerId) {
+      clearTimeout(st.inactivityTimerId);
+      st.inactivityTimerId = null;
+    }
+    closeInactivityModal();
+    if (st.moraleTimerId) {
+      clearInterval(st.moraleTimerId);
+      st.moraleTimerId = null;
+    }
+    if (st.broadcastTimerId) {
+      clearInterval(st.broadcastTimerId);
+      st.broadcastTimerId = null;
+    }
+    stopBreathingPrompt();
+    clearAttemptCache();
+    setAutosaveIndicator("synced", "Finalized");
+    if (el.lowTimeAlert) {
+      el.lowTimeAlert.hidden = true;
+    }
+
+    renderResultSummary(finalizePayload.result || finalizePayload);
+    st.receipt = buildAcknowledgementReceipt(finalizePayload.result || finalizePayload);
+    renderReceipt(st.receipt);
+    setStatus(statusMessage);
+    renderAttemptMeta({
+      started_at: null,
+      expires_at: timerState.getExpiresAt(),
+      status: "FINALIZED",
+    });
+    closeSubmitModal();
+  }
+
+  async function autoSubmitExpiredAttempt() {
+    if (!st.attemptId || st.finalized || st.autoSubmitInProgress) {
+      return;
+    }
+    st.autoSubmitInProgress = true;
+    setStatus("Time is over. Auto-submitting exam...");
+    try {
+      await flushPendingQueue();
+      const finalizePayload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/auto-submit`,
+        {
+          method: "POST",
+          headers: studentHeaders(),
+        }
+      );
+      applyFinalizationUi(finalizePayload, "Time over. Exam auto-submitted successfully.");
+    } catch (error) {
+      st.autoSubmitInProgress = false;
+      setStatus(`Time over. Auto-submit failed: ${error.message}. Contact admin.`);
+    }
+  }
+
   async function confirmSubmitExam() {
     if (!st.attemptId || st.finalized) {
       closeSubmitModal();
@@ -1860,40 +1921,7 @@
           headers: studentHeaders(),
         }
       );
-
-      st.finalized = true;
-      setAttemptControlsEnabled(false);
-      timerState.stop();
-      if (st.inactivityTimerId) {
-        clearTimeout(st.inactivityTimerId);
-        st.inactivityTimerId = null;
-      }
-      closeInactivityModal();
-      if (st.moraleTimerId) {
-        clearInterval(st.moraleTimerId);
-        st.moraleTimerId = null;
-      }
-      if (st.broadcastTimerId) {
-        clearInterval(st.broadcastTimerId);
-        st.broadcastTimerId = null;
-      }
-      stopBreathingPrompt();
-      clearAttemptCache();
-      setAutosaveIndicator("synced", "Finalized");
-      if (el.lowTimeAlert) {
-        el.lowTimeAlert.hidden = true;
-      }
-
-      renderResultSummary(finalizePayload.result || finalizePayload);
-      st.receipt = buildAcknowledgementReceipt(finalizePayload.result || finalizePayload);
-      renderReceipt(st.receipt);
-      setStatus("Exam submitted successfully.");
-      renderAttemptMeta({
-        started_at: null,
-        expires_at: timerState.getExpiresAt(),
-        status: "FINALIZED",
-      });
-      closeSubmitModal();
+      applyFinalizationUi(finalizePayload, "Exam submitted successfully.");
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -1962,6 +1990,7 @@
     st.sequence = Number(cached.sequence || 1);
     st.totalQuestions = Number(cached.total_questions || 0);
     st.finalized = false;
+    st.autoSubmitInProgress = false;
     st.lowTimeAlerted.clear();
 
     answerState.hydrate(cached);
