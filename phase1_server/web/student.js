@@ -4,6 +4,8 @@
   const STUDENT_ONBOARDING_KEY = "nitmexs_student_onboarding_seen";
   const STUDENT_UI_PREFS_KEY = "nitmexs_student_ui_prefs";
   const INACTIVITY_TIMEOUT_MS = 120000;
+  const HEARTBEAT_INTERVAL_MS = 15000;
+  const BROADCAST_INTERVAL_MS = 10000;
 
   const st = {
     studentId: "",
@@ -21,6 +23,20 @@
     inactivityTimerId: null,
     inactivityModalOpen: false,
     lowTimeAlerted: new Set(),
+    paletteFilter: "all",
+    heartbeatTimerId: null,
+    heartbeatLatencyMs: null,
+    broadcastTimerId: null,
+    broadcastCursor: null,
+    revisionMode: false,
+    breathingTimerId: null,
+    breathingSecondsLeft: 0,
+    receipt: null,
+    diagnostics: {
+      keyboardSeen: false,
+      mouseSeen: false,
+      lastRunAt: null,
+    },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -41,6 +57,8 @@
     markReview: $("mark-review"),
     prevQuestion: $("prev-question"),
     saveNext: $("save-next"),
+    reportQuestionIssue: $("report-question-issue"),
+    reportTechnicalIssue: $("report-technical-issue"),
     remainingTime: $("remaining-time"),
     moraleTitle: $("morale-title"),
     moraleMessage: $("morale-message"),
@@ -61,22 +79,42 @@
     openOnboarding: $("open-onboarding"),
     fontSizeSelect: $("font-size-select"),
     highContrastToggle: $("high-contrast-toggle"),
+    confirmUnansweredToggle: $("confirm-unanswered-toggle"),
     autosaveIndicator: $("autosave-indicator"),
     syncHealthIndicator: $("sync-health-indicator"),
+    heartbeatIndicator: $("heartbeat-indicator"),
     lowTimeAlert: $("low-time-alert"),
+    runDiagnostics: $("run-diagnostics"),
+    diagnosticsResult: $("diagnostics-result"),
     questionZoomOut: $("question-zoom-out"),
     questionZoomIn: $("question-zoom-in"),
     questionZoomReset: $("question-zoom-reset"),
     questionZoomLabel: $("question-zoom-label"),
     jumpUnanswered: $("jump-unanswered"),
+    filterAll: $("filter-all"),
+    filterAnswered: $("filter-answered"),
+    filterUnanswered: $("filter-unanswered"),
+    filterReview: $("filter-review"),
+    toggleFaq: $("toggle-faq"),
+    faqContent: $("faq-content"),
+    toggleRules: $("toggle-rules"),
+    rulesContent: $("rules-content"),
+    broadcastBadge: $("broadcast-badge"),
+    broadcastFeed: $("broadcast-feed"),
+    startBreathing: $("start-breathing"),
+    breathingPrompt: $("breathing-prompt"),
+    enterRevision: $("enter-revision"),
     inactivityModal: $("inactivity-modal"),
     continueAfterInactive: $("continue-after-inactive"),
+    printResult: $("print-result"),
+    receiptBox: $("receipt-box"),
   };
 
   const uiPrefs = {
     fontScale: "normal",
     highContrast: false,
     questionZoom: 100,
+    confirmUnanswered: true,
   };
 
   function createTimerState(onTick) {
@@ -138,6 +176,7 @@
 
   function createAnswerState(onChange) {
     let draftAnswers = {};
+    let confidenceByQuestion = {};
     let markedSequences = new Set();
     let answeredQuestionIds = new Set();
     let sequenceQuestionMap = new Map();
@@ -157,6 +196,7 @@
         question_id: String(item.question_id),
         selected_option_id: String(item.selected_option_id),
         sequence_number: Number(item.sequence_number || 0),
+        confidence_tag: item.confidence_tag ? String(item.confidence_tag) : null,
         saved_at: item.saved_at || new Date().toISOString(),
       };
     };
@@ -164,6 +204,7 @@
     return {
       clear() {
         draftAnswers = {};
+        confidenceByQuestion = {};
         markedSequences = new Set();
         answeredQuestionIds = new Set();
         sequenceQuestionMap = new Map();
@@ -177,6 +218,9 @@
 
         if (cache.draft_answers && typeof cache.draft_answers === "object") {
           draftAnswers = { ...draftAnswers, ...cache.draft_answers };
+        }
+        if (cache.confidence_by_question && typeof cache.confidence_by_question === "object") {
+          confidenceByQuestion = { ...confidenceByQuestion, ...cache.confidence_by_question };
         }
 
         if (Array.isArray(cache.marked_sequences)) {
@@ -208,6 +252,7 @@
       serialize() {
         return {
           draft_answers: { ...draftAnswers },
+          confidence_by_question: { ...confidenceByQuestion },
           marked_sequences: [...markedSequences],
           answered_question_ids: [...answeredQuestionIds],
           sequence_question_map: [...sequenceQuestionMap.entries()],
@@ -220,6 +265,23 @@
         }
         draftAnswers[String(questionId)] = String(selectedOptionId);
         persist();
+      },
+      setConfidence(questionId, confidenceTag) {
+        if (!questionId) {
+          return;
+        }
+        if (!confidenceTag) {
+          delete confidenceByQuestion[String(questionId)];
+        } else {
+          confidenceByQuestion[String(questionId)] = String(confidenceTag);
+        }
+        persist();
+      },
+      getConfidence(questionId) {
+        if (!questionId) {
+          return "";
+        }
+        return confidenceByQuestion[String(questionId)] || "";
       },
       getSelection(questionId) {
         if (!questionId) {
@@ -275,6 +337,19 @@
         let count = 0;
         for (let sequence = 1; sequence <= Number(totalQuestions || 0); sequence += 1) {
           if (this.isAnsweredSequence(sequence)) {
+            count += 1;
+          }
+        }
+        return count;
+      },
+      getConfidenceTaggedCount(totalQuestions) {
+        let count = 0;
+        for (let sequence = 1; sequence <= Number(totalQuestions || 0); sequence += 1) {
+          const questionId = sequenceQuestionMap.get(sequence);
+          if (!questionId) {
+            continue;
+          }
+          if (confidenceByQuestion[questionId]) {
             count += 1;
           }
         }
@@ -367,6 +442,9 @@
         if (!Number.isNaN(nextZoom)) {
           uiPrefs.questionZoom = Math.min(160, Math.max(80, Math.round(nextZoom)));
         }
+        if (typeof parsed.confirm_unanswered === "boolean") {
+          uiPrefs.confirmUnanswered = parsed.confirm_unanswered;
+        }
       }
     } catch {
       return;
@@ -380,6 +458,7 @@
         font_scale: uiPrefs.fontScale,
         high_contrast: uiPrefs.highContrast,
         question_zoom: uiPrefs.questionZoom,
+        confirm_unanswered: uiPrefs.confirmUnanswered,
       })
     );
   }
@@ -395,6 +474,9 @@
     }
     if (el.questionZoomLabel) {
       el.questionZoomLabel.textContent = `${uiPrefs.questionZoom}%`;
+    }
+    if (el.confirmUnansweredToggle) {
+      el.confirmUnansweredToggle.checked = uiPrefs.confirmUnanswered;
     }
     const zoomScale = (uiPrefs.questionZoom / 100).toFixed(2);
     document.documentElement.style.setProperty("--student-question-zoom", zoomScale);
@@ -476,6 +558,418 @@
     el.syncHealthIndicator.textContent = "LAN: Healthy";
   }
 
+  function updateHeartbeatIndicator(mode, message) {
+    if (!el.heartbeatIndicator) {
+      return;
+    }
+    el.heartbeatIndicator.classList.remove("sync-online", "sync-offline", "sync-degraded");
+    if (mode === "offline") {
+      el.heartbeatIndicator.classList.add("sync-offline");
+    } else if (mode === "degraded") {
+      el.heartbeatIndicator.classList.add("sync-degraded");
+    } else {
+      el.heartbeatIndicator.classList.add("sync-online");
+    }
+    el.heartbeatIndicator.textContent = message;
+  }
+
+  async function pingServerHeartbeat() {
+    const start = performance.now();
+    try {
+      const response = await fetch("/system/version", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const latencyMs = Math.round(performance.now() - start);
+      st.heartbeatLatencyMs = latencyMs;
+      if (latencyMs > 1500) {
+        updateHeartbeatIndicator("degraded", `Server: Slow (${latencyMs}ms)`);
+      } else {
+        updateHeartbeatIndicator("online", `Server: OK (${latencyMs}ms)`);
+      }
+    } catch {
+      updateHeartbeatIndicator("offline", "Server: Unreachable");
+    }
+  }
+
+  function updatePaletteFilterButtons() {
+    const mapping = {
+      all: el.filterAll,
+      answered: el.filterAnswered,
+      unanswered: el.filterUnanswered,
+      review: el.filterReview,
+    };
+    Object.entries(mapping).forEach(([key, button]) => {
+      if (!button) {
+        return;
+      }
+      button.classList.toggle("active-filter", st.paletteFilter === key);
+    });
+  }
+
+  function sequenceMatchesFilter(sequence) {
+    if (st.paletteFilter === "all") {
+      return true;
+    }
+    if (st.paletteFilter === "answered") {
+      return answerState.isAnsweredSequence(sequence);
+    }
+    if (st.paletteFilter === "unanswered") {
+      return !answerState.isAnsweredSequence(sequence);
+    }
+    if (st.paletteFilter === "review") {
+      return answerState.isMarked(sequence);
+    }
+    return true;
+  }
+
+  function setPaletteFilter(filterKey) {
+    st.paletteFilter = filterKey;
+    updatePaletteFilterButtons();
+    renderPalette();
+  }
+
+  function runDeviceDiagnostics() {
+    const checks = [
+      {
+        label: "Keyboard Support",
+        ok: typeof window.KeyboardEvent !== "undefined",
+      },
+      {
+        label: "Mouse Support",
+        ok: typeof window.MouseEvent !== "undefined",
+      },
+      {
+        label: "Network Online",
+        ok: navigator.onLine,
+      },
+      {
+        label: "Local Storage Available",
+        ok: (() => {
+          try {
+            localStorage.setItem("nitmexs_diag", "1");
+            localStorage.removeItem("nitmexs_diag");
+            return true;
+          } catch {
+            return false;
+          }
+        })(),
+      },
+      {
+        label: "Recent Keyboard Activity",
+        ok: st.diagnostics.keyboardSeen,
+      },
+      {
+        label: "Recent Mouse Activity",
+        ok: st.diagnostics.mouseSeen,
+      },
+    ];
+
+    st.diagnostics.lastRunAt = new Date().toISOString();
+    const allOk = checks.every((item) => item.ok);
+    const rows = checks
+      .map(
+        (item) => `<div>${item.ok ? "PASS" : "WARN"} - ${esc(item.label)}</div>`
+      )
+      .join("");
+    el.diagnosticsResult.innerHTML = `
+      <div><strong>${allOk ? "Diagnostics OK" : "Diagnostics require attention"}</strong></div>
+      ${rows}
+      <div>Checked at: ${esc(formatDate(st.diagnostics.lastRunAt))}</div>
+    `;
+    setStatus(
+      allOk
+        ? "Device diagnostics completed successfully."
+        : "Diagnostics completed with warnings. Please review before exam."
+    );
+  }
+
+  function toggleFaq() {
+    const nextHidden = !el.faqContent.hidden;
+    el.faqContent.hidden = nextHidden;
+    el.toggleFaq.textContent = nextHidden ? "Show" : "Hide";
+  }
+
+  function toggleRules() {
+    const nextHidden = !el.rulesContent.hidden;
+    el.rulesContent.hidden = nextHidden;
+    el.toggleRules.textContent = nextHidden ? "Show" : "Hide";
+  }
+
+  async function loadExamRules() {
+    if (!st.attemptId) {
+      return;
+    }
+    try {
+      const data = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/rules`,
+        { headers: studentHeaders() }
+      );
+      const rules = Array.isArray(data.rules) ? data.rules : [];
+      const list = rules
+        .map((rule) => `<li>${esc(rule)}</li>`)
+        .join("");
+      el.rulesContent.innerHTML = `
+        <p><strong>${esc(data.exam_name || st.examName || "Exam")}</strong> | ${esc(String(data.duration_minutes || "-"))} min</p>
+        <p>Negative Marking: ${esc(String(data.negative_marking ?? 0))}</p>
+        <ol>${list || "<li>No explicit rules configured.</li>"}</ol>
+      `;
+    } catch (error) {
+      el.rulesContent.innerHTML = `<p>${esc(error.message || "Unable to load rules.")}</p>`;
+    }
+  }
+
+  function renderBroadcasts(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      el.broadcastBadge.textContent = "No alerts";
+      el.broadcastBadge.classList.remove("sync-offline", "sync-degraded");
+      el.broadcastBadge.classList.add("sync-online");
+      el.broadcastFeed.textContent = "No broadcast messages yet.";
+      return;
+    }
+
+    const latest = rows[rows.length - 1];
+    const severity = String(latest.severity || "info").toLowerCase();
+    el.broadcastBadge.classList.remove("sync-online", "sync-offline", "sync-degraded");
+    if (severity === "critical") {
+      el.broadcastBadge.classList.add("sync-offline");
+      el.broadcastBadge.textContent = "Critical alert";
+    } else if (severity === "warn") {
+      el.broadcastBadge.classList.add("sync-degraded");
+      el.broadcastBadge.textContent = "Warning";
+    } else {
+      el.broadcastBadge.classList.add("sync-online");
+      el.broadcastBadge.textContent = "Info";
+    }
+
+    el.broadcastFeed.innerHTML = rows
+      .slice(-5)
+      .map(
+        (item) => `
+          <div class="broadcast-item">
+            <div><strong>${esc(String(item.severity || "info").toUpperCase())}</strong> - ${esc(item.message || "")}</div>
+            <div class="small">${esc(formatDate(item.created_at))}</div>
+          </div>
+        `
+      )
+      .join("");
+  }
+
+  async function pullBroadcasts() {
+    if (!st.attemptId || st.finalized) {
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        limit: "20",
+      });
+      if (st.broadcastCursor) {
+        query.set("since", st.broadcastCursor);
+      }
+      const data = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/broadcasts?${query.toString()}`,
+        { headers: studentHeaders() }
+      );
+      const rows = data.broadcasts || [];
+      if (rows.length > 0) {
+        st.broadcastCursor = rows[rows.length - 1].created_at || st.broadcastCursor;
+      }
+      renderBroadcasts(rows);
+    } catch {
+      return;
+    }
+  }
+
+  async function reportQuestionIssue() {
+    if (!st.attemptId || !st.currentQuestion || st.finalized) {
+      setStatus("Active question required to report issue.");
+      return;
+    }
+    const issueType = window.prompt("Issue type? (example: typo, unclear, option_mismatch)", "content_issue");
+    if (issueType === null) {
+      return;
+    }
+    const note = window.prompt("Short note (optional):", "");
+    try {
+      await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/question-issue`, {
+        method: "POST",
+        headers: studentHeaders(),
+        body: {
+          question_id: st.currentQuestion.id,
+          issue_type: issueType || "content_issue",
+          note: note || null,
+        },
+      });
+      setStatus("Question issue reported to admin/proctor.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function reportTechnicalIssue() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("Active attempt required to report technical issue.");
+      return;
+    }
+    const issueType = window.prompt("Technical issue type? (example: lag, keyboard, network)", "technical_issue");
+    if (issueType === null) {
+      return;
+    }
+    const note = window.prompt("Short note (optional):", "");
+    try {
+      await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/technical-issue`, {
+        method: "POST",
+        headers: studentHeaders(),
+        body: {
+          issue_type: issueType || "technical_issue",
+          note: note || null,
+        },
+      });
+      setStatus("Technical issue reported. Continue exam; autosave remains active.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function stopBreathingPrompt() {
+    if (st.breathingTimerId) {
+      clearInterval(st.breathingTimerId);
+      st.breathingTimerId = null;
+    }
+  }
+
+  function startBreathingPrompt() {
+    if (!el.breathingPrompt) {
+      return;
+    }
+    stopBreathingPrompt();
+    st.breathingSecondsLeft = 30;
+    el.breathingPrompt.textContent = "Breathing reset started: Inhale 4s, hold 2s, exhale 4s.";
+    st.breathingTimerId = window.setInterval(() => {
+      st.breathingSecondsLeft -= 1;
+      if (st.breathingSecondsLeft <= 0) {
+        stopBreathingPrompt();
+        el.breathingPrompt.textContent = "Reset complete. You're ready to continue with steady focus.";
+        return;
+      }
+      const phase = st.breathingSecondsLeft % 10;
+      let instruction = "Inhale";
+      if (phase >= 4 && phase < 6) {
+        instruction = "Hold";
+      } else if (phase >= 6) {
+        instruction = "Exhale";
+      }
+      el.breathingPrompt.textContent =
+        `Breathing reset (${st.breathingSecondsLeft}s): ${instruction} slowly and relax shoulders.`;
+    }, 1000);
+  }
+
+  async function enterRevisionMode() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("Active exam required for revision mode.");
+      return;
+    }
+    st.revisionMode = true;
+    const total = Number(st.totalQuestions || 0);
+    let target = 0;
+    for (let sequence = 1; sequence <= total; sequence += 1) {
+      if (answerState.isMarked(sequence) || !answerState.isAnsweredSequence(sequence)) {
+        target = sequence;
+        break;
+      }
+    }
+    st.paletteFilter = "review";
+    renderPalette();
+    if (!target) {
+      st.paletteFilter = "unanswered";
+      renderPalette();
+      await jumpToFirstUnanswered();
+      setStatus("Revision mode active. Reviewing unanswered questions.");
+      return;
+    }
+    await fetchQuestion(target);
+    setStatus(`Revision mode active. Reviewing question #${target}.`);
+  }
+
+  function buildAcknowledgementReceipt(summary) {
+    const receiptId = `RCPT-${st.attemptId.slice(0, 8)}-${Date.now().toString().slice(-6)}`;
+    return {
+      receipt_id: receiptId,
+      student_id: st.studentId,
+      exam_id: st.examId,
+      exam_name: st.examName,
+      attempt_id: st.attemptId,
+      submitted_at: new Date().toISOString(),
+      score: Number(summary?.total_score ?? 0),
+      percentage: Number(summary?.percentage ?? 0),
+      passed: Boolean(summary?.passed),
+    };
+  }
+
+  function renderReceipt(receipt) {
+    if (!receipt || !el.receiptBox) {
+      return;
+    }
+    if (el.printResult) {
+      el.printResult.disabled = false;
+    }
+    el.receiptBox.innerHTML = `
+      <div class="summary-row"><span>Receipt ID</span><strong>${esc(receipt.receipt_id)}</strong></div>
+      <div class="summary-row"><span>Student</span><strong>${esc(receipt.student_id)}</strong></div>
+      <div class="summary-row"><span>Exam</span><strong>${esc(receipt.exam_name || receipt.exam_id)}</strong></div>
+      <div class="summary-row"><span>Attempt</span><strong>${esc(receipt.attempt_id)}</strong></div>
+      <div class="summary-row"><span>Submitted At</span><strong>${esc(formatDate(receipt.submitted_at))}</strong></div>
+      <div class="summary-row"><span>Score</span><strong>${esc(receipt.score.toFixed(2))}</strong></div>
+      <div class="summary-row"><span>Percentage</span><strong>${esc(receipt.percentage.toFixed(2))}%</strong></div>
+      <div class="summary-row"><span>Status</span><strong>${receipt.passed ? "PASS" : "NEEDS IMPROVEMENT"}</strong></div>
+    `;
+  }
+
+  function printResultSlip() {
+    if (!st.receipt) {
+      setStatus("Submit exam first to generate printable result slip.");
+      return;
+    }
+    const popup = window.open("", "_blank", "width=820,height=720");
+    if (!popup) {
+      setStatus("Popup blocked. Please allow popups to print result slip.");
+      return;
+    }
+    popup.document.write(`
+      <html>
+        <head>
+          <title>NITMEXS Result Slip</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+            h1 { margin: 0 0 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            td { border: 1px solid #ddd; padding: 8px; }
+            td:first-child { width: 30%; font-weight: bold; background: #f7f7f7; }
+          </style>
+        </head>
+        <body>
+          <h1>NITMEXS Result Slip</h1>
+          <table>
+            <tr><td>Receipt ID</td><td>${esc(st.receipt.receipt_id)}</td></tr>
+            <tr><td>Student</td><td>${esc(st.receipt.student_id)}</td></tr>
+            <tr><td>Exam</td><td>${esc(st.receipt.exam_name || st.receipt.exam_id)}</td></tr>
+            <tr><td>Attempt</td><td>${esc(st.receipt.attempt_id)}</td></tr>
+            <tr><td>Submitted</td><td>${esc(formatDate(st.receipt.submitted_at))}</td></tr>
+            <tr><td>Score</td><td>${esc(st.receipt.score.toFixed(2))}</td></tr>
+            <tr><td>Percentage</td><td>${esc(st.receipt.percentage.toFixed(2))}%</td></tr>
+            <tr><td>Status</td><td>${st.receipt.passed ? "PASS" : "NEEDS IMPROVEMENT"}</td></tr>
+          </table>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
   function showLowTimeAlert(message) {
     if (!el.lowTimeAlert) {
       return;
@@ -501,6 +995,9 @@
         st.lowTimeAlerted.add(item.seconds);
         showLowTimeAlert(item.message);
         setStatus(item.message);
+        if (item.seconds <= 120) {
+          startBreathingPrompt();
+        }
       }
     }
   }
@@ -780,11 +1277,15 @@
     const total = Number(st.totalQuestions || 0);
     if (!total) {
       el.questionPalette.innerHTML = '<p class="palette-placeholder">Question palette will appear after exam start.</p>';
+      updatePaletteFilterButtons();
       return;
     }
 
     const paletteButtons = [];
     for (let sequence = 1; sequence <= total; sequence += 1) {
+      if (!sequenceMatchesFilter(sequence)) {
+        continue;
+      }
       const marked = answerState.isMarked(sequence);
       const answered = answerState.isAnsweredSequence(sequence);
       const stateClass = marked ? "review" : answered ? "answered" : "unanswered";
@@ -793,7 +1294,12 @@
         `<button type="button" class="palette-btn ${stateClass} ${currentClass}" data-sequence="${sequence}">${sequence}</button>`
       );
     }
-    el.questionPalette.innerHTML = paletteButtons.join("");
+    if (paletteButtons.length === 0) {
+      el.questionPalette.innerHTML = '<p class="palette-placeholder">No questions match this filter.</p>';
+    } else {
+      el.questionPalette.innerHTML = paletteButtons.join("");
+    }
+    updatePaletteFilterButtons();
   }
 
   function renderExamOptions(exams) {
@@ -860,6 +1366,16 @@
       el.optionsList.appendChild(label);
     }
 
+    const selectedConfidence = answerState.getConfidence(payload.question.id);
+    document
+      .querySelectorAll('input[name="confidence-tag"]')
+      .forEach((input) => {
+        if (!(input instanceof HTMLInputElement)) {
+          return;
+        }
+        input.checked = input.value === selectedConfidence;
+      });
+
     updateMarkReviewLabel();
     updateProgress();
     renderPalette();
@@ -872,6 +1388,18 @@
     el.markReview.disabled = !active;
     el.prevQuestion.disabled = !active || st.sequence <= 1;
     el.saveNext.disabled = !active;
+    if (el.reportQuestionIssue) {
+      el.reportQuestionIssue.disabled = !active;
+    }
+    if (el.reportTechnicalIssue) {
+      el.reportTechnicalIssue.disabled = !active;
+    }
+    if (el.enterRevision) {
+      el.enterRevision.disabled = !active;
+    }
+    if (el.startBreathing) {
+      el.startBreathing.disabled = !active;
+    }
     el.submitExam.disabled = !active;
     el.jumpUnanswered.disabled = !active;
   }
@@ -879,6 +1407,14 @@
   function currentlySelectedOptionId() {
     const selected = el.optionsList.querySelector('input[name="selected-option"]:checked');
     return selected ? selected.value : "";
+  }
+
+  function currentlySelectedConfidenceTag() {
+    const selected = document.querySelector('input[name="confidence-tag"]:checked');
+    if (!(selected instanceof HTMLInputElement)) {
+      return "";
+    }
+    return selected.value || "";
   }
 
   function rememberCurrentSelection() {
@@ -890,6 +1426,7 @@
       return "";
     }
     answerState.rememberSelection(st.currentQuestion.id, selectedOptionId);
+    answerState.setConfidence(st.currentQuestion.id, currentlySelectedConfidenceTag() || null);
     setAutosaveIndicator("local", "Saved Locally");
     return selectedOptionId;
   }
@@ -903,6 +1440,7 @@
       question_id: questionId,
       selected_option_id: selectedOptionId,
       sequence_number: sequenceNumber,
+      confidence_tag: answerState.getConfidence(questionId) || null,
       saved_at: new Date().toISOString(),
     };
 
@@ -921,6 +1459,7 @@
         body: {
           question_id: questionId,
           selected_option_id: selectedOptionId,
+          confidence_tag: queueItem.confidence_tag,
         },
       });
       answerState.markSubmitted(questionId);
@@ -960,6 +1499,7 @@
           body: {
             question_id: item.question_id,
             selected_option_id: item.selected_option_id,
+            confidence_tag: item.confidence_tag || null,
           },
         });
         answerState.markSubmitted(item.question_id);
@@ -1098,14 +1638,41 @@
       st.totalQuestions = 0;
       st.currentQuestion = null;
       st.finalized = false;
+      st.receipt = null;
+      st.broadcastCursor = null;
+      st.revisionMode = false;
       st.lowTimeAlerted.clear();
       answerState.clear();
       setAutosaveIndicator("local", "Local Draft");
       updateSyncHealthIndicator();
       resetInactivityTimer();
+      if (el.printResult) {
+        el.printResult.disabled = true;
+      }
+      if (el.receiptBox) {
+        el.receiptBox.textContent = "Acknowledgement receipt will appear here after submission.";
+      }
+      if (el.broadcastFeed) {
+        el.broadcastFeed.textContent = "Waiting for admin broadcast messages...";
+      }
+      if (el.broadcastBadge) {
+        el.broadcastBadge.textContent = "No alerts";
+      }
+      if (el.breathingPrompt) {
+        el.breathingPrompt.textContent = "Use when you feel rushed. Slow inhale-exhale can stabilize focus.";
+      }
+      document
+        .querySelectorAll('input[name="confidence-tag"]')
+        .forEach((input) => {
+          if (input instanceof HTMLInputElement) {
+            input.checked = false;
+          }
+        });
 
       timerState.start(startPayload.expires_at);
       await refreshAttemptStatus();
+      await loadExamRules();
+      await pullBroadcasts();
       applyCachedAttemptState();
 
       setAttemptControlsEnabled(true);
@@ -1192,18 +1759,62 @@
 
     const total = Number(st.totalQuestions || 0);
     const answered = answerState.getAnsweredCount(total);
+    const confidenceTagged = answerState.getConfidenceTaggedCount(total);
     const marked = answerState.getMarkedCount();
     const unanswered = Math.max(0, total - answered);
     const pendingSync = answerState.getPendingCount();
 
+    const checklist = [
+      {
+        label: "Answers reviewed",
+        ok: answered > 0,
+        detail: `${answered}/${total} answered`,
+      },
+      {
+        label: "No pending sync",
+        ok: pendingSync === 0,
+        detail: `${pendingSync} pending`,
+      },
+      {
+        label: "Unanswered questions acknowledged",
+        ok: unanswered === 0 || !uiPrefs.confirmUnanswered,
+        detail: `${unanswered} unanswered`,
+      },
+      {
+        label: "Confidence tags added",
+        ok: confidenceTagged > 0,
+        detail: `${confidenceTagged}/${total} tagged`,
+      },
+      {
+        label: "Revision mode",
+        ok: st.revisionMode,
+        detail: st.revisionMode ? "visited" : "not used",
+      },
+      {
+        label: "Time awareness",
+        ok: timerState.getRemainingSeconds() > 0,
+        detail: timerState.getRemainingText(),
+      },
+      {
+        label: "Tab switch warnings reviewed",
+        ok: true,
+        detail: `${st.warningCount} warning(s)`,
+      },
+    ];
+
     el.submitSummary.innerHTML = `
       <div class="summary-row"><span>Total Questions</span><strong>${esc(total)}</strong></div>
-      <div class="summary-row"><span>Answered</span><strong>${esc(answered)}</strong></div>
-      <div class="summary-row"><span>Unanswered</span><strong>${esc(unanswered)}</strong></div>
       <div class="summary-row"><span>Marked for Review</span><strong>${esc(marked)}</strong></div>
-      <div class="summary-row"><span>Pending Sync</span><strong>${esc(pendingSync)}</strong></div>
-      <div class="summary-row"><span>Time Left</span><strong>${esc(timerState.getRemainingText())}</strong></div>
-      <div class="summary-row"><span>Tab Switch Warnings</span><strong>${esc(st.warningCount)}</strong></div>
+      ${checklist
+        .map(
+          (item) => `
+            <div class="summary-row ${item.ok ? "check-pass" : "check-warn"}">
+              <span>${item.ok ? "PASS" : "WARN"} - ${esc(item.label)}</span>
+              <strong>${esc(item.detail)}</strong>
+            </div>
+          `
+        )
+        .join("")}
     `;
 
     el.submitModal.hidden = false;
@@ -1229,6 +1840,19 @@
         return;
       }
 
+      const total = Number(st.totalQuestions || 0);
+      const answered = answerState.getAnsweredCount(total);
+      const unanswered = Math.max(0, total - answered);
+      if (uiPrefs.confirmUnanswered && unanswered > 0) {
+        const proceed = window.confirm(
+          `You still have ${unanswered} unanswered question(s). Submit anyway?`
+        );
+        if (!proceed) {
+          setStatus("Submission cancelled. Please review unanswered questions.");
+          return;
+        }
+      }
+
       const finalizePayload = await api(
         `/student/attempts/${encodeURIComponent(st.attemptId)}/finalize`,
         {
@@ -1249,6 +1873,11 @@
         clearInterval(st.moraleTimerId);
         st.moraleTimerId = null;
       }
+      if (st.broadcastTimerId) {
+        clearInterval(st.broadcastTimerId);
+        st.broadcastTimerId = null;
+      }
+      stopBreathingPrompt();
       clearAttemptCache();
       setAutosaveIndicator("synced", "Finalized");
       if (el.lowTimeAlert) {
@@ -1256,6 +1885,8 @@
       }
 
       renderResultSummary(finalizePayload.result || finalizePayload);
+      st.receipt = buildAcknowledgementReceipt(finalizePayload.result || finalizePayload);
+      renderReceipt(st.receipt);
       setStatus("Exam submitted successfully.");
       renderAttemptMeta({
         started_at: null,
@@ -1281,6 +1912,10 @@
         { headers: studentHeaders() }
       );
       renderResultSummary(resultPayload);
+      if (!st.receipt) {
+        st.receipt = buildAcknowledgementReceipt(resultPayload);
+      }
+      renderReceipt(st.receipt);
       setStatus("Result loaded.");
     } catch (error) {
       setStatus(error.message);
@@ -1301,6 +1936,15 @@
       clearTimeout(st.inactivityTimerId);
       st.inactivityTimerId = null;
     }
+    if (st.heartbeatTimerId) {
+      clearInterval(st.heartbeatTimerId);
+      st.heartbeatTimerId = null;
+    }
+    if (st.broadcastTimerId) {
+      clearInterval(st.broadcastTimerId);
+      st.broadcastTimerId = null;
+    }
+    stopBreathingPrompt();
     closeInactivityModal();
     localStorage.removeItem(STUDENT_SESSION_KEY);
     window.location.href = "/web?target=student&reason=login_required";
@@ -1330,6 +1974,8 @@
         const sequenceToLoad = Math.max(1, Math.min(st.sequence, st.totalQuestions || st.sequence));
         await fetchQuestion(sequenceToLoad);
         await flushPendingQueue();
+        await loadExamRules();
+        await pullBroadcasts();
         await loadMoraleCoach();
         resetInactivityTimer();
         setAutosaveIndicator(
@@ -1372,6 +2018,10 @@
       applyUiPrefs();
       persistUiPrefs();
     });
+    el.confirmUnansweredToggle.addEventListener("change", () => {
+      uiPrefs.confirmUnanswered = Boolean(el.confirmUnansweredToggle.checked);
+      persistUiPrefs();
+    });
     el.questionZoomIn.addEventListener("click", () => {
       setQuestionZoom(uiPrefs.questionZoom + 10);
     });
@@ -1388,7 +2038,19 @@
 
     el.saveNext.addEventListener("click", saveAndNext);
     el.markReview.addEventListener("click", toggleMarkForReview);
+    el.reportQuestionIssue.addEventListener("click", reportQuestionIssue);
+    el.reportTechnicalIssue.addEventListener("click", reportTechnicalIssue);
     el.jumpUnanswered.addEventListener("click", jumpToFirstUnanswered);
+    el.filterAll.addEventListener("click", () => setPaletteFilter("all"));
+    el.filterAnswered.addEventListener("click", () => setPaletteFilter("answered"));
+    el.filterUnanswered.addEventListener("click", () => setPaletteFilter("unanswered"));
+    el.filterReview.addEventListener("click", () => setPaletteFilter("review"));
+    el.toggleFaq.addEventListener("click", toggleFaq);
+    el.toggleRules.addEventListener("click", toggleRules);
+    el.startBreathing.addEventListener("click", startBreathingPrompt);
+    el.runDiagnostics.addEventListener("click", runDeviceDiagnostics);
+    el.enterRevision.addEventListener("click", enterRevisionMode);
+    el.printResult.addEventListener("click", printResultSlip);
     el.submitExam.addEventListener("click", openSubmitModal);
     el.cancelSubmit.addEventListener("click", closeSubmitModal);
     el.confirmSubmit.addEventListener("click", confirmSubmitExam);
@@ -1407,6 +2069,21 @@
       setStatus("Answer saved locally.");
       resetInactivityTimer();
     });
+
+    document
+      .querySelectorAll('input[name="confidence-tag"]')
+      .forEach((input) => {
+        if (!(input instanceof HTMLInputElement)) {
+          return;
+        }
+        input.addEventListener("change", () => {
+          if (!st.currentQuestion) {
+            return;
+          }
+          answerState.setConfidence(st.currentQuestion.id, input.value || null);
+          setStatus(`Confidence tagged as '${input.value || "none"}'.`);
+        });
+      });
 
     el.questionPalette.addEventListener("click", (event) => {
       const target = event.target;
@@ -1442,18 +2119,31 @@
     activityEvents.forEach((eventName) => {
       document.addEventListener(eventName, resetInactivityTimer, { passive: true });
     });
+    document.addEventListener("keydown", () => {
+      st.diagnostics.keyboardSeen = true;
+    });
+    document.addEventListener("mousemove", () => {
+      st.diagnostics.mouseSeen = true;
+    });
 
     window.addEventListener("online", () => {
       flushPendingQueue();
       setStatus("LAN reconnected. Syncing saved answers...");
       updateSyncHealthIndicator();
+      pingServerHeartbeat();
+      pullBroadcasts();
     });
 
     window.addEventListener("offline", () => {
       updateSyncHealthIndicator();
+      updateHeartbeatIndicator("offline", "Server: Unreachable");
     });
 
-    window.addEventListener("beforeunload", () => {
+    window.addEventListener("beforeunload", (event) => {
+      if (st.attemptId && !st.finalized) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
       timerState.stop();
       if (st.syncIntervalId) {
         clearInterval(st.syncIntervalId);
@@ -1464,6 +2154,13 @@
       if (st.inactivityTimerId) {
         clearTimeout(st.inactivityTimerId);
       }
+      if (st.heartbeatTimerId) {
+        clearInterval(st.heartbeatTimerId);
+      }
+      if (st.broadcastTimerId) {
+        clearInterval(st.broadcastTimerId);
+      }
+      stopBreathingPrompt();
     });
 
     window.addEventListener("keydown", (event) => {
@@ -1525,15 +2222,45 @@
     renderPalette();
     updateProgress();
     setAttemptControlsEnabled(false);
+    if (el.printResult) {
+      el.printResult.disabled = true;
+    }
     if (el.lowTimeAlert) {
       el.lowTimeAlert.hidden = true;
     }
+    if (el.faqContent) {
+      el.faqContent.hidden = true;
+    }
+    if (el.toggleFaq) {
+      el.toggleFaq.textContent = "Show";
+    }
+    if (el.rulesContent) {
+      el.rulesContent.hidden = true;
+      el.rulesContent.innerHTML = "<p>Rules will load after exam start.</p>";
+    }
+    if (el.toggleRules) {
+      el.toggleRules.textContent = "Show";
+    }
+    if (el.broadcastFeed) {
+      el.broadcastFeed.textContent = "No broadcast messages yet.";
+    }
+    if (el.broadcastBadge) {
+      el.broadcastBadge.textContent = "No alerts";
+    }
     setAutosaveIndicator("synced", "Waiting");
     updateSyncHealthIndicator();
+    updateHeartbeatIndicator("degraded", "Server: Checking...");
     bindEvents();
     maybeShowOnboarding();
 
     await loadVersion();
+    await pingServerHeartbeat();
+    st.heartbeatTimerId = window.setInterval(() => {
+      pingServerHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+    st.broadcastTimerId = window.setInterval(() => {
+      pullBroadcasts();
+    }, BROADCAST_INTERVAL_MS);
     await loadExams();
     await restoreLatestCachedAttempt();
   }

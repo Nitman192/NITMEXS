@@ -91,6 +91,31 @@
           </article>
 
           <article class="panel">
+            <h2>Emergency Force Submit</h2>
+            <div class="row">
+              <input id="force-attempt-id" placeholder="Attempt ID (individual force submit)" style="flex:1 1 320px">
+              <button id="force-submit-attempt" class="warn">Force Submit Attempt</button>
+              <button id="force-submit-expired" class="warn">Force Submit Expired (Selected Exam)</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="exam-control-reason" placeholder="Pause/Resume reason (optional)" style="flex:1 1 260px">
+              <button id="pause-exam" class="warn">Emergency Pause Exam</button>
+              <button id="resume-exam">Resume Paused Attempts</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="broadcast-message" placeholder="Broadcast message to all active candidates..." style="flex:1 1 320px">
+              <select id="broadcast-severity" style="width:120px">
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="critical">Critical</option>
+              </select>
+              <button id="send-broadcast" class="alt">Send Broadcast</button>
+            </div>
+            <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
+            <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
+          </article>
+
+          <article class="panel">
             <h2>Alert Queue</h2>
             <div class="table-wrap">
               <table>
@@ -129,6 +154,31 @@
                   </tr>
                 </thead>
                 <tbody id="events-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Deep Audit Explorer</h2>
+            <div class="row">
+              <input id="audit-entity-type" placeholder="entity_type (attempt/exam)" style="width:180px">
+              <input id="audit-entity-id" placeholder="entity_id" style="flex:1 1 180px">
+              <input id="audit-event-type" placeholder="event_type" style="width:170px">
+              <input id="audit-actor-id" placeholder="actor_id" style="width:170px">
+              <button id="load-audit-events" class="alt">Load Audit Events</button>
+            </div>
+            <div class="table-wrap" style="margin-top:8px">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Entity</th>
+                    <th>Event</th>
+                    <th>Actor</th>
+                    <th>Payload</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-events-body"></tbody>
               </table>
             </div>
           </article>
@@ -184,10 +234,19 @@
                     <th>Topic</th>
                     <th>Difficulty</th>
                     <th>Marks</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="questions-body"></tbody>
               </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Student-View Preview</h2>
+            <p class="small">Question row se Preview click karo. Yahan student-facing question view render hoga.</p>
+            <div id="student-preview-box" class="box">
+              <p class="small">No preview selected.</p>
             </div>
           </article>
 
@@ -364,6 +423,7 @@
             </div>
             <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
             <pre id="dashboard-box" class="box mono">Dashboard snapshot will appear here.</pre>
+            <div id="infra-health-box" class="box">Infra health summary will appear here.</div>
           </article>
 
           <article class="guide-only panel">

@@ -36,3 +36,28 @@ class AuditService:
 
     def list_entity_timeline(self, entity_type: str, entity_id: str) -> list[dict[str, Any]]:
         return self._audit_repo.list_events(entity_type=entity_type, entity_id=entity_id)
+
+    def search_events(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        event_type: str | None = None,
+        actor_type: str | None = None,
+        actor_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        if limit < 1 or limit > 2000:
+            raise ValueError("limit must be between 1 and 2000")
+        return self._audit_repo.search_events(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            since=since,
+            until=until,
+            limit=limit,
+        )

@@ -18,7 +18,10 @@ from fastapi.responses import Response
 from phase1_server.api.deps import admin_only
 from phase1_server.schemas import (
     AddQuestionsSchema,
+    AdminBroadcastSchema,
     ExamCreateSchema,
+    ExamControlSchema,
+    ForceSubmitSchema,
     ProctorAlertResolveSchema,
     QuestionCreateSchema,
     QuestionMetadataUpdateSchema,
@@ -29,6 +32,11 @@ from phase1_server.schemas import (
 )
 from phase1_server.services.analytics_service import AnalyticsService
 from phase1_server.services.audit_service import AuditService
+from phase1_server.services.delivery_service import (
+    AttemptStateError,
+    DeliveryError,
+    DeliveryService,
+)
 from phase1_server.services.exam_service import (
     ExamAlreadyPublishedError,
     ExamNotFoundError,
@@ -491,6 +499,104 @@ def close_exam(
     }
 
 
+@router.post("/exams/{exam_id}/pause")
+def pause_exam_attempts(
+    exam_id: str,
+    request: Request,
+    payload: ExamControlSchema | None = None,
+    limit: int = Query(default=2000, ge=1, le=5000),
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.pause_exam_attempts(
+                exam_id=exam_id,
+                actor_id=x_admin_id,
+                reason=None if payload is None else payload.reason,
+                limit=limit,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/resume")
+def resume_exam_attempts(
+    exam_id: str,
+    request: Request,
+    payload: ExamControlSchema | None = None,
+    limit: int = Query(default=2000, ge=1, le=5000),
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.resume_exam_attempts(
+                exam_id=exam_id,
+                actor_id=x_admin_id,
+                reason=None if payload is None else payload.reason,
+                limit=limit,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/broadcast")
+def broadcast_to_candidates(
+    exam_id: str,
+    payload: AdminBroadcastSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.publish_exam_broadcast(
+                exam_id=exam_id,
+                message=payload.message,
+                severity=payload.severity,
+                actor_id=x_admin_id,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
 @router.get("/exams")
 def list_exams(request: Request):
     db = request.app.state.db
@@ -575,6 +681,106 @@ def get_attempt_timeline(attempt_id: str, request: Request):
         timeline = service.list_entity_timeline(entity_type="attempt", entity_id=attempt_id)
 
     return {"status": "success", "data": timeline}
+
+
+@router.get("/audit/events")
+def search_audit_events(
+    request: Request,
+    entity_type: str | None = Query(default=None),
+    entity_id: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    actor_type: str | None = Query(default=None),
+    actor_id: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    until: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=2000),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = AuditService(uow.audit_events)
+        try:
+            events = service.search_events(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                event_type=event_type,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                since=since,
+                until=until,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "success",
+        "data": {
+            "count": len(events),
+            "events": events,
+        },
+    }
+
+
+@router.post("/attempts/{attempt_id}/force-submit")
+def force_submit_attempt(
+    attempt_id: str,
+    request: Request,
+    payload: ForceSubmitSchema | None = None,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.force_finalize_attempt_by_admin(
+                attempt_id=attempt_id,
+                actor_id=x_admin_id,
+                reason=None if payload is None else payload.reason,
+            )
+        except AttemptStateError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/force-submit-expired")
+def force_submit_expired_attempts(
+    request: Request,
+    exam_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=5000),
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.force_finalize_expired_attempts(
+                actor_id=x_admin_id,
+                exam_id=exam_id,
+                limit=limit,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
 
 
 @router.get("/system/metrics")

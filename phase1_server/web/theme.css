@@ -957,6 +957,15 @@ body.student-body .low-time-alert {
   font-weight: 700;
 }
 
+body.student-body .device-checks {
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+  background: #f7faff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
 body.student-body .exam-layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(250px, 1fr);
@@ -1071,6 +1080,18 @@ body.student-body .choice-option input {
   margin-top: 2px;
 }
 
+body.student-body .confidence-row {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+body.student-body .confidence-row .utility-check {
+  margin: 0;
+}
+
 body.student-body .main-actions {
   display: flex;
   gap: 8px;
@@ -1148,6 +1169,19 @@ body.student-body .palette-head p {
 body.student-body .jump-unanswered-btn {
   margin-top: 8px;
   width: 100%;
+}
+
+body.student-body .palette-filters {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+body.student-body .palette-filters button.active-filter {
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #ffffff;
 }
 
 body.student-body .palette-grid {
@@ -1231,6 +1265,28 @@ body.student-body .dot.review {
 body.student-body .submit-card {
   display: grid;
   gap: 8px;
+}
+
+body.student-body .faq-card,
+body.student-body .rules-card,
+body.student-body .broadcast-card,
+body.student-body .stress-card {
+  padding: 12px;
+}
+
+body.student-body .rules-card ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+body.student-body .broadcast-item {
+  border: 1px solid #dce6f3;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px;
+  margin-top: 6px;
 }
 
 body.student-body .result-card {
@@ -1467,6 +1523,16 @@ body.student-body .summary-row:last-child {
   border-bottom: none;
 }
 
+body.student-body .summary-row.check-pass {
+  background: #ecfdf3;
+  color: #14532d;
+}
+
+body.student-body .summary-row.check-warn {
+  background: #fff7e8;
+  color: #8a4f00;
+}
+
 body.student-body .modal-actions {
   margin-top: 12px;
   display: flex;
@@ -1533,6 +1599,11 @@ body.student-body.theme-dark .exam-status-row {
   color: #d6e4ff;
 }
 
+body.student-body.theme-dark .device-checks {
+  border-color: #2c3f5f;
+  background: #152238;
+}
+
 body.student-body.theme-dark .timer-display {
   color: #ffffff;
 }
@@ -1591,6 +1662,10 @@ body.student-body.theme-dark .choice-option:hover {
   background: #152640;
 }
 
+body.student-body.theme-dark .confidence-row {
+  color: #cddaf1;
+}
+
 body.student-body.theme-dark input,
 body.student-body.theme-dark select,
 body.student-body.theme-dark textarea {
@@ -1647,6 +1722,12 @@ body.student-body.theme-dark .result-card pre {
   border-color: #314764;
   background: #0d172a;
   color: #e6eefe;
+}
+
+body.student-body.theme-dark .broadcast-item {
+  border-color: #324865;
+  background: #132036;
+  color: #dce7ff;
 }
 
 body.student-body.theme-dark .result-placeholder,
@@ -1711,6 +1792,16 @@ body.student-body.theme-dark .summary-row {
   color: #d5e3fb;
 }
 
+body.student-body.theme-dark .summary-row.check-pass {
+  background: rgba(24, 67, 46, 0.45);
+  color: #c6f8da;
+}
+
+body.student-body.theme-dark .summary-row.check-warn {
+  background: rgba(88, 58, 19, 0.55);
+  color: #ffdca8;
+}
+
 body.student-body.theme-dark .status-pill {
   border-color: #354a6a;
   background: #16243c;
@@ -1762,9 +1853,11 @@ body.student-body.student-high-contrast.theme-dark {
 body.student-body.student-high-contrast .card,
 body.student-body.student-high-contrast .question-viewer,
 body.student-body.student-high-contrast .choice-option,
+body.student-body.student-high-contrast .broadcast-item,
 body.student-body.student-high-contrast .result-placeholder,
 body.student-body.student-high-contrast .result-kpi,
 body.student-body.student-high-contrast .exam-status-row,
+body.student-body.student-high-contrast .device-checks,
 body.student-body.student-high-contrast .submit-summary,
 body.student-body.student-high-contrast .modal-card {
   background: #000000 !important;

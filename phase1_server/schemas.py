@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, conint, confloat
 
 
@@ -56,6 +58,7 @@ class AddQuestionsSchema(BaseModel):
 class AnswerSubmitSchema(BaseModel):
     question_id: str = Field(min_length=1)
     selected_option_id: str = Field(min_length=1)
+    confidence_tag: Literal["sure", "maybe", "guess"] | None = None
 
 
 class StudentRegisterSchema(BaseModel):
@@ -66,3 +69,27 @@ class StudentRegisterSchema(BaseModel):
 class StudentGenerateSchema(BaseModel):
     prefix: str = Field(default="cadet", min_length=2, max_length=20)
     count: conint(ge=1, le=200) = 10
+
+
+class ForceSubmitSchema(BaseModel):
+    reason: str | None = Field(default=None, max_length=400)
+
+
+class StudentIssueReportSchema(BaseModel):
+    question_id: str = Field(min_length=1)
+    issue_type: str = Field(default="content_issue", min_length=2, max_length=80)
+    note: str | None = Field(default=None, max_length=600)
+
+
+class TechnicalIssueReportSchema(BaseModel):
+    issue_type: str = Field(default="technical_issue", min_length=2, max_length=80)
+    note: str | None = Field(default=None, max_length=600)
+
+
+class AdminBroadcastSchema(BaseModel):
+    message: str = Field(min_length=3, max_length=600)
+    severity: Literal["info", "warn", "critical"] = "info"
+
+
+class ExamControlSchema(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)

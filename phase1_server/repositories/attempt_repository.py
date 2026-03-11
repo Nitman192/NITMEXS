@@ -98,6 +98,20 @@ class AttemptRepository(Protocol):
         cursor_event_id: str | None = None,
     ) -> list[dict]: ...
 
+    def list_expired_active_attempt_ids(
+        self,
+        now_iso: str,
+        exam_id: str | None = None,
+        limit: int = 500,
+    ) -> list[str]: ...
+
+    def list_attempt_ids_by_exam_and_status(
+        self,
+        exam_id: str,
+        status: AttemptStatus,
+        limit: int = 1000,
+    ) -> list[str]: ...
+
     def get_exam_question_analytics(self, exam_id: str) -> list[dict]: ...
 
     def get_exam_attempt_scores(self, exam_id: str) -> list[dict]: ...
@@ -696,3 +710,50 @@ class SQLiteAttemptRepository:
             }
             for row in rows
         ]
+
+    def list_expired_active_attempt_ids(
+        self,
+        now_iso: str,
+        exam_id: str | None = None,
+        limit: int = 500,
+    ) -> list[str]:
+        rows = self._conn.execute(
+            """
+            SELECT id
+            FROM attempts
+            WHERE
+                status IN (?, ?)
+                AND expires_at IS NOT NULL
+                AND expires_at < ?
+                AND (? IS NULL OR exam_id = ?)
+            ORDER BY expires_at ASC
+            LIMIT ?
+            """,
+            (
+                AttemptStatus.ACTIVE.value,
+                AttemptStatus.PAUSED.value,
+                now_iso,
+                exam_id,
+                exam_id,
+                limit,
+            ),
+        ).fetchall()
+        return [row["id"] for row in rows]
+
+    def list_attempt_ids_by_exam_and_status(
+        self,
+        exam_id: str,
+        status: AttemptStatus,
+        limit: int = 1000,
+    ) -> list[str]:
+        rows = self._conn.execute(
+            """
+            SELECT id
+            FROM attempts
+            WHERE exam_id = ? AND status = ?
+            ORDER BY created_at ASC
+            LIMIT ?
+            """,
+            (exam_id, status.value, limit),
+        ).fetchall()
+        return [row["id"] for row in rows]

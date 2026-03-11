@@ -20,6 +20,9 @@
     idleTimerId: null,
     idleLockMs: IDLE_TIMEOUT_DEFAULT_MS,
     seenEventIds: new Set(),
+    questionMap: new Map(),
+    latestMetrics: null,
+    latestDashboard: null,
   };
 
   const el = {
@@ -35,6 +38,17 @@
     refreshLive: $("refresh-live"),
     syncAlerts: $("sync-alerts"),
     loadAlerts: $("load-alerts"),
+    forceAttemptId: $("force-attempt-id"),
+    forceSubmitAttempt: $("force-submit-attempt"),
+    forceSubmitExpired: $("force-submit-expired"),
+    examControlReason: $("exam-control-reason"),
+    pauseExam: $("pause-exam"),
+    resumeExam: $("resume-exam"),
+    broadcastMessage: $("broadcast-message"),
+    broadcastSeverity: $("broadcast-severity"),
+    sendBroadcast: $("send-broadcast"),
+    forceSubmitResult: $("force-submit-result"),
+    broadcastResult: $("broadcast-result"),
     liveSummary: $("live-summary"),
     activeBody: $("active-body"),
     alertBody: $("alert-body"),
@@ -42,6 +56,12 @@
     toggleAuto: $("toggle-auto"),
     cursorLabel: $("cursor-label"),
     eventsBody: $("events-body"),
+    auditEntityType: $("audit-entity-type"),
+    auditEntityId: $("audit-entity-id"),
+    auditEventType: $("audit-event-type"),
+    auditActorId: $("audit-actor-id"),
+    loadAuditEvents: $("load-audit-events"),
+    auditEventsBody: $("audit-events-body"),
     questionCsvFile: $("question-csv-file"),
     uploadQuestionCsv: $("upload-question-csv"),
     questionUploadResult: $("question-upload-result"),
@@ -51,6 +71,7 @@
     loadQuestions: $("load-questions"),
     questionCount: $("question-count"),
     questionsBody: $("questions-body"),
+    studentPreviewBox: $("student-preview-box"),
     studentIdInput: $("student-id-input"),
     studentNameInput: $("student-name-input"),
     createStudentId: $("create-student-id"),
@@ -83,6 +104,7 @@
     applyIdleTimeout: $("apply-idle-timeout"),
     metricsBox: $("metrics-box"),
     dashboardBox: $("dashboard-box"),
+    infraHealthBox: $("infra-health-box"),
   };
 
   const setStatus = (message) => {
@@ -355,6 +377,26 @@
     el.eventsBody.appendChild(fragment);
   }
 
+  function renderAuditEvents(events) {
+    if (!events.length) {
+      el.auditEventsBody.innerHTML = '<tr><td colspan="5" class="small">No audit events for current filter.</td></tr>';
+      return;
+    }
+    el.auditEventsBody.innerHTML = events
+      .map(
+        (event) => `
+          <tr>
+            <td>${esc(formatDate(event.created_at))}</td>
+            <td class="mono">${esc(event.entity_type)}:${esc(event.entity_id)}</td>
+            <td>${esc(event.event_type)}</td>
+            <td>${esc(event.actor_type)}:${esc(event.actor_id)}</td>
+            <td class="mono">${esc(JSON.stringify(event.payload || {}))}</td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
   async function refreshLive() {
     try {
       const examId = currentExamId();
@@ -428,6 +470,145 @@
         body: resolve ? { note: "resolved_from_admin_ui" } : undefined,
       });
       await loadAlerts();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function forceSubmitAttempt() {
+    try {
+      const attemptId = (el.forceAttemptId.value || "").trim();
+      if (!attemptId) {
+        throw new Error("Attempt ID required for force submit.");
+      }
+      const data = await api(
+        `/admin/attempts/${encodeURIComponent(attemptId)}/force-submit`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+          body: { reason: "emergency_manual_force_submit" },
+        }
+      );
+      el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
+      setStatus(`Attempt ${attemptId} force submitted.`);
+      await refreshLive();
+      await loadAlerts();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function forceSubmitExpired() {
+    try {
+      const examId = currentExamId();
+      const data = await api(
+        `/admin/attempts/force-submit-expired?exam_id=${encodeURIComponent(examId)}&limit=1000`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+        }
+      );
+      el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
+      setStatus(
+        `Expired force-submit complete: finalized=${data.finalized_count}, failed=${data.failed_count}.`
+      );
+      await refreshLive();
+      await loadAlerts();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function pauseExam() {
+    try {
+      const examId = currentExamId();
+      const reason = (el.examControlReason.value || "").trim();
+      const data = await api(
+        `/admin/exams/${encodeURIComponent(examId)}/pause?limit=2000`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+          body: reason ? { reason } : {},
+        }
+      );
+      el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
+      setStatus(`Exam paused. paused=${data.paused_count}, failed=${data.failed_count}.`);
+      await refreshLive();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function resumeExam() {
+    try {
+      const examId = currentExamId();
+      const reason = (el.examControlReason.value || "").trim();
+      const data = await api(
+        `/admin/exams/${encodeURIComponent(examId)}/resume?limit=2000`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+          body: reason ? { reason } : {},
+        }
+      );
+      el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
+      setStatus(`Exam resumed. resumed=${data.resumed_count}, failed=${data.failed_count}.`);
+      await refreshLive();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function sendBroadcast() {
+    try {
+      const examId = currentExamId();
+      const message = (el.broadcastMessage.value || "").trim();
+      if (!message) {
+        throw new Error("Broadcast message required.");
+      }
+      const severity = el.broadcastSeverity.value || "info";
+      const data = await api(
+        `/admin/exams/${encodeURIComponent(examId)}/broadcast`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+          body: { message, severity },
+        }
+      );
+      el.broadcastResult.textContent = JSON.stringify(data, null, 2);
+      el.broadcastMessage.value = "";
+      setStatus(`Broadcast sent (${severity}) to exam candidates.`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function loadAuditEvents() {
+    try {
+      const query = new URLSearchParams({
+        limit: "300",
+      });
+      const entityType = (el.auditEntityType.value || "").trim();
+      const entityId = (el.auditEntityId.value || "").trim();
+      const eventType = (el.auditEventType.value || "").trim();
+      const actorId = (el.auditActorId.value || "").trim();
+      if (entityType) {
+        query.set("entity_type", entityType);
+      }
+      if (entityId) {
+        query.set("entity_id", entityId);
+      }
+      if (eventType) {
+        query.set("event_type", eventType);
+      }
+      if (actorId) {
+        query.set("actor_id", actorId);
+      }
+      const data = await api(`/admin/audit/events?${query.toString()}`, {
+        headers: adminHeaders(),
+      });
+      renderAuditEvents(data.events || []);
+      setStatus(`Loaded ${Number(data.count || 0)} audit event(s).`);
     } catch (error) {
       setStatus(error.message);
     }
@@ -523,9 +704,11 @@
   async function loadQuestions() {
     try {
       const data = await api("/admin/questions", { headers: adminHeaders() });
+      st.questionMap = new Map(data.map((question) => [question.id, question]));
       el.questionCount.textContent = String(data.length);
       if (!data.length) {
-        el.questionsBody.innerHTML = '<tr><td colspan="5" class="small">No questions available.</td></tr>';
+        el.questionsBody.innerHTML = '<tr><td colspan="6" class="small">No questions available.</td></tr>';
+        el.studentPreviewBox.innerHTML = '<p class="small">No preview selected.</p>';
         return;
       }
       el.questionsBody.innerHTML = data
@@ -537,6 +720,7 @@
               <td>${esc(question.topic)}</td>
               <td>${esc(question.difficulty)}</td>
               <td>${esc(question.marks)}</td>
+              <td><button class="alt js-preview-question" data-question-id="${esc(question.id)}">Preview</button></td>
             </tr>
           `
         )
@@ -545,6 +729,33 @@
     } catch (error) {
       setStatus(error.message);
     }
+  }
+
+  function renderStudentPreview(questionId) {
+    const question = st.questionMap.get(questionId);
+    if (!question) {
+      setStatus("Question not found for preview.");
+      return;
+    }
+    const options = Array.isArray(question.options) ? question.options : [];
+    el.studentPreviewBox.innerHTML = `
+      <div class="small">Student View Preview</div>
+      <h3>${esc(question.text)}</h3>
+      <p class="small">Topic: ${esc(question.topic)} | Difficulty: ${esc(question.difficulty)} | Marks: ${esc(question.marks)}</p>
+      <div class="stack">
+        ${options
+          .map(
+            (option, index) => `
+              <label class="row option">
+                <input type="radio" disabled>
+                <span>${esc(String.fromCharCode(65 + index))}. ${esc(option.option_text)}</span>
+              </label>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+    setStatus(`Preview loaded for question ${questionId}.`);
   }
 
   function renderStudentIds(rows) {
@@ -894,10 +1105,55 @@
     }
   }
 
+  function updateInfraHealthSummary() {
+    const metrics = st.latestMetrics || {};
+    const dashboard = st.latestDashboard || {};
+    const requestRows = Array.isArray(metrics.request_duration_ms)
+      ? metrics.request_duration_ms
+      : [];
+    const requestCount = requestRows.reduce(
+      (acc, row) => acc + Number(row.count || 0),
+      0
+    );
+    const requestTotal = requestRows.reduce(
+      (acc, row) => acc + Number(row.total_value || 0),
+      0
+    );
+    const avgLatency = requestCount > 0 ? requestTotal / requestCount : 0;
+
+    const conflictRows = Array.isArray(metrics.concurrency_conflict_count)
+      ? metrics.concurrency_conflict_count
+      : [];
+    const conflictCount = conflictRows.reduce(
+      (acc, row) => acc + Number(row.count || 0),
+      0
+    );
+
+    const activeAttempts = Number(dashboard.active_attempt_count || 0);
+    const suspiciousAttempts = Number(dashboard.suspicious_attempt_count || 0);
+    const health =
+      activeAttempts > 0 && suspiciousAttempts / activeAttempts > 0.3
+        ? "Watch"
+        : avgLatency > 1500 || conflictCount > 0
+          ? "Degraded"
+          : "Healthy";
+
+    el.infraHealthBox.innerHTML = `
+      <div><strong>Infra Health: ${esc(health)}</strong></div>
+      <div>Avg API latency: ${esc(avgLatency.toFixed(2))} ms</div>
+      <div>Concurrency conflicts: ${esc(String(conflictCount))}</div>
+      <div>Active attempts: ${esc(String(activeAttempts))}</div>
+      <div>Suspicious attempts: ${esc(String(suspiciousAttempts))}</div>
+      <div>Snapshot time: ${esc(formatDate(dashboard.as_of))}</div>
+    `;
+  }
+
   async function loadMetrics() {
     try {
       const metrics = await api("/admin/system/metrics", { headers: adminHeaders() });
+      st.latestMetrics = metrics;
       el.metricsBox.textContent = JSON.stringify(metrics, null, 2);
+      updateInfraHealthSummary();
       setStatus("System metrics loaded.");
     } catch (error) {
       setStatus(error.message);
@@ -909,7 +1165,9 @@
       const dashboard = await api("/admin/proctor/dashboard?active_limit=200&finalize_limit=50", {
         headers: adminHeaders(),
       });
+      st.latestDashboard = dashboard;
       el.dashboardBox.textContent = JSON.stringify(dashboard, null, 2);
+      updateInfraHealthSummary();
       setStatus("Global proctor snapshot loaded.");
     } catch (error) {
       setStatus(error.message);
@@ -944,8 +1202,14 @@
     el.refreshLive.addEventListener("click", refreshLive);
     el.syncAlerts.addEventListener("click", syncAlerts);
     el.loadAlerts.addEventListener("click", loadAlerts);
+    el.forceSubmitAttempt.addEventListener("click", forceSubmitAttempt);
+    el.forceSubmitExpired.addEventListener("click", forceSubmitExpired);
+    el.pauseExam.addEventListener("click", pauseExam);
+    el.resumeExam.addEventListener("click", resumeExam);
+    el.sendBroadcast.addEventListener("click", sendBroadcast);
     el.pullEvents.addEventListener("click", pullEvents);
     el.toggleAuto.addEventListener("click", toggleAutoPolling);
+    el.loadAuditEvents.addEventListener("click", loadAuditEvents);
 
     el.alertBody.addEventListener("click", (event) => {
       const target = event.target;
@@ -997,6 +1261,20 @@
     el.loadDashboard.addEventListener("click", loadGlobalDashboard);
     el.applyIdleTimeout.addEventListener("click", updateIdleTimeoutPolicy);
 
+    el.questionsBody.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const questionId = target.getAttribute("data-question-id");
+      if (!questionId) {
+        return;
+      }
+      if (target.classList.contains("js-preview-question")) {
+        renderStudentPreview(questionId);
+      }
+    });
+
     window.addEventListener("beforeunload", () => {
       if (st.pollTimerId) {
         clearInterval(st.pollTimerId);
@@ -1011,15 +1289,28 @@
     el.activeBody.innerHTML = '<tr><td colspan="5" class="small">No active attempts.</td></tr>';
     el.alertBody.innerHTML = '<tr><td colspan="6" class="small">No alerts.</td></tr>';
     el.eventsBody.innerHTML = '<tr><td colspan="5" class="small">No events yet.</td></tr>';
-    el.questionsBody.innerHTML = '<tr><td colspan="5" class="small">No questions available.</td></tr>';
+    el.auditEventsBody.innerHTML = '<tr><td colspan="5" class="small">No audit events for current filter.</td></tr>';
+    el.questionsBody.innerHTML = '<tr><td colspan="6" class="small">No questions available.</td></tr>';
     el.studentsBody.innerHTML = '<tr><td colspan="5" class="small">No student IDs created yet.</td></tr>';
     el.runsBody.innerHTML = '<tr><td colspan="7" class="small">No recalibration runs.</td></tr>';
     el.itemsBody.innerHTML = '<tr><td colspan="6" class="small">No run items.</td></tr>';
     el.difficultyBody.innerHTML = '<tr><td colspan="4" class="small">No difficulty heatmap data.</td></tr>';
     el.topicBody.innerHTML = '<tr><td colspan="4" class="small">No topic heatmap data.</td></tr>';
     el.distributionBody.innerHTML = '<p class="small">No distribution data.</p>';
+    if (el.forceSubmitResult) {
+      el.forceSubmitResult.textContent = "Force-submit output will appear here.";
+    }
+    if (el.broadcastResult) {
+      el.broadcastResult.textContent = "Broadcast output will appear here.";
+    }
+    if (el.studentPreviewBox) {
+      el.studentPreviewBox.innerHTML = '<p class="small">No preview selected.</p>';
+    }
     if (el.studentCsvResult) {
       el.studentCsvResult.textContent = "Student CSV import/export result will appear here.";
+    }
+    if (el.infraHealthBox) {
+      el.infraHealthBox.textContent = "Infra health summary will appear here.";
     }
   }
 
@@ -1035,4 +1326,5 @@
   loadQuestions();
   loadStudentIds();
   loadMetrics();
+  loadGlobalDashboard();
 })();

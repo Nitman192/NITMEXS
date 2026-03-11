@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from phase1_server.api.deps import student_identity
-from phase1_server.schemas import AnswerSubmitSchema
+from phase1_server.schemas import (
+    AnswerSubmitSchema,
+    StudentIssueReportSchema,
+    TechnicalIssueReportSchema,
+)
 from phase1_server.services.audit_service import AuditService
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
@@ -117,6 +121,32 @@ def fetch_question(
     return {"status": "success", "data": data}
 
 
+@router.get("/attempts/{attempt_id}/rules")
+def get_attempt_rules(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_attempt_exam_rules(attempt_id=attempt_id, student_id=student_id)
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (DeliveryError, ExamNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
 @router.get("/attempts/{attempt_id}/status")
 def get_attempt_status(
     attempt_id: str,
@@ -195,6 +225,7 @@ def submit_answer(
                     attempt_id=attempt_id,
                     question_id=payload.question_id,
                     selected_option_id=payload.selected_option_id,
+                    confidence_tag=payload.confidence_tag,
                 ),
                 student_id=student_id,
             )
@@ -203,6 +234,106 @@ def submit_answer(
         except SnapshotQuestionNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/{attempt_id}/question-issue")
+def report_question_issue(
+    attempt_id: str,
+    payload: StudentIssueReportSchema,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.report_question_issue(
+                attempt_id=attempt_id,
+                question_id=payload.question_id,
+                issue_type=payload.issue_type,
+                note=payload.note,
+                student_id=student_id,
+            )
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except SnapshotQuestionNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/{attempt_id}/technical-issue")
+def report_technical_issue(
+    attempt_id: str,
+    payload: TechnicalIssueReportSchema,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.report_technical_issue(
+                attempt_id=attempt_id,
+                issue_type=payload.issue_type,
+                note=payload.note,
+                student_id=student_id,
+            )
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (AttemptStateError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.get("/attempts/{attempt_id}/broadcasts")
+def list_attempt_broadcasts(
+    attempt_id: str,
+    request: Request,
+    since: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.list_attempt_broadcasts(
+                attempt_id=attempt_id,
+                student_id=student_id,
+                since=since,
+                limit=limit,
+            )
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except DeliveryError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}

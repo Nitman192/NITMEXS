@@ -57,11 +57,22 @@
           <input id="high-contrast-toggle" type="checkbox">
           High Contrast
         </label>
+        <label class="utility-check">
+          <input id="confirm-unanswered-toggle" type="checkbox" checked>
+          Confirm Unanswered
+        </label>
         <span id="autosave-indicator" class="status-pill autosave-synced">Autosave: Synced</span>
         <span id="sync-health-indicator" class="status-pill sync-online">LAN: Healthy</span>
+        <span id="heartbeat-indicator" class="status-pill sync-online">Server: Checking...</span>
       </div>
       <div id="low-time-alert" class="low-time-alert" hidden></div>
       <p id="attempt-meta" class="attempt-meta">No active attempt.</p>
+      <section class="device-checks">
+        <div class="row">
+          <button id="run-diagnostics" class="btn-outline" type="button">Run Device Diagnostics</button>
+        </div>
+        <div id="diagnostics-result" class="small">Diagnostics not run yet.</div>
+      </section>
     </section>
 
     <section class="exam-layout">
@@ -87,12 +98,20 @@
         <section>
           <h3 class="options-title">Choose One Option</h3>
           <div id="options-list" class="option-list"></div>
+          <div class="confidence-row" role="group" aria-label="Answer confidence">
+            <span class="small">Confidence:</span>
+            <label class="utility-check"><input type="radio" name="confidence-tag" value="sure"> Sure</label>
+            <label class="utility-check"><input type="radio" name="confidence-tag" value="maybe"> Maybe</label>
+            <label class="utility-check"><input type="radio" name="confidence-tag" value="guess"> Guess</label>
+          </div>
         </section>
 
         <footer class="main-actions">
           <button id="mark-review" class="btn-outline" type="button">Mark for Review</button>
           <button id="prev-question" class="btn-outline" type="button">Previous</button>
           <button id="save-next" class="btn-primary strong" type="button">Save &amp; Next</button>
+          <button id="report-question-issue" class="btn-outline" type="button">Report Question Issue</button>
+          <button id="report-technical-issue" class="btn-outline" type="button">Report Technical Issue</button>
         </footer>
       </section>
 
@@ -119,6 +138,12 @@
             <button id="jump-unanswered" class="btn-outline jump-unanswered-btn" type="button">
               Jump to First Unanswered
             </button>
+            <div class="palette-filters">
+              <button id="filter-all" class="btn-outline" type="button">All</button>
+              <button id="filter-answered" class="btn-outline" type="button">Answered</button>
+              <button id="filter-unanswered" class="btn-outline" type="button">Unanswered</button>
+              <button id="filter-review" class="btn-outline" type="button">Review</button>
+            </div>
             <div id="question-palette" class="palette-grid"></div>
             <div class="palette-legend">
               <span class="legend-item"><span class="dot answered"></span>Answered</span>
@@ -127,9 +152,49 @@
             </div>
           </section>
 
+          <section class="card faq-card">
+            <div class="row">
+              <h3 style="margin:0">Quick FAQ / Help</h3>
+              <button id="toggle-faq" class="btn-outline" type="button">Show</button>
+            </div>
+            <div id="faq-content" class="small" hidden>
+              <p><strong>Q:</strong> LAN disconnect ho gaya to? <strong>A:</strong> Answer local queue me save hota hai, reconnect par auto-sync hota hai.</p>
+              <p><strong>Q:</strong> Mark for review ka use? <strong>A:</strong> Doubtful questions end me quickly revisit karne ke liye.</p>
+              <p><strong>Q:</strong> Submit se pehle kya check karein? <strong>A:</strong> Unanswered count, pending sync, time left, warning count.</p>
+            </div>
+          </section>
+
+          <section class="card rules-card">
+            <div class="row">
+              <h3 style="margin:0">Exam Rules</h3>
+              <button id="toggle-rules" class="btn-outline" type="button">Show</button>
+            </div>
+            <div id="rules-content" class="small" hidden>
+              <p>Rules will load after exam start.</p>
+            </div>
+          </section>
+
+          <section class="card broadcast-card">
+            <div class="row">
+              <h3 style="margin:0">Admin Broadcasts</h3>
+              <span id="broadcast-badge" class="status-pill sync-online">No alerts</span>
+            </div>
+            <div id="broadcast-feed" class="small">No broadcast messages yet.</div>
+          </section>
+
+          <section class="card stress-card">
+            <div class="row">
+              <h3 style="margin:0">Stress Reset</h3>
+              <button id="start-breathing" class="btn-outline" type="button">Start 30s</button>
+            </div>
+            <div id="breathing-prompt" class="small">Use when you feel rushed. Slow inhale-exhale can stabilize focus.</div>
+          </section>
+
           <section class="card submit-card">
+            <button id="enter-revision" class="btn-outline" type="button">Enter Revision Mode</button>
             <button id="submit-exam" class="btn-danger" type="button">Submit Exam</button>
             <button id="view-result" class="btn-outline" type="button">View Result</button>
+            <button id="print-result" class="btn-outline" type="button">Print Result Slip</button>
           </section>
         </div>
       </aside>
@@ -138,6 +203,7 @@
     <section class="card result-card">
       <h3>Result Summary</h3>
       <div id="result-box" class="result-placeholder">Result summary will appear here after submission.</div>
+      <div id="receipt-box" class="result-placeholder">Acknowledgement receipt will appear here after submission.</div>
     </section>
   </main>
 

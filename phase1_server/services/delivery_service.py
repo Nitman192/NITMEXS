@@ -47,6 +47,14 @@ class AuditEventType:
     GRADED = "GRADED"
     RESULT_VIEWED = "RESULT_VIEWED"
     CONCURRENCY_CONFLICT = "CONCURRENCY_CONFLICT"
+    FORCE_FINALIZED = "FORCE_FINALIZED"
+    ATTEMPT_PAUSED = "ATTEMPT_PAUSED"
+    ATTEMPT_RESUMED = "ATTEMPT_RESUMED"
+    EXAM_PAUSED = "EXAM_PAUSED"
+    EXAM_RESUMED = "EXAM_RESUMED"
+    EXAM_BROADCAST = "EXAM_BROADCAST"
+    QUESTION_ISSUE_REPORTED = "QUESTION_ISSUE_REPORTED"
+    TECHNICAL_ISSUE_REPORTED = "TECHNICAL_ISSUE_REPORTED"
 
 
 @dataclass(frozen=True)
@@ -54,6 +62,7 @@ class AnswerSubmissionPayload:
     attempt_id: str
     question_id: str
     selected_option_id: str
+    confidence_tag: str | None = None
 
 
 class DeliveryService:
@@ -180,6 +189,7 @@ class DeliveryService:
             payload={
                 "question_id": payload.question_id,
                 "selected_option_id": payload.selected_option_id,
+                "confidence_tag": payload.confidence_tag,
             },
             created_at=answered_at,
             version=attempt.version,
@@ -188,6 +198,7 @@ class DeliveryService:
             "attempt_id": attempt.id,
             "question_id": payload.question_id,
             "selected_option_id": payload.selected_option_id,
+            "confidence_tag": payload.confidence_tag,
             "answered_at": answered_at,
             "idempotent": True,
         }
@@ -305,6 +316,443 @@ class DeliveryService:
             finalized_at=finalized_at,
         )
 
+    def force_finalize_attempt_by_admin(
+        self,
+        attempt_id: str,
+        actor_id: str = "admin",
+        reason: str | None = None,
+    ) -> dict:
+        attempt = self._attempt_repo.get(attempt_id)
+        if attempt is None:
+            raise DeliveryError(f"Attempt '{attempt_id}' not found")
+
+        state_service = AttemptStateService(self._attempt_repo)
+        current = attempt
+        finalized_at = current.updated_at
+
+        if current.status is AttemptStatus.CREATED:
+            try:
+                state_service.transition(current.id, AttemptStatus.ACTIVE)
+            except (AttemptConcurrencyError, InvalidAttemptTransitionError) as exc:
+                raise AttemptStateError(str(exc)) from exc
+            refreshed = self._attempt_repo.get(current.id)
+            if refreshed is None:
+                raise DeliveryError(f"Attempt '{attempt_id}' not found")
+            current = refreshed
+
+        if current.status in {AttemptStatus.ACTIVE, AttemptStatus.PAUSED}:
+            try:
+                transition = state_service.transition(current.id, AttemptStatus.FINALIZED)
+            except AttemptConcurrencyError as exc:
+                self._record_metric_safely("increment_concurrency_conflict")
+                self._log_event_safely(
+                    entity_type="attempt",
+                    entity_id=current.id,
+                    actor_type="admin",
+                    actor_id=actor_id,
+                    event_type=AuditEventType.CONCURRENCY_CONFLICT,
+                    payload={"error": str(exc), "reason": reason},
+                )
+                raise AttemptStateError(str(exc)) from exc
+            except InvalidAttemptTransitionError as exc:
+                raise AttemptStateError(str(exc)) from exc
+
+            finalized_at = transition.updated_at
+            self._attempt_repo.log_audit_event(
+                attempt_id=current.id,
+                event_type=AuditEventType.FINALIZED,
+                timestamp=finalized_at,
+                actor_id=actor_id,
+                actor_role="admin",
+            )
+        elif current.status is AttemptStatus.FINALIZED:
+            finalized_at = current.updated_at
+        else:
+            raise AttemptStateError(
+                f"Attempt in state '{current.status.value}' cannot be force submitted"
+            )
+
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=current.id,
+            actor_type="admin",
+            actor_id=actor_id,
+            event_type=AuditEventType.FORCE_FINALIZED,
+            payload={"reason": reason},
+            created_at=finalized_at,
+        )
+
+        response = self._grade_and_build_finalize_response(
+            attempt_id=current.id,
+            finalized_at=finalized_at,
+        )
+        return {
+            **response,
+            "forced": True,
+            "forced_by": actor_id,
+            "force_reason": reason,
+        }
+
+    def force_finalize_expired_attempts(
+        self,
+        actor_id: str = "admin",
+        exam_id: str | None = None,
+        limit: int = 500,
+    ) -> dict:
+        if limit < 1 or limit > 5000:
+            raise DeliveryError("limit must be between 1 and 5000")
+        if exam_id is not None and self._exam_repo.get_exam(exam_id) is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+
+        now_iso = self._now_iso()
+        attempt_ids = self._attempt_repo.list_expired_active_attempt_ids(
+            now_iso=now_iso,
+            exam_id=exam_id,
+            limit=limit,
+        )
+
+        finalized_attempts: list[dict] = []
+        failures: list[dict] = []
+        for attempt_id in attempt_ids:
+            self._record_metric_safely("increment_auto_expire")
+            try:
+                result = self.force_finalize_attempt_by_admin(
+                    attempt_id=attempt_id,
+                    actor_id=actor_id,
+                    reason="expired_bulk_force_submit",
+                )
+                finalized_attempts.append(
+                    {
+                        "attempt_id": attempt_id,
+                        "status": result["status"],
+                        "finalized_at": result["finalized_at"],
+                    }
+                )
+            except (AttemptStateError, DeliveryError) as exc:
+                failures.append(
+                    {
+                        "attempt_id": attempt_id,
+                        "error": str(exc),
+                    }
+                )
+
+        return {
+            "exam_id": exam_id,
+            "processed_count": len(attempt_ids),
+            "finalized_count": len(finalized_attempts),
+            "failed_count": len(failures),
+            "finalized_attempts": finalized_attempts,
+            "failures": failures,
+        }
+
+    def pause_exam_attempts(
+        self,
+        exam_id: str,
+        actor_id: str = "admin",
+        reason: str | None = None,
+        limit: int = 2000,
+    ) -> dict:
+        if limit < 1 or limit > 5000:
+            raise DeliveryError("limit must be between 1 and 5000")
+        if self._exam_repo.get_exam(exam_id) is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+
+        attempt_ids = self._attempt_repo.list_attempt_ids_by_exam_and_status(
+            exam_id=exam_id,
+            status=AttemptStatus.ACTIVE,
+            limit=limit,
+        )
+        state_service = AttemptStateService(self._attempt_repo)
+        paused: list[dict] = []
+        failures: list[dict] = []
+        for attempt_id in attempt_ids:
+            try:
+                transition = state_service.transition(attempt_id, AttemptStatus.PAUSED)
+                self._attempt_repo.log_audit_event(
+                    attempt_id=attempt_id,
+                    event_type="PAUSED",
+                    timestamp=transition.updated_at,
+                    actor_id=actor_id,
+                    actor_role="admin",
+                )
+                self._log_event_safely(
+                    entity_type="attempt",
+                    entity_id=attempt_id,
+                    actor_type="admin",
+                    actor_id=actor_id,
+                    event_type=AuditEventType.ATTEMPT_PAUSED,
+                    payload={"reason": reason},
+                    created_at=transition.updated_at,
+                    version=transition.version,
+                )
+                paused.append({"attempt_id": attempt_id, "paused_at": transition.updated_at})
+            except (AttemptConcurrencyError, InvalidAttemptTransitionError) as exc:
+                failures.append({"attempt_id": attempt_id, "error": str(exc)})
+
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type="admin",
+            actor_id=actor_id,
+            event_type=AuditEventType.EXAM_PAUSED,
+            payload={
+                "reason": reason,
+                "processed_count": len(attempt_ids),
+                "paused_count": len(paused),
+                "failed_count": len(failures),
+            },
+        )
+        return {
+            "exam_id": exam_id,
+            "processed_count": len(attempt_ids),
+            "paused_count": len(paused),
+            "failed_count": len(failures),
+            "paused_attempts": paused,
+            "failures": failures,
+        }
+
+    def resume_exam_attempts(
+        self,
+        exam_id: str,
+        actor_id: str = "admin",
+        reason: str | None = None,
+        limit: int = 2000,
+    ) -> dict:
+        if limit < 1 or limit > 5000:
+            raise DeliveryError("limit must be between 1 and 5000")
+        if self._exam_repo.get_exam(exam_id) is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+
+        attempt_ids = self._attempt_repo.list_attempt_ids_by_exam_and_status(
+            exam_id=exam_id,
+            status=AttemptStatus.PAUSED,
+            limit=limit,
+        )
+        state_service = AttemptStateService(self._attempt_repo)
+        resumed: list[dict] = []
+        failures: list[dict] = []
+        for attempt_id in attempt_ids:
+            try:
+                transition = state_service.transition(attempt_id, AttemptStatus.ACTIVE)
+                self._attempt_repo.log_audit_event(
+                    attempt_id=attempt_id,
+                    event_type="RESUMED",
+                    timestamp=transition.updated_at,
+                    actor_id=actor_id,
+                    actor_role="admin",
+                )
+                self._log_event_safely(
+                    entity_type="attempt",
+                    entity_id=attempt_id,
+                    actor_type="admin",
+                    actor_id=actor_id,
+                    event_type=AuditEventType.ATTEMPT_RESUMED,
+                    payload={"reason": reason},
+                    created_at=transition.updated_at,
+                    version=transition.version,
+                )
+                resumed.append({"attempt_id": attempt_id, "resumed_at": transition.updated_at})
+            except (AttemptConcurrencyError, InvalidAttemptTransitionError) as exc:
+                failures.append({"attempt_id": attempt_id, "error": str(exc)})
+
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type="admin",
+            actor_id=actor_id,
+            event_type=AuditEventType.EXAM_RESUMED,
+            payload={
+                "reason": reason,
+                "processed_count": len(attempt_ids),
+                "resumed_count": len(resumed),
+                "failed_count": len(failures),
+            },
+        )
+        return {
+            "exam_id": exam_id,
+            "processed_count": len(attempt_ids),
+            "resumed_count": len(resumed),
+            "failed_count": len(failures),
+            "resumed_attempts": resumed,
+            "failures": failures,
+        }
+
+    def publish_exam_broadcast(
+        self,
+        exam_id: str,
+        message: str,
+        severity: str = "info",
+        actor_id: str = "admin",
+    ) -> dict:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+
+        normalized_message = (message or "").strip()
+        if len(normalized_message) < 3:
+            raise DeliveryError("message must be at least 3 characters")
+        normalized_severity = (severity or "info").strip().lower()
+        if normalized_severity not in {"info", "warn", "critical"}:
+            raise DeliveryError("severity must be one of: info, warn, critical")
+
+        created_at = self._now_iso()
+        payload = {
+            "exam_id": exam_id,
+            "message": normalized_message,
+            "severity": normalized_severity,
+        }
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type="admin",
+            actor_id=actor_id,
+            event_type=AuditEventType.EXAM_BROADCAST,
+            payload=payload,
+            created_at=created_at,
+        )
+        return {
+            "exam_id": exam_id,
+            "exam_name": exam.name,
+            "message": normalized_message,
+            "severity": normalized_severity,
+            "broadcast_at": created_at,
+        }
+
+    def list_attempt_broadcasts(
+        self,
+        attempt_id: str,
+        student_id: str,
+        since: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        if limit < 1 or limit > 200:
+            raise DeliveryError("limit must be between 1 and 200")
+        attempt = self._assert_owned_attempt(attempt_id, student_id)
+        if self._audit_service is None:
+            return {
+                "attempt_id": attempt.id,
+                "exam_id": attempt.exam_id,
+                "count": 0,
+                "broadcasts": [],
+            }
+
+        timeline = self._audit_service.list_entity_timeline("exam", attempt.exam_id)
+        filtered = [
+            event
+            for event in timeline
+            if event.get("event_type") == AuditEventType.EXAM_BROADCAST
+            and (since is None or event.get("created_at", "") > since)
+        ]
+        selected = filtered[-limit:]
+        broadcasts = [
+            {
+                "id": event.get("id"),
+                "exam_id": attempt.exam_id,
+                "actor_id": event.get("actor_id"),
+                "created_at": event.get("created_at"),
+                "message": (event.get("payload") or {}).get("message"),
+                "severity": (event.get("payload") or {}).get("severity", "info"),
+            }
+            for event in selected
+        ]
+        return {
+            "attempt_id": attempt.id,
+            "exam_id": attempt.exam_id,
+            "count": len(broadcasts),
+            "broadcasts": broadcasts,
+        }
+
+    def report_question_issue(
+        self,
+        attempt_id: str,
+        question_id: str,
+        issue_type: str,
+        note: str | None,
+        student_id: str,
+    ) -> dict:
+        attempt = self._assert_owned_active_attempt(attempt_id, student_id)
+        if not self._attempt_repo.question_in_snapshot(attempt.id, question_id):
+            raise SnapshotQuestionNotFoundError(
+                "Question does not belong to attempt snapshot"
+            )
+        created_at = self._now_iso()
+        payload = {
+            "question_id": question_id,
+            "issue_type": issue_type,
+            "note": note,
+        }
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt.id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.QUESTION_ISSUE_REPORTED,
+            payload=payload,
+            created_at=created_at,
+            version=attempt.version,
+        )
+        return {
+            "attempt_id": attempt.id,
+            "question_id": question_id,
+            "issue_type": issue_type,
+            "note": note,
+            "reported_at": created_at,
+            "reported": True,
+        }
+
+    def report_technical_issue(
+        self,
+        attempt_id: str,
+        issue_type: str,
+        note: str | None,
+        student_id: str,
+    ) -> dict:
+        attempt = self._assert_owned_active_attempt(attempt_id, student_id)
+        created_at = self._now_iso()
+        payload = {
+            "issue_type": issue_type,
+            "note": note,
+        }
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt.id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.TECHNICAL_ISSUE_REPORTED,
+            payload=payload,
+            created_at=created_at,
+            version=attempt.version,
+        )
+        return {
+            "attempt_id": attempt.id,
+            "issue_type": issue_type,
+            "note": note,
+            "reported_at": created_at,
+            "reported": True,
+        }
+
+    def get_attempt_exam_rules(self, attempt_id: str, student_id: str) -> dict:
+        attempt = self._assert_owned_attempt(attempt_id, student_id)
+        exam = self._exam_repo.get_exam(attempt.exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{attempt.exam_id}' not found")
+
+        rules = [
+            "Read each question carefully before selecting an option.",
+            "Use Save & Next to persist each answer.",
+            "Do not switch tabs or open external resources during attempt.",
+            "Keep LAN connected; local queue auto-syncs on reconnect.",
+            "Review marked/unanswered items before final submission.",
+        ]
+        return {
+            "attempt_id": attempt.id,
+            "exam_id": exam.id,
+            "exam_name": exam.name,
+            "duration_minutes": exam.duration_minutes,
+            "negative_marking": exam.negative_marking,
+            "rules": rules,
+        }
+
     def get_result(self, attempt_id: str, student_id: str) -> dict:
         engine = GradingEngine(
             self._attempt_repo, self._exam_repo, self._question_repo, self._analytics_repo
@@ -401,12 +849,16 @@ class DeliveryService:
             },
         }
 
-    def _assert_owned_active_attempt(self, attempt_id: str, student_id: str) -> Attempt:
+    def _assert_owned_attempt(self, attempt_id: str, student_id: str) -> Attempt:
         attempt = self._attempt_repo.get(attempt_id)
         if attempt is None:
             raise DeliveryError(f"Attempt '{attempt_id}' not found")
         if attempt.candidate_id != student_id:
             raise OwnershipError("Attempt does not belong to student")
+        return attempt
+
+    def _assert_owned_active_attempt(self, attempt_id: str, student_id: str) -> Attempt:
+        attempt = self._assert_owned_attempt(attempt_id, student_id)
         if attempt.status != AttemptStatus.ACTIVE:
             raise AttemptStateError(
                 f"Attempt state must be active, got {attempt.status.value}"

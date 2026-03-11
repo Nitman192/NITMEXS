@@ -23,6 +23,19 @@ class AuditEventRepository(Protocol):
 
     def list_events(self, entity_type: str, entity_id: str) -> list[dict[str, Any]]: ...
 
+    def search_events(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        event_type: str | None = None,
+        actor_type: str | None = None,
+        actor_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]: ...
+
 
 class SQLiteAuditEventRepository:
     def __init__(self, conn: sqlite3.Connection):
@@ -69,6 +82,74 @@ class SQLiteAuditEventRepository:
             ORDER BY created_at ASC, id ASC
             """,
             (entity_type, entity_id),
+        ).fetchall()
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            result.append(
+                {
+                    "id": row["id"],
+                    "entity_type": row["entity_type"],
+                    "entity_id": row["entity_id"],
+                    "actor_type": row["actor_type"],
+                    "actor_id": row["actor_id"],
+                    "event_type": row["event_type"],
+                    "payload": payload,
+                    "created_at": row["created_at"],
+                    "version": row["version"],
+                }
+            )
+        return result
+
+    def search_events(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        event_type: str | None = None,
+        actor_type: str | None = None,
+        actor_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT id, entity_type, entity_id, actor_type, actor_id,
+                   event_type, payload_json, created_at, version
+            FROM audit_events
+            WHERE
+                (? IS NULL OR entity_type = ?)
+                AND (? IS NULL OR entity_id = ?)
+                AND (? IS NULL OR event_type = ?)
+                AND (? IS NULL OR actor_type = ?)
+                AND (? IS NULL OR actor_id = ?)
+                AND (? IS NULL OR created_at >= ?)
+                AND (? IS NULL OR created_at <= ?)
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (
+                entity_type,
+                entity_type,
+                entity_id,
+                entity_id,
+                event_type,
+                event_type,
+                actor_type,
+                actor_type,
+                actor_id,
+                actor_id,
+                since,
+                since,
+                until,
+                until,
+                limit,
+            ),
         ).fetchall()
 
         result: list[dict[str, Any]] = []
