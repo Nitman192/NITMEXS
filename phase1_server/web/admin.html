@@ -131,7 +131,38 @@
           </article>
 
           <article class="panel">
+            <h2>Publish and Safety Studio</h2>
+            <div class="row">
+              <input id="publish-lab" placeholder="Canary lab/group (example: lab-a)" style="width:220px">
+              <button id="run-canary-publish" class="alt">Run Canary Publish</button>
+              <button id="run-publish-gate" class="alt">Run Publish Gate</button>
+              <button id="create-rollback-snapshot" class="alt">Create Rollback Snapshot</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="apply-circuit-breaker" class="warn">Apply Circuit Breaker Pause Rule</button>
+              <label class="small row">Grace Minutes
+                <input id="grace-minutes" type="number" min="0" max="30" value="2" style="width:80px">
+              </label>
+              <button id="apply-grace-policy" class="alt">Apply Grace Policy</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label class="small row">Approval Steps
+                <input id="approval-steps" type="number" min="1" max="5" value="2" style="width:80px">
+              </label>
+              <button id="save-approval-builder" class="alt">Save Multi-Step Approvals</button>
+            </div>
+            <pre id="publish-ops-box" class="box mono">Canary/publish gate/snapshot output will appear here.</pre>
+          </article>
+
+          <article class="panel">
             <h2>Alert Queue</h2>
+            <div class="row" style="margin-bottom:8px">
+              <label class="small row">Noise Min Incidents
+                <input id="alert-noise-threshold" type="number" min="1" value="2" style="width:80px">
+              </label>
+              <button id="apply-alert-noise-filter" class="alt">Apply Noise Filter</button>
+              <button id="clear-alert-noise-filter" class="alt">Clear Noise Filter</button>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -147,6 +178,7 @@
                 <tbody id="alert-body"></tbody>
               </table>
             </div>
+            <pre id="risk-insights-box" class="box mono">Cheat risk and anomaly insights will appear here.</pre>
           </article>
 
           <article class="panel">
@@ -263,6 +295,22 @@
             <div id="student-preview-box" class="box">
               <p class="small">No preview selected.</p>
             </div>
+          </article>
+
+          <article class="panel">
+            <h2>AI Draft + Human Review Lane</h2>
+            <div class="row">
+              <input id="ai-draft-topic" placeholder="Topic (example: algebra)" style="width:180px">
+              <select id="ai-draft-difficulty" style="width:140px">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+              <button id="generate-ai-draft" class="alt">Generate Draft</button>
+              <button id="approve-ai-draft">Approve Draft</button>
+            </div>
+            <textarea id="ai-draft-prompt" rows="3" placeholder="Human prompt: kya concept cover karna hai, kitne options, kis style me..."></textarea>
+            <pre id="ai-draft-box" class="box mono">AI draft output will appear here. Human approval mandatory.</pre>
           </article>
 
           <article class="panel">
@@ -417,6 +465,17 @@
             <div id="distribution-body" class="stack"></div>
           </article>
 
+          <article class="panel">
+            <h2>Advanced Analytics Studio</h2>
+            <div class="row">
+              <button id="run-cohort-benchmarking" class="alt">Cohort Benchmarking</button>
+              <button id="run-distractor-analytics" class="alt">Distractor Deep Analytics</button>
+              <button id="run-attendance-forecast" class="alt">Attendance Forecast</button>
+              <button id="run-slot-demand" class="alt">Slot Demand Allocator</button>
+            </div>
+            <pre id="analytics-advanced-box" class="box mono">Advanced analytics output will appear here.</pre>
+          </article>
+
           <article class="guide-only panel">
             <h2>Guide: Analytics</h2>
             <p class="small">1. Exam select karo. 2. Load Analytics click karo. 3. Difficulty/topic trends se weak areas identify karo.</p>
@@ -430,15 +489,78 @@
             <div class="row">
               <button id="load-metrics">Refresh Metrics</button>
               <button id="load-dashboard" class="alt">Global Proctor Snapshot</button>
+              <button id="compute-risk" class="alt">Compute Risk Model</button>
+              <button id="export-siem" class="alt">Export SIEM JSON</button>
+              <button id="hash-audit-chain" class="alt">Hash Audit Chain</button>
             </div>
             <div class="row" style="margin-top:8px">
               <label for="idle-timeout-seconds" class="small">Idle lock timeout (seconds)</label>
               <input id="idle-timeout-seconds" type="number" min="10" max="3600" value="10" style="width:120px">
               <button id="apply-idle-timeout" class="alt">Apply Timeout Policy</button>
+              <button id="load-migration-health" class="alt">Migration Health</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label class="small row"><input id="widget-live-toggle" type="checkbox" checked> Show Live Widget</label>
+              <label class="small row"><input id="widget-alert-toggle" type="checkbox" checked> Show Alert Widget</label>
+              <label class="small row"><input id="widget-analytics-toggle" type="checkbox" checked> Show Analytics Widget</label>
+              <button id="save-widget-layout" class="alt">Save Widget Layout</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <select id="compliance-profile" style="width:220px">
+                <option value="standard">Standard Compliance</option>
+                <option value="strict">Strict Compliance</option>
+                <option value="audit_plus">Audit Plus</option>
+              </select>
+              <button id="apply-compliance-profile" class="alt">Apply Compliance Profile</button>
+              <button id="save-policy-version" class="alt">Save Policy Version</button>
             </div>
             <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
             <pre id="dashboard-box" class="box mono">Dashboard snapshot will appear here.</pre>
             <div id="infra-health-box" class="box">Infra health summary will appear here.</div>
+            <pre id="anomaly-box" class="box mono">Anomaly and cluster insights will appear here.</pre>
+            <pre id="integrity-box" class="box mono">Evidence chain/hash output will appear here.</pre>
+            <pre id="policy-box" class="box mono">Policy versions and RBAC matrix will appear here.</pre>
+            <pre id="trend-box" class="box mono">Trend cube and benchmark output will appear here.</pre>
+            <pre id="simulator-box" class="box mono">Cutoff optimizer / what-if simulation output will appear here.</pre>
+          </article>
+
+          <article class="panel">
+            <h2>Backup and Access Security</h2>
+            <div class="row">
+              <label class="small row">Retention Days
+                <input id="backup-retention-days" type="number" min="1" max="365" value="30" style="width:90px">
+              </label>
+              <button id="apply-backup-retention" class="alt">Apply Retention Policy</button>
+              <label class="small row"><input id="backup-encryption-toggle" type="checkbox" checked> Backup Encryption</label>
+              <input id="backup-encryption-key" placeholder="Encryption key alias (example: key-v2)" style="width:200px">
+              <button id="apply-backup-encryption" class="alt">Apply Encryption</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="restore-point-time" placeholder="Restore point ISO time (optional)" style="flex:1 1 260px">
+              <button id="browse-restore-points" class="alt">Browse Restore Points</button>
+              <button id="run-restore-dry" class="alt">Run Restore Dry-Run</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="run-db-profiler" class="alt">DB Performance Profiler</button>
+              <button id="run-queue-monitor" class="alt">Worker Queue Monitor</button>
+              <button id="run-key-rotation" class="alt">Key Rotation Dashboard</button>
+              <button id="run-vault-check" class="alt">Secret Vault Check</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <select id="sso-mode" style="width:180px">
+                <option value="disabled">SSO Disabled</option>
+                <option value="oauth_google">OAuth Google</option>
+                <option value="oauth_microsoft">OAuth Microsoft</option>
+              </select>
+              <label class="small row"><input id="toggle-hardware-mfa" type="checkbox"> Hardware MFA Required</label>
+              <input id="geo-ip-policy" placeholder="Allowed geo (example: IN,SG)" style="width:200px">
+              <button id="apply-geo-policy" class="alt">Apply Geo-IP Restriction</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="conditional-access-rule" placeholder="Conditional access rule (example: strict_if_outside_geo)" style="flex:1 1 300px">
+              <button id="apply-conditional-access" class="alt">Apply Conditional Access</button>
+            </div>
+            <pre id="backup-security-box" class="box mono">Backup/security/access output will appear here.</pre>
           </article>
 
           <article class="guide-only panel">

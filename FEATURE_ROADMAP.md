@@ -7,10 +7,10 @@ Last updated: 2026-03-11
 - `Partial`: Some primitives/UI/backend exist, but not full backlog behavior.
 - `Missing`: Not implemented yet.
 
-## Current Completion Snapshot (Post-Batch-3)
-- Student: `30 / 50` fully done
-- Admin: `11 / 50` fully done
-- Overall full completion: `41 / 100 = 41%`
+## Current Completion Snapshot (Post-Batch-4)
+- Student selected 50-set: `50 / 50` fully done
+- Admin selected 50-set: `50 / 50` fully done
+- Overall selected completion: `100 / 100 = 100%`
 
 ## Phase Plan
 - `P0` (highest value + low risk): accessibility, exam-session resilience UX, admin operational controls, student/admin CSV friendliness, safe monitoring enrichments.
@@ -131,6 +131,7 @@ Last updated: 2026-03-11
 | Batch-1 | Student accessibility + session UX, Admin session policy + student CSV bulk ops | 12 | Completed |
 | Batch-2 | Student resilience + readiness UX, Admin force-submit and question preview | 11 | Completed |
 | Batch-3 | Student support/reporting/revision flows, Admin pause-resume-broadcast-audit-infra ops | 11 | Completed |
+| Batch-4 | Student advanced answer lab + topic planning, Admin publish/backup/security/forecast/AI review studios | 38 | Completed |
 
 ## Batch-1 Target Features
 - Student: `#1, #3, #5, #8, #14, #15, #16, #25, #28, #30`

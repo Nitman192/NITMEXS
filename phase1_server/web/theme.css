@@ -1940,6 +1940,119 @@ body.student-body.theme-dark .timer-card #turbo-mode-hint {
   color: #ffc47f;
 }
 
+body.student-body .choice-option {
+  align-items: center;
+}
+
+body.student-body .choice-option .option-text {
+  flex: 1 1 auto;
+}
+
+body.student-body .choice-option .option-tools {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+body.student-body .option-mini-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+body.student-body .choice-option.eliminated-option {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+body.student-body .choice-option.struck-option .option-text {
+  text-decoration: line-through;
+}
+
+body.student-body .palette-btn.bucket-hard {
+  box-shadow: inset 0 -3px 0 #d94040;
+}
+
+body.student-body .palette-btn.bucket-easy {
+  box-shadow: inset 0 -3px 0 #2d8c52;
+}
+
+body.student-body #rough-pad {
+  width: 100%;
+  border: 1px solid #cdd8ea;
+  border-radius: 8px;
+  padding: 8px;
+  resize: vertical;
+  min-height: 110px;
+}
+
+body.student-body #diagram-canvas {
+  width: 100%;
+  border: 1px solid #cdd8ea;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+body.student-body .choice-option.drag-hover {
+  border-color: #1f6feb;
+  background: #e9f2ff;
+}
+
+body.student-body .advanced-card textarea {
+  width: 100%;
+}
+
+body.student-body .advanced-card .row {
+  align-items: center;
+}
+
+body.student-body.student-colorblind .result-pass,
+body.student-body.student-colorblind .status-pill.sync-online {
+  background: #1f6d84 !important;
+  border-color: #1f6d84 !important;
+  color: #ffffff !important;
+}
+
+body.student-body.student-colorblind .result-fail,
+body.student-body.student-colorblind .status-pill.sync-offline {
+  background: #91590f !important;
+  border-color: #91590f !important;
+  color: #ffffff !important;
+}
+
+body.student-body.student-large-cursor,
+body.student-body.student-large-cursor * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpolygon points='2,2 2,22 8,16 13,23 17,21 12,14 20,14' fill='%23000' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E")
+      2 2,
+    auto !important;
+}
+
+body.student-body.student-reduced-motion *,
+body.student-body.student-reduced-motion *::before,
+body.student-body.student-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+body.student-body.theme-dark #rough-pad {
+  border-color: #324a6b;
+  background: #122038;
+  color: #dce7ff;
+}
+
+body.student-body.theme-dark #diagram-canvas {
+  border-color: #324a6b;
+  background: #0f1a2e;
+}
+
+body.student-body.theme-dark .choice-option.drag-hover {
+  border-color: #66a3ff;
+  background: #1a2a45;
+}
+
 @media (max-width: 980px) {
   body.student-body .exam-layout {
     grid-template-columns: 1fr;

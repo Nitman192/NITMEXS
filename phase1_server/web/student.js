@@ -1,6 +1,7 @@
 (() => {
   const STUDENT_SESSION_KEY = "nitmexs_student_session";
   const ATTEMPT_CACHE_PREFIX = "nitmexs_attempt_cache_";
+  const RESULT_HISTORY_PREFIX = "nitmexs_result_history_";
   const STUDENT_ONBOARDING_KEY = "nitmexs_student_onboarding_seen";
   const STUDENT_UI_PREFS_KEY = "nitmexs_student_ui_prefs";
   const INACTIVITY_TIMEOUT_MS = 120000;
@@ -16,6 +17,7 @@
     sequence: 1,
     totalQuestions: 0,
     currentQuestion: null,
+    currentQuestionOptions: [],
     warningCount: 0,
     finalized: false,
     paused: false,
@@ -42,6 +44,27 @@
     questionTimeStartedAt: null,
     answerTimeline: [],
     focusStreak: 0,
+    translateMode: false,
+    predownloadedCount: 0,
+    heartbeatHistory: [],
+    syncRetryCount: 0,
+    lastSyncError: "",
+    clipboardLogs: [],
+    tabSwitchReasons: [],
+    hiddenSince: null,
+    optionMode: "none",
+    dragDropMode: false,
+    conflictPending: null,
+    conflictResolver: null,
+    resumeWizardResolver: null,
+    examTipsIndex: 0,
+    tipsTimerId: null,
+    questionTopicById: {},
+    codeDraftByQuestion: {},
+    inputLatencySamples: [],
+    stressLevel: "normal",
+    diagramStrokeActive: false,
+    captionSize: 16,
     diagnostics: {
       keyboardSeen: false,
       mouseSeen: false,
@@ -77,9 +100,13 @@
     refreshMorale: $("refresh-morale"),
     paletteStats: $("palette-stats"),
     questionPalette: $("question-palette"),
+    toggleEliminateMode: $("toggle-eliminate-mode"),
+    toggleStrikeMode: $("toggle-strike-mode"),
     submitExam: $("submit-exam"),
     viewResult: $("view-result"),
     resultBox: $("result-box"),
+    resultExplainBox: $("result-explain-box"),
+    attemptCompareBox: $("attempt-compare-box"),
     antiCheatWarning: $("anti-cheat-warning"),
     submitModal: $("submit-modal"),
     shortcutsModal: $("shortcuts-modal"),
@@ -87,12 +114,28 @@
     cancelSubmit: $("cancel-submit"),
     closeShortcuts: $("close-shortcuts"),
     confirmSubmit: $("confirm-submit"),
+    resumeWizardModal: $("resume-wizard-modal"),
+    resumeWizardSummary: $("resume-wizard-summary"),
+    resumeFromCache: $("resume-from-cache"),
+    discardCacheStartFresh: $("discard-cache-start-fresh"),
+    glossaryModal: $("glossary-modal"),
+    openGlossary: $("open-glossary"),
+    closeGlossary: $("close-glossary"),
+    glossaryContent: $("glossary-content"),
+    conflictModal: $("conflict-modal"),
+    conflictKeepLocal: $("conflict-keep-local"),
+    conflictReloadServer: $("conflict-reload-server"),
     onboardingModal: $("onboarding-modal"),
     dismissOnboarding: $("dismiss-onboarding"),
     openOnboarding: $("open-onboarding"),
     fontSizeSelect: $("font-size-select"),
     highContrastToggle: $("high-contrast-toggle"),
+    colorblindToggle: $("colorblind-toggle"),
+    reducedMotionToggle: $("reduced-motion-toggle"),
+    largeCursorToggle: $("large-cursor-toggle"),
     confirmUnansweredToggle: $("confirm-unanswered-toggle"),
+    soundAlertToggle: $("sound-alert-toggle"),
+    soundVolume: $("sound-volume"),
     autosaveIndicator: $("autosave-indicator"),
     syncHealthIndicator: $("sync-health-indicator"),
     heartbeatIndicator: $("heartbeat-indicator"),
@@ -106,6 +149,21 @@
     jumpUnanswered: $("jump-unanswered"),
     jumpSequence: $("jump-sequence"),
     jumpSequenceBtn: $("jump-sequence-btn"),
+    toggleHardBucket: $("toggle-hard-bucket"),
+    toggleEasyBucket: $("toggle-easy-bucket"),
+    bucketSummary: $("bucket-summary"),
+    predownloadQuestions: $("predownload-questions"),
+    fullscreenRetry: $("fullscreen-retry"),
+    replayRules: $("replay-rules"),
+    toggleTranslate: $("toggle-translate"),
+    instantSupport: $("instant-support"),
+    roughPad: $("rough-pad"),
+    integrityHash: $("integrity-hash"),
+    networkQuality: $("network-quality"),
+    syncDiagnostics: $("sync-diagnostics"),
+    tipsFeed: $("tips-feed"),
+    emergencyContactLink: $("emergency-contact-link"),
+    clipboardLog: $("clipboard-log"),
     filterAll: $("filter-all"),
     filterAnswered: $("filter-answered"),
     filterUnanswered: $("filter-unanswered"),
@@ -128,13 +186,42 @@
     questionTimeSpent: $("question-time-spent"),
     answerTimeline: $("answer-timeline"),
     turboModeHint: $("turbo-mode-hint"),
+    inputLatencyMeter: $("input-latency-meter"),
+    stressDetector: $("stress-detector"),
+    clearDiagram: $("clear-diagram"),
+    diagramCanvas: $("diagram-canvas"),
+    toggleCalmMode: $("toggle-calm-mode"),
+    calmModeOverlay: $("calm-mode-overlay"),
+    closeCalmMode: $("close-calm-mode"),
+    runPracticeSim: $("run-practice-sim"),
+    runMockAnalytics: $("run-mock-analytics"),
+    practiceSimBox: $("practice-sim-box"),
+    mockAnalyticsBox: $("mock-analytics-box"),
+    equationEditor: $("equation-editor"),
+    equationPreview: $("equation-preview"),
+    codeLanguage: $("code-language"),
+    codeEditor: $("code-editor"),
+    playQuestionAudio: $("play-question-audio"),
+    captionSize: $("caption-size"),
+    captionPreview: $("caption-preview"),
+    enableDragDropOptions: $("enable-drag-drop-options"),
+    generateMatchMode: $("generate-match-mode"),
+    matchModeBox: $("match-mode-box"),
+    receiptQrBox: $("receipt-qr-box"),
+    topicStrengthBox: $("topic-strength-box"),
+    weakTopicPlanBox: $("weak-topic-plan-box"),
   };
 
   const uiPrefs = {
     fontScale: "normal",
     highContrast: false,
+    colorblind: false,
+    reducedMotion: false,
+    largeCursor: false,
     questionZoom: 100,
     confirmUnanswered: true,
+    soundAlerts: true,
+    soundVolume: 60,
   };
 
   function createTimerState(onTick) {
@@ -198,9 +285,13 @@
     let draftAnswers = {};
     let confidenceByQuestion = {};
     let markedSequences = new Set();
+    let hardSequences = new Set();
+    let easySequences = new Set();
     let answeredQuestionIds = new Set();
     let sequenceQuestionMap = new Map();
     let pendingQueue = [];
+    let eliminatedOptionsByQuestion = {};
+    let struckOptionsByQuestion = {};
 
     const persist = () => {
       if (typeof onChange === "function") {
@@ -226,9 +317,13 @@
         draftAnswers = {};
         confidenceByQuestion = {};
         markedSequences = new Set();
+        hardSequences = new Set();
+        easySequences = new Set();
         answeredQuestionIds = new Set();
         sequenceQuestionMap = new Map();
         pendingQueue = [];
+        eliminatedOptionsByQuestion = {};
+        struckOptionsByQuestion = {};
         persist();
       },
       hydrate(cache) {
@@ -246,6 +341,20 @@
         if (Array.isArray(cache.marked_sequences)) {
           markedSequences = new Set(
             cache.marked_sequences
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          );
+        }
+        if (Array.isArray(cache.hard_sequences)) {
+          hardSequences = new Set(
+            cache.hard_sequences
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          );
+        }
+        if (Array.isArray(cache.easy_sequences)) {
+          easySequences = new Set(
+            cache.easy_sequences
               .map((value) => Number(value))
               .filter((value) => Number.isInteger(value) && value > 0)
           );
@@ -268,15 +377,25 @@
             .map(normalizePendingItem)
             .filter((item) => item !== null);
         }
+        if (cache.eliminated_options_by_question && typeof cache.eliminated_options_by_question === "object") {
+          eliminatedOptionsByQuestion = { ...cache.eliminated_options_by_question };
+        }
+        if (cache.struck_options_by_question && typeof cache.struck_options_by_question === "object") {
+          struckOptionsByQuestion = { ...cache.struck_options_by_question };
+        }
       },
       serialize() {
         return {
           draft_answers: { ...draftAnswers },
           confidence_by_question: { ...confidenceByQuestion },
           marked_sequences: [...markedSequences],
+          hard_sequences: [...hardSequences],
+          easy_sequences: [...easySequences],
           answered_question_ids: [...answeredQuestionIds],
           sequence_question_map: [...sequenceQuestionMap.entries()],
           pending_queue: [...pendingQueue],
+          eliminated_options_by_question: { ...eliminatedOptionsByQuestion },
+          struck_options_by_question: { ...struckOptionsByQuestion },
         };
       },
       rememberSelection(questionId, selectedOptionId) {
@@ -394,6 +513,96 @@
       getMarkedCount() {
         return markedSequences.size;
       },
+      toggleHard(sequenceNumber) {
+        const sequence = Number(sequenceNumber);
+        if (!sequence) {
+          return false;
+        }
+        if (hardSequences.has(sequence)) {
+          hardSequences.delete(sequence);
+        } else {
+          hardSequences.add(sequence);
+          easySequences.delete(sequence);
+        }
+        persist();
+        return hardSequences.has(sequence);
+      },
+      toggleEasy(sequenceNumber) {
+        const sequence = Number(sequenceNumber);
+        if (!sequence) {
+          return false;
+        }
+        if (easySequences.has(sequence)) {
+          easySequences.delete(sequence);
+        } else {
+          easySequences.add(sequence);
+          hardSequences.delete(sequence);
+        }
+        persist();
+        return easySequences.has(sequence);
+      },
+      isHard(sequenceNumber) {
+        return hardSequences.has(Number(sequenceNumber));
+      },
+      isEasy(sequenceNumber) {
+        return easySequences.has(Number(sequenceNumber));
+      },
+      getHardCount() {
+        return hardSequences.size;
+      },
+      getEasyCount() {
+        return easySequences.size;
+      },
+      toggleEliminate(questionId, optionId) {
+        const q = String(questionId || "");
+        const o = String(optionId || "");
+        if (!q || !o) {
+          return false;
+        }
+        const current = new Set(Array.isArray(eliminatedOptionsByQuestion[q]) ? eliminatedOptionsByQuestion[q] : []);
+        if (current.has(o)) {
+          current.delete(o);
+        } else {
+          current.add(o);
+        }
+        eliminatedOptionsByQuestion[q] = [...current];
+        persist();
+        return current.has(o);
+      },
+      toggleStrike(questionId, optionId) {
+        const q = String(questionId || "");
+        const o = String(optionId || "");
+        if (!q || !o) {
+          return false;
+        }
+        const current = new Set(Array.isArray(struckOptionsByQuestion[q]) ? struckOptionsByQuestion[q] : []);
+        if (current.has(o)) {
+          current.delete(o);
+        } else {
+          current.add(o);
+        }
+        struckOptionsByQuestion[q] = [...current];
+        persist();
+        return current.has(o);
+      },
+      isEliminated(questionId, optionId) {
+        const q = String(questionId || "");
+        const o = String(optionId || "");
+        if (!q || !o) {
+          return false;
+        }
+        const current = new Set(Array.isArray(eliminatedOptionsByQuestion[q]) ? eliminatedOptionsByQuestion[q] : []);
+        return current.has(o);
+      },
+      isStruck(questionId, optionId) {
+        const q = String(questionId || "");
+        const o = String(optionId || "");
+        if (!q || !o) {
+          return false;
+        }
+        const current = new Set(Array.isArray(struckOptionsByQuestion[q]) ? struckOptionsByQuestion[q] : []);
+        return current.has(o);
+      },
       queuePending(item) {
         const normalized = normalizePendingItem(item);
         if (!normalized) {
@@ -428,13 +637,17 @@
     if (remainingSeconds === 0 && st.attemptId && !st.finalized) {
       autoSubmitExpiredAttempt();
     }
+    updateStressDetector();
   });
 
   const answerState = createAnswerState(() => {
     persistAttemptCache();
     updateProgress();
     renderPalette();
+    updateBucketSummary();
     updateSyncHealthIndicator();
+    updateSyncDiagnostics();
+    updateStressDetector();
   });
 
   const esc = (value) =>
@@ -446,6 +659,695 @@
   const setStatus = (message) => {
     el.status.textContent = message;
   };
+
+  const GLOSSARY = [
+    ["Negative Marking", "Wrong answer par score deduction rule."],
+    ["Review", "Question marked for later revisit."],
+    ["Snapshot", "Exam questions ka locked copy for your attempt."],
+    ["Autosave", "Answer local + server sync safeguard."],
+    ["Pending Sync", "Answer locally saved hai, server sync pending hai."],
+    ["Finalization", "Exam submission lock ho chuka hai."],
+  ];
+
+  const INLINE_TRANSLATIONS = [
+    ["question", "prashn"],
+    ["option", "vikalp"],
+    ["submit", "jama karein"],
+    ["review", "punaravalokan"],
+    ["time", "samay"],
+    ["answer", "uttar"],
+    ["warning", "chetavani"],
+  ];
+
+  const EXAM_DAY_TIPS = [
+    "Pehle easy-win questions complete karo, phir doubtful pe jao.",
+    "Agar stuck ho to 45-60 sec rule follow karo: mark and move.",
+    "Low-time phase me sirf high-confidence attempts prioritize karo.",
+    "Har 8-10 question ke baad posture reset aur deep breath lo.",
+  ];
+
+  async function updateIntegrityHash() {
+    if (!el.integrityHash) {
+      return;
+    }
+    if (!st.attemptId || !window.crypto?.subtle) {
+      el.integrityHash.textContent = "Integrity checksum: -";
+      return;
+    }
+    const payload = `${st.studentId}|${st.examId}|${st.attemptId}|${timerState.getExpiresAt() || "-"}`;
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(payload)
+    );
+    const hex = Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 20);
+    el.integrityHash.textContent = `Integrity checksum: ${hex}`;
+  }
+
+  function playAlertTone(freqHz = 740, durationMs = 170) {
+    if (!uiPrefs.soundAlerts || uiPrefs.soundVolume <= 0) {
+      return;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      return;
+    }
+    const ctx = new AudioCtx();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.frequency.value = freqHz;
+    gain.gain.value = Math.max(0.01, Math.min(1, uiPrefs.soundVolume / 100));
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    window.setTimeout(() => {
+      oscillator.stop();
+      ctx.close();
+    }, durationMs);
+  }
+
+  function updateInputLatencyMeter() {
+    if (!el.inputLatencyMeter) {
+      return;
+    }
+    const rows = st.inputLatencySamples.slice(-15);
+    if (!rows.length) {
+      el.inputLatencyMeter.textContent = "Input latency: waiting...";
+      return;
+    }
+    const avg = rows.reduce((acc, item) => acc + item, 0) / rows.length;
+    const rounded = Math.round(avg);
+    const status = rounded > 220 ? "high" : rounded > 120 ? "moderate" : "good";
+    el.inputLatencyMeter.textContent = `Input latency: ${rounded}ms (${status})`;
+  }
+
+  function recordInputLatencySample(startMs) {
+    if (!Number.isFinite(startMs)) {
+      return;
+    }
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const latency = Math.max(0, Math.round(now - startMs));
+    st.inputLatencySamples.push(latency);
+    if (st.inputLatencySamples.length > 80) {
+      st.inputLatencySamples = st.inputLatencySamples.slice(-80);
+    }
+    updateInputLatencyMeter();
+    persistAttemptCache();
+  }
+
+  function updateStressDetector() {
+    if (!el.stressDetector) {
+      return;
+    }
+    const remaining = timerState.getRemainingSeconds();
+    const lowTimePressure = remaining > 0 && remaining <= 300 ? 2 : 0;
+    const syncPressure = Math.min(4, answerState.getPendingCount());
+    const warningPressure = Math.min(4, st.warningCount);
+    const retryPressure = Math.min(4, st.syncRetryCount);
+    const clipboardPressure = Math.min(3, st.clipboardLogs.length > 0 ? 1 : 0);
+    const pressureScore = lowTimePressure + syncPressure + warningPressure + retryPressure + clipboardPressure;
+    const level = pressureScore >= 8 ? "high" : pressureScore >= 4 ? "moderate" : "normal";
+    st.stressLevel = level;
+    const suggestion =
+      level === "high"
+        ? "Take 20s breathing reset and focus easy wins."
+        : level === "moderate"
+          ? "Slow down slightly and validate option text once."
+          : "Steady pace.";
+    el.stressDetector.textContent = `Stress detector: ${level} (${pressureScore}) | ${suggestion}`;
+  }
+
+  function updateCaptionPreview() {
+    if (!el.captionPreview) {
+      return;
+    }
+    const size = Number(el.captionSize?.value || st.captionSize || 16);
+    st.captionSize = Math.max(12, Math.min(28, size));
+    el.captionPreview.style.fontSize = `${st.captionSize}px`;
+    const questionText = st.currentQuestion?.text || "Caption preview text";
+    el.captionPreview.textContent = `Caption (${st.captionSize}px): ${questionText}`;
+  }
+
+  function renderEquationPreview() {
+    if (!el.equationPreview) {
+      return;
+    }
+    const raw = String(el.equationEditor?.value || "").trim();
+    if (!raw) {
+      el.equationPreview.textContent = "Equation preview will appear here.";
+      return;
+    }
+    const pretty = raw
+      .replaceAll("\\frac", "frac")
+      .replaceAll("sqrt", "√")
+      .replaceAll(">=", "≥")
+      .replaceAll("<=", "≤")
+      .replaceAll("!=", "≠")
+      .replaceAll("->", "→")
+      .replace(/\^2/g, "²")
+      .replace(/\^3/g, "³")
+      .replace(/\*+/g, "×");
+    el.equationPreview.textContent = `Equation preview: ${pretty}`;
+  }
+
+  function persistCodeDraft() {
+    if (!st.currentQuestion || !el.codeEditor) {
+      return;
+    }
+    st.codeDraftByQuestion[String(st.currentQuestion.id)] = {
+      language: String(el.codeLanguage?.value || "python"),
+      source: String(el.codeEditor.value || ""),
+      updated_at: new Date().toISOString(),
+    };
+    persistAttemptCache();
+  }
+
+  function loadCodeDraftForCurrentQuestion() {
+    if (!st.currentQuestion || !el.codeEditor || !el.codeLanguage) {
+      return;
+    }
+    const draft = st.codeDraftByQuestion[String(st.currentQuestion.id)];
+    if (!draft) {
+      el.codeEditor.value = "";
+      el.codeLanguage.value = "python";
+      return;
+    }
+    el.codeLanguage.value = draft.language || "python";
+    el.codeEditor.value = draft.source || "";
+  }
+
+  function openCalmMode() {
+    if (!el.calmModeOverlay) {
+      return;
+    }
+    el.calmModeOverlay.hidden = false;
+    syncModalOpenState();
+    startBreathingPrompt();
+    setStatus("Calm mode active. Slow inhale-exhale rhythm follow karo.");
+  }
+
+  function closeCalmMode() {
+    if (!el.calmModeOverlay) {
+      return;
+    }
+    el.calmModeOverlay.hidden = true;
+    syncModalOpenState();
+    setStatus("Calm mode closed.");
+  }
+
+  function runPracticeSimulation() {
+    if (!el.practiceSimBox) {
+      return;
+    }
+    const total = Number(st.totalQuestions || 0);
+    const answered = answerState.getAnsweredCount(total);
+    const review = answerState.getMarkedCount();
+    const pending = answerState.getPendingCount();
+    const easy = answerState.getEasyCount();
+    const hard = answerState.getHardCount();
+    const remaining = timerState.getRemainingSeconds();
+    const targetRate = total > 0 ? Math.min(100, Math.round((answered / total) * 100)) : 0;
+    const recommendation =
+      remaining <= 300
+        ? "Last-mile mode: marked + easy bucket first."
+        : hard > easy
+          ? "Hard bucket heavy. Do one quick easy pass."
+          : "Maintain current pace with short validation pause every 3 questions.";
+    el.practiceSimBox.textContent = JSON.stringify(
+      {
+        simulation_at: new Date().toISOString(),
+        answered,
+        review,
+        pending_sync: pending,
+        hard_bucket: hard,
+        easy_bucket: easy,
+        projected_completion_percent: targetRate,
+        recommendation,
+      },
+      null,
+      2
+    );
+  }
+
+  function runMockAnalyticsMirror() {
+    if (!el.mockAnalyticsBox) {
+      return;
+    }
+    const total = Number(st.totalQuestions || 0);
+    const answered = answerState.getAnsweredCount(total);
+    const unanswered = Math.max(0, total - answered);
+    const confidenceTagged = answerState.getConfidenceTaggedCount(total);
+    const avgTime = total
+      ? Number(
+          (
+            Object.values(st.questionTimeBySequence).reduce(
+              (acc, value) => acc + Number(value || 0),
+              0
+            ) / Math.max(1, answered || 1)
+          ).toFixed(2)
+        )
+      : 0;
+    el.mockAnalyticsBox.textContent = JSON.stringify(
+      {
+        generated_at: new Date().toISOString(),
+        answered,
+        unanswered,
+        confidence_tagged: confidenceTagged,
+        avg_seconds_per_answered_question: avgTime,
+        warning_count: st.warningCount,
+        sync_retry_count: st.syncRetryCount,
+        stress_level: st.stressLevel,
+      },
+      null,
+      2
+    );
+  }
+
+  function toggleDragDropAnswerMode() {
+    st.dragDropMode = !st.dragDropMode;
+    if (el.enableDragDropOptions) {
+      el.enableDragDropOptions.textContent = st.dragDropMode
+        ? "Drag-Drop Answer Mode: On"
+        : "Drag-Drop Answer Mode";
+    }
+    if (st.currentQuestion && st.currentQuestionOptions.length) {
+      renderQuestion({
+        question: st.currentQuestion,
+        options: st.currentQuestionOptions,
+        sequence_number: st.sequence,
+      });
+    }
+    persistAttemptCache();
+  }
+
+  function attachDragDropHandlers(optionLabel, optionId) {
+    if (!st.dragDropMode || !(optionLabel instanceof HTMLElement)) {
+      return;
+    }
+    optionLabel.draggable = true;
+    optionLabel.dataset.optionId = optionId;
+    optionLabel.addEventListener("dragstart", (event) => {
+      if (!(event.dataTransfer instanceof DataTransfer)) {
+        return;
+      }
+      event.dataTransfer.setData("text/plain", optionId);
+      event.dataTransfer.effectAllowed = "move";
+    });
+    optionLabel.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      optionLabel.classList.add("drag-hover");
+    });
+    optionLabel.addEventListener("dragleave", () => {
+      optionLabel.classList.remove("drag-hover");
+    });
+    optionLabel.addEventListener("drop", (event) => {
+      event.preventDefault();
+      optionLabel.classList.remove("drag-hover");
+      const sourceId = event.dataTransfer?.getData("text/plain");
+      if (!sourceId || sourceId === optionId) {
+        return;
+      }
+      const current = [...st.currentQuestionOptions];
+      const fromIndex = current.findIndex((row) => String(row.id) === String(sourceId));
+      const toIndex = current.findIndex((row) => String(row.id) === String(optionId));
+      if (fromIndex < 0 || toIndex < 0) {
+        return;
+      }
+      const [moved] = current.splice(fromIndex, 1);
+      current.splice(toIndex, 0, moved);
+      st.currentQuestionOptions = current;
+      appendAnswerTimeline("drag_reorder", st.sequence);
+      renderQuestion({
+        question: st.currentQuestion,
+        options: st.currentQuestionOptions,
+        sequence_number: st.sequence,
+      });
+      setStatus("Option order updated in drag-drop mode.");
+    });
+  }
+
+  function generateMatchMode() {
+    if (!el.matchModeBox || !st.currentQuestionOptions.length) {
+      return;
+    }
+    const left = st.currentQuestionOptions.map((row, idx) => ({
+      label: `Item ${idx + 1}`,
+      value: row.option_text,
+    }));
+    const right = [...left]
+      .sort(() => Math.random() - 0.5)
+      .map((row, idx) => ({ slot: String.fromCharCode(65 + idx), value: row.value }));
+    const html = left
+      .map((row, index) => {
+        const matched = right[index];
+        return `<div>${esc(row.label)} -> ${esc(matched.slot)}</div>`;
+      })
+      .join("");
+    el.matchModeBox.innerHTML = `
+      <div><strong>Match Mode Preview</strong></div>
+      <div style="margin-top:6px">${html}</div>
+      <div style="margin-top:6px">Right column options shuffled for practice reasoning.</div>
+    `;
+    appendAnswerTimeline("match_mode_generated", st.sequence);
+  }
+
+  function playQuestionAudio() {
+    if (!("speechSynthesis" in window)) {
+      setStatus("Audio player unsupported in this browser.");
+      return;
+    }
+    if (!st.currentQuestion) {
+      setStatus("Load a question first.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const parts = [st.currentQuestion.text || ""];
+    st.currentQuestionOptions.forEach((option, index) => {
+      parts.push(`Option ${String.fromCharCode(65 + index)}. ${option.option_text}`);
+    });
+    const utterance = new SpeechSynthesisUtterance(parts.join(". "));
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.lang = "en-IN";
+    window.speechSynthesis.speak(utterance);
+    setStatus("Question audio playback started.");
+  }
+
+  function renderReceiptQr(receipt) {
+    if (!el.receiptQrBox) {
+      return;
+    }
+    if (!receipt?.receipt_id) {
+      el.receiptQrBox.textContent = "Signed QR receipt will appear here after submission.";
+      return;
+    }
+    const seed = `${receipt.receipt_id}|${receipt.student_id}|${receipt.attempt_id}`;
+    let cursor = 0;
+    const bits = [];
+    for (let index = 0; index < 256; index += 1) {
+      const code = seed.charCodeAt(cursor % seed.length);
+      bits.push((code + index * 17) % 2);
+      cursor += 1;
+    }
+    const cell = 8;
+    const size = 16;
+    const cells = [];
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const value = bits[y * size + x];
+        if (!value) {
+          continue;
+        }
+        cells.push(
+          `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" fill="#111827"></rect>`
+        );
+      }
+    }
+    el.receiptQrBox.innerHTML = `
+      <div><strong>Signed QR Receipt (visual hash)</strong></div>
+      <svg viewBox="0 0 ${size * cell} ${size * cell}" width="180" height="180" role="img" aria-label="Receipt QR visual hash" style="margin-top:8px;border:1px solid #d2dbe8;background:#fff">
+        ${cells.join("")}
+      </svg>
+      <div class="small" style="margin-top:6px">Receipt ${esc(receipt.receipt_id)} | hash-grid signature ready for print/export.</div>
+    `;
+  }
+
+  function renderTopicStrengthAndWeakPlan(questionResults) {
+    const rows = Array.isArray(questionResults) ? questionResults : [];
+    if (!el.topicStrengthBox || !el.weakTopicPlanBox) {
+      return;
+    }
+    if (!rows.length) {
+      el.topicStrengthBox.textContent = "Topic strength map unavailable for this attempt.";
+      el.weakTopicPlanBox.textContent = "Weak-topic action plan unavailable for this attempt.";
+      return;
+    }
+    const topicMap = new Map();
+    rows.forEach((row) => {
+      const topic = st.questionTopicById[String(row.question_id)] || "untagged";
+      if (!topicMap.has(topic)) {
+        topicMap.set(topic, { topic, total: 0, correct: 0, attempted: 0 });
+      }
+      const entry = topicMap.get(topic);
+      entry.total += 1;
+      if (row.selected_option_id) {
+        entry.attempted += 1;
+      }
+      if (row.is_correct) {
+        entry.correct += 1;
+      }
+    });
+    const sorted = Array.from(topicMap.values()).map((row) => ({
+      ...row,
+      accuracy: row.total > 0 ? Number(((row.correct / row.total) * 100).toFixed(1)) : 0,
+      attempt_rate: row.total > 0 ? Number(((row.attempted / row.total) * 100).toFixed(1)) : 0,
+    }));
+    sorted.sort((a, b) => b.accuracy - a.accuracy);
+
+    el.topicStrengthBox.innerHTML = `
+      <div><strong>Topic Strength Map</strong></div>
+      <div style="margin-top:8px">
+        ${sorted
+          .map(
+            (row) => `
+              <div class="summary-row">
+                <span>${esc(row.topic)}</span>
+                <strong>${esc(String(row.accuracy))}% acc | ${esc(String(row.attempt_rate))}% attempted</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+
+    const weak = [...sorted].sort((a, b) => a.accuracy - b.accuracy).slice(0, 3);
+    const weakPlan = weak.length
+      ? weak.map((row, idx) => `${idx + 1}. ${row.topic}: 25 MCQ drill + formula recap + 1 timed set.`)
+      : ["No weak topic identified from this attempt."];
+    el.weakTopicPlanBox.innerHTML = `
+      <div><strong>Weak-Topic Action Plan</strong></div>
+      <ul class="guide-list">${weakPlan.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+    `;
+  }
+
+  function clearDiagramCanvas() {
+    if (!(el.diagramCanvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+    const ctx = el.diagramCanvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+    ctx.clearRect(0, 0, el.diagramCanvas.width, el.diagramCanvas.height);
+  }
+
+  function initializeDiagramCanvas() {
+    if (!(el.diagramCanvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+    const canvas = el.diagramCanvas;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1f6feb";
+    ctx.lineWidth = 2;
+
+    const pointFor = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const source =
+        event instanceof TouchEvent ? event.touches[0] || event.changedTouches[0] : event;
+      const x = source.clientX - rect.left;
+      const y = source.clientY - rect.top;
+      return { x, y };
+    };
+
+    const begin = (event) => {
+      if (!st.attemptId || st.finalized || st.paused) {
+        return;
+      }
+      const { x, y } = pointFor(event);
+      st.diagramStrokeActive = true;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      event.preventDefault();
+    };
+
+    const draw = (event) => {
+      if (!st.diagramStrokeActive) {
+        return;
+      }
+      const { x, y } = pointFor(event);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      event.preventDefault();
+    };
+
+    const end = () => {
+      if (!st.diagramStrokeActive) {
+        return;
+      }
+      st.diagramStrokeActive = false;
+      appendAnswerTimeline("diagram_updated", st.sequence);
+    };
+
+    canvas.addEventListener("mousedown", begin);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", end);
+    canvas.addEventListener("mouseleave", end);
+    canvas.addEventListener("touchstart", begin, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", end, { passive: false });
+  }
+
+  function renderClipboardLogs() {
+    if (!el.clipboardLog) {
+      return;
+    }
+    if (!st.clipboardLogs.length) {
+      el.clipboardLog.textContent = "No clipboard attempts yet.";
+      return;
+    }
+    el.clipboardLog.innerHTML = st.clipboardLogs
+      .slice(-8)
+      .map((entry) => `<div>${esc(formatDate(entry.at))} - ${esc(entry.kind)}</div>`)
+      .join("");
+  }
+
+  function updateBucketSummary() {
+    if (!el.bucketSummary) {
+      return;
+    }
+    el.bucketSummary.textContent = `Hard ${answerState.getHardCount()} | Easy ${answerState.getEasyCount()}`;
+  }
+
+  function updateOptionModeButtons() {
+    if (el.toggleEliminateMode) {
+      el.toggleEliminateMode.textContent = `Eliminate Mode: ${st.optionMode === "eliminate" ? "On" : "Off"}`;
+    }
+    if (el.toggleStrikeMode) {
+      el.toggleStrikeMode.textContent = `Strike Mode: ${st.optionMode === "strike" ? "On" : "Off"}`;
+    }
+    if (el.enableDragDropOptions) {
+      el.enableDragDropOptions.textContent = st.dragDropMode
+        ? "Drag-Drop Answer Mode: On"
+        : "Drag-Drop Answer Mode";
+    }
+  }
+
+  function runInlineTranslation(text) {
+    if (!st.translateMode) {
+      return text;
+    }
+    let translated = String(text || "");
+    for (const [source, target] of INLINE_TRANSLATIONS) {
+      const pattern = new RegExp(`\\b${source}\\b`, "gi");
+      translated = translated.replace(pattern, target);
+    }
+    return translated;
+  }
+
+  function openGlossaryModal() {
+    if (!el.glossaryModal || !el.glossaryContent) {
+      return;
+    }
+    el.glossaryContent.innerHTML = GLOSSARY.map(
+      ([term, meaning]) => `<p><strong>${esc(term)}:</strong> ${esc(meaning)}</p>`
+    ).join("");
+    el.glossaryModal.hidden = false;
+    syncModalOpenState();
+  }
+
+  function closeGlossaryModal() {
+    if (!el.glossaryModal) {
+      return;
+    }
+    el.glossaryModal.hidden = true;
+    syncModalOpenState();
+  }
+
+  function renderExamTips() {
+    if (!el.tipsFeed) {
+      return;
+    }
+    el.tipsFeed.textContent = EXAM_DAY_TIPS[st.examTipsIndex % EXAM_DAY_TIPS.length];
+  }
+
+  function startExamTipsFeed() {
+    renderExamTips();
+    if (st.tipsTimerId) {
+      clearInterval(st.tipsTimerId);
+    }
+    st.tipsTimerId = window.setInterval(() => {
+      st.examTipsIndex = (st.examTipsIndex + 1) % EXAM_DAY_TIPS.length;
+      renderExamTips();
+    }, 15000);
+  }
+
+  function stopExamTipsFeed() {
+    if (st.tipsTimerId) {
+      clearInterval(st.tipsTimerId);
+      st.tipsTimerId = null;
+    }
+  }
+
+  function showConflictResolver(conflict) {
+    if (!el.conflictModal || !el.conflictKeepLocal || !el.conflictReloadServer) {
+      return Promise.resolve("keep_local");
+    }
+    st.conflictPending = conflict;
+    el.conflictModal.hidden = false;
+    syncModalOpenState();
+    return new Promise((resolve) => {
+      st.conflictResolver = resolve;
+    });
+  }
+
+  function closeConflictResolver(choice) {
+    if (!el.conflictModal) {
+      return;
+    }
+    el.conflictModal.hidden = true;
+    syncModalOpenState();
+    const resolver = st.conflictResolver;
+    st.conflictResolver = null;
+    if (typeof resolver === "function") {
+      resolver(choice || "keep_local");
+    }
+  }
+
+  function openResumeWizard(cached) {
+    if (!el.resumeWizardModal || !el.resumeWizardSummary) {
+      return Promise.resolve("resume");
+    }
+    el.resumeWizardSummary.innerHTML = `
+      <div class="summary-row"><span>Attempt</span><strong>${esc(String(cached.attempt_id || "-"))}</strong></div>
+      <div class="summary-row"><span>Exam</span><strong>${esc(String(cached.exam_name || cached.exam_id || "-"))}</strong></div>
+      <div class="summary-row"><span>Last Updated</span><strong>${esc(formatDate(cached.updated_at))}</strong></div>
+    `;
+    el.resumeWizardModal.hidden = false;
+    syncModalOpenState();
+    return new Promise((resolve) => {
+      st.resumeWizardResolver = resolve;
+    });
+  }
+
+  function closeResumeWizard(choice) {
+    if (!el.resumeWizardModal) {
+      return;
+    }
+    el.resumeWizardModal.hidden = true;
+    syncModalOpenState();
+    const resolver = st.resumeWizardResolver;
+    st.resumeWizardResolver = null;
+    if (typeof resolver === "function") {
+      resolver(choice || "resume");
+    }
+  }
 
   function renderAnswerTimeline() {
     if (!el.answerTimeline) {
@@ -578,6 +1480,7 @@
       setStatus(reason || "Exam resumed. Continue from current question.");
       resetInactivityTimer();
     }
+    updateStressDetector();
   }
 
   function readUiPrefs() {
@@ -592,12 +1495,22 @@
           uiPrefs.fontScale = parsed.font_scale;
         }
         uiPrefs.highContrast = Boolean(parsed.high_contrast);
+        uiPrefs.colorblind = Boolean(parsed.colorblind);
+        uiPrefs.reducedMotion = Boolean(parsed.reduced_motion);
+        uiPrefs.largeCursor = Boolean(parsed.large_cursor);
         const nextZoom = Number(parsed.question_zoom);
         if (!Number.isNaN(nextZoom)) {
           uiPrefs.questionZoom = Math.min(160, Math.max(80, Math.round(nextZoom)));
         }
         if (typeof parsed.confirm_unanswered === "boolean") {
           uiPrefs.confirmUnanswered = parsed.confirm_unanswered;
+        }
+        if (typeof parsed.sound_alerts === "boolean") {
+          uiPrefs.soundAlerts = parsed.sound_alerts;
+        }
+        const nextVolume = Number(parsed.sound_volume);
+        if (!Number.isNaN(nextVolume)) {
+          uiPrefs.soundVolume = Math.min(100, Math.max(0, Math.round(nextVolume)));
         }
       }
     } catch {
@@ -611,8 +1524,13 @@
       JSON.stringify({
         font_scale: uiPrefs.fontScale,
         high_contrast: uiPrefs.highContrast,
+        colorblind: uiPrefs.colorblind,
+        reduced_motion: uiPrefs.reducedMotion,
+        large_cursor: uiPrefs.largeCursor,
         question_zoom: uiPrefs.questionZoom,
         confirm_unanswered: uiPrefs.confirmUnanswered,
+        sound_alerts: uiPrefs.soundAlerts,
+        sound_volume: uiPrefs.soundVolume,
       })
     );
   }
@@ -620,6 +1538,9 @@
   function applyUiPrefs() {
     document.body.dataset.fontScale = uiPrefs.fontScale;
     document.body.classList.toggle("student-high-contrast", uiPrefs.highContrast);
+    document.body.classList.toggle("student-colorblind", uiPrefs.colorblind);
+    document.body.classList.toggle("student-reduced-motion", uiPrefs.reducedMotion);
+    document.body.classList.toggle("student-large-cursor", uiPrefs.largeCursor);
     if (el.fontSizeSelect) {
       el.fontSizeSelect.value = uiPrefs.fontScale;
     }
@@ -631,6 +1552,21 @@
     }
     if (el.confirmUnansweredToggle) {
       el.confirmUnansweredToggle.checked = uiPrefs.confirmUnanswered;
+    }
+    if (el.colorblindToggle) {
+      el.colorblindToggle.checked = uiPrefs.colorblind;
+    }
+    if (el.reducedMotionToggle) {
+      el.reducedMotionToggle.checked = uiPrefs.reducedMotion;
+    }
+    if (el.largeCursorToggle) {
+      el.largeCursorToggle.checked = uiPrefs.largeCursor;
+    }
+    if (el.soundAlertToggle) {
+      el.soundAlertToggle.checked = uiPrefs.soundAlerts;
+    }
+    if (el.soundVolume) {
+      el.soundVolume.value = String(uiPrefs.soundVolume);
     }
     const zoomScale = (uiPrefs.questionZoom / 100).toFixed(2);
     document.documentElement.style.setProperty("--student-question-zoom", zoomScale);
@@ -667,7 +1603,11 @@
       !el.submitModal.hidden ||
       !el.onboardingModal.hidden ||
       !el.inactivityModal.hidden ||
-      (el.shortcutsModal ? !el.shortcutsModal.hidden : false);
+      (el.shortcutsModal ? !el.shortcutsModal.hidden : false) ||
+      (el.resumeWizardModal ? !el.resumeWizardModal.hidden : false) ||
+      (el.glossaryModal ? !el.glossaryModal.hidden : false) ||
+      (el.conflictModal ? !el.conflictModal.hidden : false) ||
+      (el.calmModeOverlay ? !el.calmModeOverlay.hidden : false);
     document.body.classList.toggle("modal-open", anyOpen);
   }
 
@@ -740,14 +1680,69 @@
       }
       const latencyMs = Math.round(performance.now() - start);
       st.heartbeatLatencyMs = latencyMs;
+      st.heartbeatHistory.push({ at: new Date().toISOString(), latency_ms: latencyMs });
+      if (st.heartbeatHistory.length > 40) {
+        st.heartbeatHistory = st.heartbeatHistory.slice(-40);
+      }
       if (latencyMs > 1500) {
         updateHeartbeatIndicator("degraded", `Server: Slow (${latencyMs}ms)`);
       } else {
         updateHeartbeatIndicator("online", `Server: OK (${latencyMs}ms)`);
       }
+      updateNetworkQuality();
     } catch {
+      st.heartbeatHistory.push({ at: new Date().toISOString(), latency_ms: null });
+      if (st.heartbeatHistory.length > 40) {
+        st.heartbeatHistory = st.heartbeatHistory.slice(-40);
+      }
       updateHeartbeatIndicator("offline", "Server: Unreachable");
+      updateNetworkQuality();
     }
+  }
+
+  function updateNetworkQuality() {
+    if (!el.networkQuality) {
+      return;
+    }
+    const recent = st.heartbeatHistory.slice(-12);
+    if (!recent.length) {
+      el.networkQuality.textContent = "Network quality: waiting...";
+      return;
+    }
+    const ok = recent.filter((row) => typeof row.latency_ms === "number");
+    const avg = ok.length
+      ? Math.round(ok.reduce((acc, row) => acc + Number(row.latency_ms || 0), 0) / ok.length)
+      : 0;
+    const offlineCount = recent.length - ok.length;
+    const spark = recent
+      .map((row) => {
+        if (typeof row.latency_ms !== "number") {
+          return "x";
+        }
+        if (row.latency_ms < 300) {
+          return "_";
+        }
+        if (row.latency_ms < 900) {
+          return "-";
+        }
+        if (row.latency_ms < 1800) {
+          return "~";
+        }
+        return "!";
+      })
+      .join("");
+    const quality =
+      offlineCount > 0 ? "Unstable" : avg > 1200 ? "Slow" : avg > 600 ? "Moderate" : "Good";
+    el.networkQuality.textContent = `Network quality: ${quality} | avg=${avg}ms | offline=${offlineCount} | ${spark}`;
+  }
+
+  function updateSyncDiagnostics() {
+    if (!el.syncDiagnostics) {
+      return;
+    }
+    const pending = answerState.getPendingCount();
+    const lastError = st.lastSyncError ? ` | last_error=${st.lastSyncError}` : "";
+    el.syncDiagnostics.textContent = `Sync diagnostics: retries=${st.syncRetryCount} | pending=${pending} | predownloaded=${st.predownloadedCount}${lastError}`;
   }
 
   function updatePaletteFilterButtons() {
@@ -940,7 +1935,7 @@
   }
 
   async function pullBroadcasts() {
-    if (!st.attemptId || st.finalized || st.paused) {
+    if (!st.attemptId || st.finalized) {
       return;
     }
     try {
@@ -956,6 +1951,13 @@
       );
       const rows = data.broadcasts || [];
       if (rows.length > 0) {
+        const newest = rows[rows.length - 1];
+        const severity = String(newest?.severity || "info").toLowerCase();
+        if (severity === "critical") {
+          playAlertTone(360, 260);
+        } else if (severity === "warn") {
+          playAlertTone(520, 180);
+        }
         st.broadcastCursor = rows[rows.length - 1].created_at || st.broadcastCursor;
         const byId = new Map(st.broadcastHistory.map((item) => [String(item.id), item]));
         rows.forEach((item) => {
@@ -1120,6 +2122,7 @@
       <div class="summary-row"><span>Percentage</span><strong>${esc(receipt.percentage.toFixed(2))}%</strong></div>
       <div class="summary-row"><span>Status</span><strong>${receipt.passed ? "PASS" : "NEEDS IMPROVEMENT"}</strong></div>
     `;
+    renderReceiptQr(receipt);
   }
 
   function printResultSlip() {
@@ -1170,6 +2173,7 @@
     }
     el.lowTimeAlert.textContent = message;
     el.lowTimeAlert.hidden = false;
+    playAlertTone(680, 180);
     window.setTimeout(() => {
       if (el.lowTimeAlert.textContent === message) {
         el.lowTimeAlert.hidden = true;
@@ -1237,6 +2241,48 @@
     el.moraleTip.textContent = "Tip: read question statement twice before selecting answer.";
   }
 
+  function resultHistoryKey() {
+    return `${RESULT_HISTORY_PREFIX}${st.studentId || "unknown"}`;
+  }
+
+  function readResultHistory() {
+    try {
+      const raw = localStorage.getItem(resultHistoryKey());
+      if (!raw) {
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeResultHistory(rows) {
+    localStorage.setItem(resultHistoryKey(), JSON.stringify(rows.slice(-20)));
+  }
+
+  function buildCoachingPlan(percentage, attemptedRatio, accuracyRatio) {
+    const recommendations = [];
+    if (percentage < 40) {
+      recommendations.push("Concept reset: core topics revise with solved examples.");
+    } else if (percentage < 70) {
+      recommendations.push("Targeted practice: weak topics par 20-30 focused MCQs/day.");
+    } else {
+      recommendations.push("Maintain pace: timed mocks se stability preserve karo.");
+    }
+    if (attemptedRatio < 0.75) {
+      recommendations.push("Attempt strategy improve karo: easy-first pass mandatory rakho.");
+    }
+    if (accuracyRatio < 0.6) {
+      recommendations.push("Accuracy drills: elimination + re-read before locking answer.");
+    }
+    if (!recommendations.length) {
+      recommendations.push("Balanced performance. Maintain revision cadence.");
+    }
+    return recommendations;
+  }
+
   function renderResultSummary(payload) {
     const summary = payload?.result && typeof payload.result === "object"
       ? payload.result
@@ -1253,6 +2299,8 @@
     const attempted = questionResults.filter((item) => item.selected_option_id).length;
     const correct = questionResults.filter((item) => item.is_correct).length;
     const totalQuestions = questionResults.length || Number(st.totalQuestions || 0);
+    const attemptedRatio = totalQuestions > 0 ? attempted / totalQuestions : 0;
+    const accuracyRatio = attempted > 0 ? correct / attempted : 0;
 
     const resultBadgeClass = passed ? "result-pass" : "result-fail";
     const resultBadgeText = passed ? "PASS" : "NEEDS IMPROVEMENT";
@@ -1288,6 +2336,56 @@
           : "Acha attempt tha. Weak areas revise karke next attempt me score improve hoga."}
       </p>
     `;
+
+    const history = readResultHistory();
+    const last = history.length ? history[history.length - 1] : null;
+    const delta =
+      last && typeof last.percentage === "number"
+        ? Number((percentage - Number(last.percentage || 0)).toFixed(2))
+        : null;
+    const filteredHistory = history.filter((row) => row.attempt_id !== st.attemptId);
+    const nextHistory = [
+      ...filteredHistory,
+      {
+        attempt_id: st.attemptId,
+        exam_id: st.examId,
+        exam_name: st.examName,
+        percentage,
+        score: totalScore,
+        total_possible: totalPossible,
+        created_at: new Date().toISOString(),
+      },
+    ];
+    writeResultHistory(nextHistory);
+
+    if (el.attemptCompareBox) {
+      const compareRows = nextHistory.slice(-5).reverse();
+      const trend = compareRows
+        .map(
+          (row) =>
+            `<div>${esc(formatDate(row.created_at))} - ${esc(String(row.exam_name || row.exam_id))}: ${esc(Number(row.percentage || 0).toFixed(2))}%</div>`
+        )
+        .join("");
+      el.attemptCompareBox.innerHTML = `
+        <div><strong>Attempt Compare</strong></div>
+        <div>${delta == null ? "First attempt baseline created." : `Delta vs previous: ${delta >= 0 ? "+" : ""}${delta}%`}</div>
+        <div style="margin-top:6px">${trend || "No previous history."}</div>
+      `;
+    }
+
+    if (el.resultExplainBox) {
+      const coachingPlan = buildCoachingPlan(percentage, attemptedRatio, accuracyRatio);
+      el.resultExplainBox.innerHTML = `
+        <div><strong>Result Explanation</strong></div>
+        <div class="summary-row"><span>Attempt Rate</span><strong>${(attemptedRatio * 100).toFixed(1)}%</strong></div>
+        <div class="summary-row"><span>Accuracy</span><strong>${(accuracyRatio * 100).toFixed(1)}%</strong></div>
+        <div class="summary-row"><span>Confidence Tags Used</span><strong>${answerState.getConfidenceTaggedCount(totalQuestions)}</strong></div>
+        <div style="margin-top:8px"><strong>AI Coaching Plan (heuristic)</strong></div>
+        <ul class="guide-list">${coachingPlan.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+      `;
+    }
+
+    renderTopicStrengthAndWeakPlan(questionResults);
   }
 
   function showAntiCheatWarning(message) {
@@ -1374,6 +2472,21 @@
       answer_timeline: st.answerTimeline,
       seen_broadcast_ids: Array.from(st.seenBroadcastIds),
       broadcast_history: st.broadcastHistory,
+      heartbeat_history: st.heartbeatHistory,
+      sync_retry_count: st.syncRetryCount,
+      last_sync_error: st.lastSyncError,
+      clipboard_logs: st.clipboardLogs,
+      tab_switch_reasons: st.tabSwitchReasons,
+      option_mode: st.optionMode,
+      drag_drop_mode: st.dragDropMode,
+      translate_mode: st.translateMode,
+      predownloaded_count: st.predownloadedCount,
+      question_topic_by_id: st.questionTopicById,
+      code_draft_by_question: st.codeDraftByQuestion,
+      input_latency_samples: st.inputLatencySamples,
+      stress_level: st.stressLevel,
+      caption_size: st.captionSize,
+      rough_pad: el.roughPad ? el.roughPad.value : "",
       expires_at: timerState.getExpiresAt(),
       updated_at: new Date().toISOString(),
       ...answerState.serialize(),
@@ -1438,6 +2551,48 @@
           .filter((item) => item.id && item.created_at);
         renderBroadcasts(st.broadcastHistory);
       }
+      if (Array.isArray(cache.heartbeat_history)) {
+        st.heartbeatHistory = cache.heartbeat_history.slice(-40);
+      }
+      if (Array.isArray(cache.clipboard_logs)) {
+        st.clipboardLogs = cache.clipboard_logs.slice(-60);
+      }
+      if (Array.isArray(cache.tab_switch_reasons)) {
+        st.tabSwitchReasons = cache.tab_switch_reasons.slice(-20);
+      }
+      if (typeof cache.sync_retry_count === "number") {
+        st.syncRetryCount = Math.max(0, Math.floor(cache.sync_retry_count));
+      }
+      if (typeof cache.last_sync_error === "string") {
+        st.lastSyncError = cache.last_sync_error;
+      }
+      if (typeof cache.option_mode === "string") {
+        st.optionMode = cache.option_mode;
+      }
+      st.dragDropMode = Boolean(cache.drag_drop_mode);
+      st.translateMode = Boolean(cache.translate_mode);
+      st.predownloadedCount = Number(cache.predownloaded_count || 0);
+      if (cache.question_topic_by_id && typeof cache.question_topic_by_id === "object") {
+        st.questionTopicById = { ...cache.question_topic_by_id };
+      }
+      if (cache.code_draft_by_question && typeof cache.code_draft_by_question === "object") {
+        st.codeDraftByQuestion = { ...cache.code_draft_by_question };
+      }
+      if (Array.isArray(cache.input_latency_samples)) {
+        st.inputLatencySamples = cache.input_latency_samples
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+          .slice(-80);
+      }
+      if (typeof cache.stress_level === "string") {
+        st.stressLevel = cache.stress_level;
+      }
+      if (Number.isFinite(Number(cache.caption_size))) {
+        st.captionSize = Number(cache.caption_size);
+      }
+      if (el.roughPad && typeof cache.rough_pad === "string") {
+        el.roughPad.value = cache.rough_pad;
+      }
       if (cache.exam_name) {
         st.examName = String(cache.exam_name);
       }
@@ -1445,6 +2600,22 @@
         timerState.start(cache.expires_at);
       }
       renderAnswerTimeline();
+      renderClipboardLogs();
+      updateOptionModeButtons();
+      updateBucketSummary();
+      updateSyncDiagnostics();
+      updateNetworkQuality();
+      updateInputLatencyMeter();
+      updateStressDetector();
+      if (el.captionSize) {
+        el.captionSize.value = String(st.captionSize);
+      }
+      updateCaptionPreview();
+      renderEquationPreview();
+      runMockAnalyticsMirror();
+      if (el.toggleTranslate) {
+        el.toggleTranslate.textContent = st.translateMode ? "Inline Translate: On" : "Inline Translate: Off";
+      }
       updateMiniProgressWidget();
     } catch {
       return;
@@ -1507,6 +2678,7 @@
     el.paletteStats.textContent = `Answered ${answered} / ${total}`;
     el.prevQuestion.disabled = st.sequence <= 1 || st.finalized || st.paused;
     updateMiniProgressWidget();
+    updateBucketSummary();
   }
 
   function renderPalette() {
@@ -1525,9 +2697,11 @@
       const marked = answerState.isMarked(sequence);
       const answered = answerState.isAnsweredSequence(sequence);
       const stateClass = marked ? "review" : answered ? "answered" : "unanswered";
+      const hardClass = answerState.isHard(sequence) ? "bucket-hard" : "";
+      const easyClass = answerState.isEasy(sequence) ? "bucket-easy" : "";
       const currentClass = sequence === st.sequence ? "current" : "";
       paletteButtons.push(
-        `<button type="button" class="palette-btn ${stateClass} ${currentClass}" data-sequence="${sequence}">${sequence}</button>`
+        `<button type="button" class="palette-btn ${stateClass} ${hardClass} ${easyClass} ${currentClass}" data-sequence="${sequence}">${sequence}</button>`
       );
     }
     if (paletteButtons.length === 0) {
@@ -1576,31 +2750,66 @@
   function renderQuestion(payload) {
     stopQuestionTimeTracking();
     st.currentQuestion = payload.question;
+    st.currentQuestionOptions = Array.isArray(payload.options) ? payload.options : [];
     st.sequence = Number(payload.sequence_number);
     answerState.setSequenceQuestion(st.sequence, payload.question.id);
+    st.questionTopicById[String(payload.question.id)] = String(payload.question.topic || "untagged");
     startQuestionTimeTracking(st.sequence);
 
     el.examName.textContent = st.examName || st.examId || "Exam";
-    el.questionText.textContent = payload.question.text || "Question text unavailable.";
+    el.questionText.textContent = runInlineTranslation(
+      payload.question.text || "Question text unavailable."
+    );
 
     const selectedOptionId = answerState.getSelection(payload.question.id);
     el.optionsList.innerHTML = "";
 
-    for (const option of payload.options || []) {
+    for (const option of st.currentQuestionOptions) {
       const label = document.createElement("label");
       label.className = "choice-option";
+      const eliminated = answerState.isEliminated(payload.question.id, option.id);
+      const struck = answerState.isStruck(payload.question.id, option.id);
+      if (eliminated) {
+        label.classList.add("eliminated-option");
+      }
+      if (struck) {
+        label.classList.add("struck-option");
+      }
 
       const radio = document.createElement("input");
       radio.type = "radio";
       radio.name = "selected-option";
       radio.value = option.id;
       radio.checked = selectedOptionId === option.id;
+      radio.disabled = eliminated;
 
       const text = document.createElement("span");
-      text.textContent = option.option_text;
+      text.textContent = runInlineTranslation(option.option_text);
+      text.className = "option-text";
+
+      const tools = document.createElement("span");
+      tools.className = "option-tools";
+
+      const eliminateBtn = document.createElement("button");
+      eliminateBtn.type = "button";
+      eliminateBtn.className = "btn-outline option-mini-btn";
+      eliminateBtn.dataset.optionId = option.id;
+      eliminateBtn.dataset.action = "eliminate";
+      eliminateBtn.textContent = eliminated ? "Un-eliminate" : "Eliminate";
+
+      const strikeBtn = document.createElement("button");
+      strikeBtn.type = "button";
+      strikeBtn.className = "btn-outline option-mini-btn";
+      strikeBtn.dataset.optionId = option.id;
+      strikeBtn.dataset.action = "strike";
+      strikeBtn.textContent = struck ? "Un-strike" : "Strike";
 
       label.appendChild(radio);
       label.appendChild(text);
+      tools.appendChild(eliminateBtn);
+      tools.appendChild(strikeBtn);
+      label.appendChild(tools);
+      attachDragDropHandlers(label, String(option.id));
       el.optionsList.appendChild(label);
     }
 
@@ -1617,9 +2826,16 @@
     updateMarkReviewLabel();
     updateProgress();
     renderPalette();
+    updateBucketSummary();
+    updateOptionModeButtons();
+    loadCodeDraftForCurrentQuestion();
+    updateCaptionPreview();
+    renderEquationPreview();
+    runMockAnalyticsMirror();
     persistAttemptCache();
     resetInactivityTimer();
     updateMiniProgressWidget();
+    updateStressDetector();
   }
 
   function setAttemptControlsEnabled(enabled) {
@@ -1646,6 +2862,69 @@
     }
     if (el.jumpSequenceBtn) {
       el.jumpSequenceBtn.disabled = !active;
+    }
+    if (el.toggleHardBucket) {
+      el.toggleHardBucket.disabled = !active;
+    }
+    if (el.toggleEasyBucket) {
+      el.toggleEasyBucket.disabled = !active;
+    }
+    if (el.toggleEliminateMode) {
+      el.toggleEliminateMode.disabled = !active;
+    }
+    if (el.toggleStrikeMode) {
+      el.toggleStrikeMode.disabled = !active;
+    }
+    if (el.predownloadQuestions) {
+      el.predownloadQuestions.disabled = !active;
+    }
+    if (el.fullscreenRetry) {
+      el.fullscreenRetry.disabled = !active;
+    }
+    if (el.replayRules) {
+      el.replayRules.disabled = !active;
+    }
+    if (el.toggleTranslate) {
+      el.toggleTranslate.disabled = !active;
+    }
+    if (el.instantSupport) {
+      el.instantSupport.disabled = !active;
+    }
+    if (el.roughPad) {
+      el.roughPad.disabled = !active;
+    }
+    if (el.equationEditor) {
+      el.equationEditor.disabled = !active;
+    }
+    if (el.codeEditor) {
+      el.codeEditor.disabled = !active;
+    }
+    if (el.codeLanguage) {
+      el.codeLanguage.disabled = !active;
+    }
+    if (el.captionSize) {
+      el.captionSize.disabled = !active;
+    }
+    if (el.playQuestionAudio) {
+      el.playQuestionAudio.disabled = !active;
+    }
+    if (el.enableDragDropOptions) {
+      el.enableDragDropOptions.disabled = !active;
+    }
+    if (el.generateMatchMode) {
+      el.generateMatchMode.disabled = !active;
+    }
+    if (el.runPracticeSim) {
+      el.runPracticeSim.disabled = !active;
+    }
+    if (el.runMockAnalytics) {
+      el.runMockAnalytics.disabled = !active;
+    }
+    if (el.toggleCalmMode) {
+      el.toggleCalmMode.disabled = !active;
+    }
+    if (el.clearDiagram) {
+      el.clearDiagram.disabled = !active;
     }
   }
 
@@ -1696,9 +2975,13 @@
 
     if (!navigator.onLine) {
       answerState.queuePending(queueItem);
+      st.syncRetryCount += 1;
+      st.lastSyncError = "offline";
       setAutosaveIndicator("pending", "Pending LAN Sync");
       setStatus("LAN temporary unavailable. Answer saved locally and queued.");
       updateSyncHealthIndicator();
+      updateSyncDiagnostics();
+      updateStressDetector();
       return false;
     }
 
@@ -1714,18 +2997,44 @@
       });
       answerState.markSubmitted(questionId);
       answerState.removePending(questionId);
+      st.lastSyncError = "";
       setAutosaveIndicator("synced", "Synced");
       updateSyncHealthIndicator();
+      updateSyncDiagnostics();
+      updateStressDetector();
       return true;
     } catch (error) {
+      if (
+        error?.httpStatus === 409 ||
+        /conflict|concurrency/i.test(String(error?.message || ""))
+      ) {
+        const choice = await showConflictResolver({
+          question_id: questionId,
+          selected_option_id: selectedOptionId,
+        });
+        if (choice === "reload_server") {
+          await refreshAttemptStatus();
+          await fetchQuestion(st.sequence);
+          setStatus("Server state reloaded after conflict.");
+          return false;
+        }
+      }
       if (error?.httpStatus && error.httpStatus < 500) {
+        st.syncRetryCount += 1;
+        st.lastSyncError = String(error.message || "client_error");
+        updateSyncDiagnostics();
         setStatus(error.message);
+        updateStressDetector();
         return false;
       }
       answerState.queuePending(queueItem);
+      st.syncRetryCount += 1;
+      st.lastSyncError = String(error.message || "network_error");
       setAutosaveIndicator("pending", "Pending LAN Sync");
       setStatus("LAN issue detected. Answer saved locally and will auto-sync.");
       updateSyncHealthIndicator();
+      updateSyncDiagnostics();
+      updateStressDetector();
       return false;
     }
   }
@@ -1754,12 +3063,17 @@
         });
         answerState.markSubmitted(item.question_id);
         answerState.removePending(item.question_id);
+        st.lastSyncError = "";
         synced += 1;
       } catch (error) {
         if (error?.httpStatus && error.httpStatus < 500) {
+          st.syncRetryCount += 1;
+          st.lastSyncError = String(error.message || "client_error");
           answerState.removePending(item.question_id);
           continue;
         }
+        st.syncRetryCount += 1;
+        st.lastSyncError = String(error?.message || "sync_error");
         break;
       }
     }
@@ -1776,6 +3090,8 @@
     renderAttemptMeta();
     updateSyncHealthIndicator();
     updateMiniProgressWidget();
+    updateSyncDiagnostics();
+    updateStressDetector();
   }
 
   async function loadVersion() {
@@ -1831,6 +3147,9 @@
 
     updateProgress();
     renderPalette();
+    updateIntegrityHash().catch(() => {
+      return;
+    });
     return statusPayload;
   }
 
@@ -1900,6 +3219,7 @@
       st.sequence = 1;
       st.totalQuestions = 0;
       st.currentQuestion = null;
+      st.currentQuestionOptions = [];
       st.finalized = false;
       st.paused = false;
       st.receipt = null;
@@ -1913,6 +3233,18 @@
       st.questionTimeStartedAt = null;
       st.answerTimeline = [];
       st.focusStreak = 0;
+      st.heartbeatHistory = [];
+      st.syncRetryCount = 0;
+      st.lastSyncError = "";
+      st.clipboardLogs = [];
+      st.tabSwitchReasons = [];
+      st.optionMode = "none";
+      st.dragDropMode = false;
+      st.questionTopicById = {};
+      st.codeDraftByQuestion = {};
+      st.inputLatencySamples = [];
+      st.stressLevel = "normal";
+      st.captionSize = 16;
       answerState.clear();
       setAutosaveIndicator("local", "Local Draft");
       updateSyncHealthIndicator();
@@ -1922,6 +3254,15 @@
       }
       if (el.receiptBox) {
         el.receiptBox.textContent = "Acknowledgement receipt will appear here after submission.";
+      }
+      if (el.receiptQrBox) {
+        el.receiptQrBox.textContent = "Signed QR receipt will appear here after submission.";
+      }
+      if (el.topicStrengthBox) {
+        el.topicStrengthBox.textContent = "Topic strength map will appear here after submission.";
+      }
+      if (el.weakTopicPlanBox) {
+        el.weakTopicPlanBox.textContent = "Weak-topic action plan will appear here after submission.";
       }
       if (el.broadcastFeed) {
         el.broadcastFeed.textContent = "Waiting for admin broadcast messages...";
@@ -1933,7 +3274,35 @@
         el.turboModeHint.hidden = true;
       }
       renderAnswerTimeline();
+      renderClipboardLogs();
       updateMiniProgressWidget();
+      updateBucketSummary();
+      updateOptionModeButtons();
+      updateSyncDiagnostics();
+      updateNetworkQuality();
+      updateInputLatencyMeter();
+      updateStressDetector();
+      if (el.practiceSimBox) {
+        el.practiceSimBox.textContent = "Practice simulation output will appear here.";
+      }
+      if (el.mockAnalyticsBox) {
+        el.mockAnalyticsBox.textContent = "Mock analytics mirror will appear here.";
+      }
+      if (el.matchModeBox) {
+        el.matchModeBox.textContent = "Match mode not generated yet.";
+      }
+      if (el.equationEditor) {
+        el.equationEditor.value = "";
+      }
+      if (el.codeEditor) {
+        el.codeEditor.value = "";
+      }
+      if (el.captionSize) {
+        el.captionSize.value = "16";
+      }
+      updateCaptionPreview();
+      clearDiagramCanvas();
+      await updateIntegrityHash();
       if (el.breathingPrompt) {
         el.breathingPrompt.textContent = "Use when you feel rushed. Slow inhale-exhale can stabilize focus.";
       }
@@ -1960,6 +3329,7 @@
 
       await flushPendingQueue();
       await loadMoraleCoach();
+      startExamTipsFeed();
       setStatus("Exam started successfully. Read each question carefully.");
     } catch (error) {
       setStatus(error.message);
@@ -2048,6 +3418,123 @@
     setStatus(`Jumped to question #${sequence}.`);
   }
 
+  function toggleHardBucket() {
+    if (!st.attemptId || st.finalized || st.paused) {
+      return;
+    }
+    const active = answerState.toggleHard(st.sequence);
+    updateBucketSummary();
+    setStatus(active ? `Q${st.sequence} added to hard bucket.` : `Q${st.sequence} removed from hard bucket.`);
+  }
+
+  function toggleEasyBucket() {
+    if (!st.attemptId || st.finalized || st.paused) {
+      return;
+    }
+    const active = answerState.toggleEasy(st.sequence);
+    updateBucketSummary();
+    setStatus(active ? `Q${st.sequence} added to easy bucket.` : `Q${st.sequence} removed from easy bucket.`);
+  }
+
+  function toggleOptionMode(nextMode) {
+    st.optionMode = st.optionMode === nextMode ? "none" : nextMode;
+    updateOptionModeButtons();
+  }
+
+  async function predownloadOfflinePacket() {
+    if (!st.attemptId || st.finalized || st.paused) {
+      setStatus("Start active attempt first.");
+      return;
+    }
+    const total = Number(st.totalQuestions || 0);
+    if (!total) {
+      setStatus("Question count unavailable.");
+      return;
+    }
+    let loaded = 0;
+    for (let sequence = 1; sequence <= total; sequence += 1) {
+      try {
+        const questionPayload = await api(
+          `/student/attempts/${encodeURIComponent(st.attemptId)}/questions/${sequence}`,
+          { headers: studentHeaders() }
+        );
+        answerState.setSequenceQuestion(sequence, questionPayload.question.id);
+        st.questionTopicById[String(questionPayload.question.id)] = String(
+          questionPayload.question.topic || "untagged"
+        );
+        loaded += 1;
+      } catch {
+        break;
+      }
+    }
+    st.predownloadedCount = loaded;
+    persistAttemptCache();
+    setStatus(`Offline packet prepared: ${loaded}/${total} questions cached.`);
+  }
+
+  async function retryFullscreen() {
+    if (!document.documentElement.requestFullscreen) {
+      setStatus("Fullscreen API unsupported in this browser.");
+      return;
+    }
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+      setStatus("Fullscreen active.");
+    } catch (error) {
+      setStatus(`Fullscreen request failed: ${error.message}`);
+    }
+  }
+
+  function replayRulesAcknowledgement() {
+    if (!el.rulesContent) {
+      return;
+    }
+    loadExamRules();
+    el.rulesContent.hidden = false;
+    if (el.toggleRules) {
+      el.toggleRules.textContent = "Hide";
+    }
+    setStatus("Rules replay opened.");
+  }
+
+  function toggleInlineTranslate() {
+    st.translateMode = !st.translateMode;
+    if (el.toggleTranslate) {
+      el.toggleTranslate.textContent = st.translateMode ? "Inline Translate: On" : "Inline Translate: Off";
+    }
+    if (st.currentQuestion && st.currentQuestionOptions.length) {
+      renderQuestion({
+        question: st.currentQuestion,
+        options: st.currentQuestionOptions,
+        sequence_number: st.sequence,
+      });
+    }
+    setStatus(st.translateMode ? "Inline translation enabled." : "Inline translation disabled.");
+  }
+
+  async function instantSupportRequest() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("Active attempt required.");
+      return;
+    }
+    try {
+      await api(`/student/attempts/${encodeURIComponent(st.attemptId)}/technical-issue`, {
+        method: "POST",
+        headers: studentHeaders(),
+        body: {
+          issue_type: "instant_support",
+          note: "Student requested instant support from quick action.",
+        },
+      });
+      setStatus("Instant support request sent to proctor/admin.");
+      playAlertTone(520, 140);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function openSubmitModal() {
     if (!st.attemptId || st.finalized || st.paused) {
       setStatus("No active exam to submit.");
@@ -2058,6 +3545,8 @@
     const answered = answerState.getAnsweredCount(total);
     const confidenceTagged = answerState.getConfidenceTaggedCount(total);
     const marked = answerState.getMarkedCount();
+    const hardCount = answerState.getHardCount();
+    const easyCount = answerState.getEasyCount();
     const unanswered = Math.max(0, total - answered);
     const pendingSync = answerState.getPendingCount();
 
@@ -2097,6 +3586,11 @@
         ok: true,
         detail: `${st.warningCount} warning(s)`,
       },
+      {
+        label: "Strategy buckets",
+        ok: hardCount + easyCount > 0,
+        detail: `hard=${hardCount}, easy=${easyCount}`,
+      },
     ];
 
     el.submitSummary.innerHTML = `
@@ -2127,6 +3621,7 @@
     stopQuestionTimeTracking();
     st.finalized = true;
     st.paused = false;
+    st.optionMode = "none";
     st.autoSubmitInProgress = false;
     setAttemptControlsEnabled(false);
     timerState.stop();
@@ -2135,6 +3630,11 @@
       st.inactivityTimerId = null;
     }
     closeInactivityModal();
+    closeGlossaryModal();
+    closeShortcutsModal();
+    closeConflictResolver("keep_local");
+    closeResumeWizard("resume");
+    closeCalmMode();
     if (st.moraleTimerId) {
       clearInterval(st.moraleTimerId);
       st.moraleTimerId = null;
@@ -2147,6 +3647,7 @@
       clearInterval(st.attemptStatusTimerId);
       st.attemptStatusTimerId = null;
     }
+    stopExamTipsFeed();
     stopBreathingPrompt();
     clearAttemptCache();
     setAutosaveIndicator("synced", "Finalized");
@@ -2167,6 +3668,7 @@
       status: "FINALIZED",
     });
     closeSubmitModal();
+    updateOptionModeButtons();
   }
 
   async function autoSubmitExpiredAttempt() {
@@ -2281,6 +3783,7 @@
       clearInterval(st.attemptStatusTimerId);
       st.attemptStatusTimerId = null;
     }
+    stopExamTipsFeed();
     stopBreathingPrompt();
     closeInactivityModal();
     localStorage.removeItem(STUDENT_SESSION_KEY);
@@ -2290,6 +3793,13 @@
   async function restoreLatestCachedAttempt() {
     const cached = findLatestCachedAttemptForStudent();
     if (!cached) {
+      return;
+    }
+    const resumeChoice = await openResumeWizard(cached);
+    if (resumeChoice === "fresh") {
+      const key = `${ATTEMPT_CACHE_PREFIX}${cached.attempt_id}`;
+      localStorage.removeItem(key);
+      setStatus("Local draft discarded. Fresh start mode enabled.");
       return;
     }
 
@@ -2330,11 +3840,63 @@
           }))
           .filter((item) => item.id && item.created_at)
       : [];
+    st.heartbeatHistory = Array.isArray(cached.heartbeat_history)
+      ? cached.heartbeat_history.slice(-40)
+      : [];
+    st.syncRetryCount = Number(cached.sync_retry_count || 0);
+    st.lastSyncError = String(cached.last_sync_error || "");
+    st.clipboardLogs = Array.isArray(cached.clipboard_logs)
+      ? cached.clipboard_logs.slice(-60)
+      : [];
+    st.tabSwitchReasons = Array.isArray(cached.tab_switch_reasons)
+      ? cached.tab_switch_reasons.slice(-20)
+      : [];
+    st.optionMode = String(cached.option_mode || "none");
+    st.dragDropMode = Boolean(cached.drag_drop_mode);
+    st.translateMode = Boolean(cached.translate_mode);
+    st.predownloadedCount = Number(cached.predownloaded_count || 0);
+    st.questionTopicById =
+      cached.question_topic_by_id && typeof cached.question_topic_by_id === "object"
+        ? { ...cached.question_topic_by_id }
+        : {};
+    st.codeDraftByQuestion =
+      cached.code_draft_by_question && typeof cached.code_draft_by_question === "object"
+        ? { ...cached.code_draft_by_question }
+        : {};
+    st.inputLatencySamples = Array.isArray(cached.input_latency_samples)
+      ? cached.input_latency_samples
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+          .slice(-80)
+      : [];
+    st.stressLevel = String(cached.stress_level || "normal");
+    st.captionSize = Number.isFinite(Number(cached.caption_size))
+      ? Number(cached.caption_size)
+      : 16;
+    if (el.roughPad && typeof cached.rough_pad === "string") {
+      el.roughPad.value = cached.rough_pad;
+    }
+    if (el.captionSize) {
+      el.captionSize.value = String(st.captionSize);
+    }
 
     answerState.hydrate(cached);
     timerState.start(cached.expires_at || null);
     renderAnswerTimeline();
+    renderClipboardLogs();
     renderBroadcasts(st.broadcastHistory);
+    updateOptionModeButtons();
+    updateBucketSummary();
+    updateSyncDiagnostics();
+    updateNetworkQuality();
+    updateInputLatencyMeter();
+    updateStressDetector();
+    updateCaptionPreview();
+    renderEquationPreview();
+    runMockAnalyticsMirror();
+    if (el.toggleTranslate) {
+      el.toggleTranslate.textContent = st.translateMode ? "Inline Translate: On" : "Inline Translate: Off";
+    }
     updateMiniProgressWidget();
 
     try {
@@ -2387,6 +3949,26 @@
         closeShortcutsModal();
       });
     }
+    if (el.resumeFromCache) {
+      el.resumeFromCache.addEventListener("click", () => {
+        closeResumeWizard("resume");
+      });
+    }
+    if (el.discardCacheStartFresh) {
+      el.discardCacheStartFresh.addEventListener("click", () => {
+        closeResumeWizard("fresh");
+      });
+    }
+    if (el.conflictKeepLocal) {
+      el.conflictKeepLocal.addEventListener("click", () => {
+        closeConflictResolver("keep_local");
+      });
+    }
+    if (el.conflictReloadServer) {
+      el.conflictReloadServer.addEventListener("click", () => {
+        closeConflictResolver("reload_server");
+      });
+    }
     el.continueAfterInactive.addEventListener("click", () => {
       closeInactivityModal();
       resetInactivityTimer();
@@ -2406,6 +3988,39 @@
       uiPrefs.confirmUnanswered = Boolean(el.confirmUnansweredToggle.checked);
       persistUiPrefs();
     });
+    if (el.colorblindToggle) {
+      el.colorblindToggle.addEventListener("change", () => {
+        uiPrefs.colorblind = Boolean(el.colorblindToggle.checked);
+        applyUiPrefs();
+        persistUiPrefs();
+      });
+    }
+    if (el.reducedMotionToggle) {
+      el.reducedMotionToggle.addEventListener("change", () => {
+        uiPrefs.reducedMotion = Boolean(el.reducedMotionToggle.checked);
+        applyUiPrefs();
+        persistUiPrefs();
+      });
+    }
+    if (el.largeCursorToggle) {
+      el.largeCursorToggle.addEventListener("change", () => {
+        uiPrefs.largeCursor = Boolean(el.largeCursorToggle.checked);
+        applyUiPrefs();
+        persistUiPrefs();
+      });
+    }
+    if (el.soundAlertToggle) {
+      el.soundAlertToggle.addEventListener("change", () => {
+        uiPrefs.soundAlerts = Boolean(el.soundAlertToggle.checked);
+        persistUiPrefs();
+      });
+    }
+    if (el.soundVolume) {
+      el.soundVolume.addEventListener("input", () => {
+        uiPrefs.soundVolume = Number(el.soundVolume.value || "60");
+        persistUiPrefs();
+      });
+    }
     el.questionZoomIn.addEventListener("click", () => {
       setQuestionZoom(uiPrefs.questionZoom + 10);
     });
@@ -2426,6 +4041,93 @@
     el.reportTechnicalIssue.addEventListener("click", reportTechnicalIssue);
     el.jumpUnanswered.addEventListener("click", jumpToFirstUnanswered);
     el.jumpSequenceBtn.addEventListener("click", jumpToSequence);
+    if (el.toggleHardBucket) {
+      el.toggleHardBucket.addEventListener("click", toggleHardBucket);
+    }
+    if (el.toggleEasyBucket) {
+      el.toggleEasyBucket.addEventListener("click", toggleEasyBucket);
+    }
+    if (el.toggleEliminateMode) {
+      el.toggleEliminateMode.addEventListener("click", () => {
+        toggleOptionMode("eliminate");
+      });
+    }
+    if (el.toggleStrikeMode) {
+      el.toggleStrikeMode.addEventListener("click", () => {
+        toggleOptionMode("strike");
+      });
+    }
+    if (el.predownloadQuestions) {
+      el.predownloadQuestions.addEventListener("click", predownloadOfflinePacket);
+    }
+    if (el.fullscreenRetry) {
+      el.fullscreenRetry.addEventListener("click", retryFullscreen);
+    }
+    if (el.replayRules) {
+      el.replayRules.addEventListener("click", replayRulesAcknowledgement);
+    }
+    if (el.openGlossary) {
+      el.openGlossary.addEventListener("click", openGlossaryModal);
+    }
+    if (el.closeGlossary) {
+      el.closeGlossary.addEventListener("click", closeGlossaryModal);
+    }
+    if (el.toggleTranslate) {
+      el.toggleTranslate.addEventListener("click", toggleInlineTranslate);
+    }
+    if (el.instantSupport) {
+      el.instantSupport.addEventListener("click", instantSupportRequest);
+    }
+    if (el.roughPad) {
+      el.roughPad.addEventListener("input", () => {
+        persistAttemptCache();
+      });
+    }
+    if (el.runPracticeSim) {
+      el.runPracticeSim.addEventListener("click", runPracticeSimulation);
+    }
+    if (el.runMockAnalytics) {
+      el.runMockAnalytics.addEventListener("click", runMockAnalyticsMirror);
+    }
+    if (el.equationEditor) {
+      el.equationEditor.addEventListener("input", () => {
+        renderEquationPreview();
+        persistAttemptCache();
+      });
+    }
+    if (el.codeEditor) {
+      el.codeEditor.addEventListener("input", persistCodeDraft);
+    }
+    if (el.codeLanguage) {
+      el.codeLanguage.addEventListener("change", persistCodeDraft);
+    }
+    if (el.captionSize) {
+      el.captionSize.addEventListener("input", () => {
+        updateCaptionPreview();
+        persistAttemptCache();
+      });
+    }
+    if (el.playQuestionAudio) {
+      el.playQuestionAudio.addEventListener("click", playQuestionAudio);
+    }
+    if (el.enableDragDropOptions) {
+      el.enableDragDropOptions.addEventListener("click", toggleDragDropAnswerMode);
+    }
+    if (el.generateMatchMode) {
+      el.generateMatchMode.addEventListener("click", generateMatchMode);
+    }
+    if (el.toggleCalmMode) {
+      el.toggleCalmMode.addEventListener("click", openCalmMode);
+    }
+    if (el.closeCalmMode) {
+      el.closeCalmMode.addEventListener("click", closeCalmMode);
+    }
+    if (el.clearDiagram) {
+      el.clearDiagram.addEventListener("click", () => {
+        clearDiagramCanvas();
+        appendAnswerTimeline("diagram_cleared", st.sequence);
+      });
+    }
     el.jumpSequence.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         jumpToSequence();
@@ -2446,6 +4148,57 @@
     el.confirmSubmit.addEventListener("click", confirmSubmitExam);
     el.viewResult.addEventListener("click", viewResult);
     el.refreshMorale.addEventListener("click", loadMoraleCoach);
+
+    el.optionsList.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !st.currentQuestion) {
+        return;
+      }
+      const miniButton = target.closest("button[data-action][data-option-id]");
+      if (miniButton) {
+        event.preventDefault();
+        const optionId = miniButton.dataset.optionId || "";
+        const action = miniButton.dataset.action || "";
+        if (action === "eliminate") {
+          answerState.toggleEliminate(st.currentQuestion.id, optionId);
+          appendAnswerTimeline("option_eliminated", st.sequence);
+          renderQuestion({
+            question: st.currentQuestion,
+            options: st.currentQuestionOptions,
+            sequence_number: st.sequence,
+          });
+        } else if (action === "strike") {
+          answerState.toggleStrike(st.currentQuestion.id, optionId);
+          appendAnswerTimeline("option_struck", st.sequence);
+          renderQuestion({
+            question: st.currentQuestion,
+            options: st.currentQuestionOptions,
+            sequence_number: st.sequence,
+          });
+        }
+        return;
+      }
+
+      if (st.optionMode !== "none") {
+        const label = target.closest("label.choice-option");
+        const radio = label?.querySelector('input[name="selected-option"]');
+        if (radio instanceof HTMLInputElement) {
+          event.preventDefault();
+          if (st.optionMode === "eliminate") {
+            answerState.toggleEliminate(st.currentQuestion.id, radio.value);
+            appendAnswerTimeline("option_eliminated", st.sequence);
+          } else if (st.optionMode === "strike") {
+            answerState.toggleStrike(st.currentQuestion.id, radio.value);
+            appendAnswerTimeline("option_struck", st.sequence);
+          }
+          renderQuestion({
+            question: st.currentQuestion,
+            options: st.currentQuestionOptions,
+            sequence_number: st.sequence,
+          });
+        }
+      }
+    });
 
     el.optionsList.addEventListener("change", (event) => {
       const input = event.target;
@@ -2492,12 +4245,30 @@
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         resetInactivityTimer();
+        if (st.hiddenSince && st.attemptId && !st.finalized) {
+          const reason = window.prompt(
+            "Tab switch reason (optional):",
+            "Accidental switch"
+          );
+          st.tabSwitchReasons.push({
+            at: new Date().toISOString(),
+            reason: String(reason || "not_provided"),
+          });
+          if (st.tabSwitchReasons.length > 20) {
+            st.tabSwitchReasons = st.tabSwitchReasons.slice(-20);
+          }
+          persistAttemptCache();
+        }
+        st.hiddenSince = null;
         return;
       }
+      st.hiddenSince = new Date().toISOString();
       st.warningCount += 1;
+      playAlertTone(460, 190);
       showAntiCheatWarning(
         `Warning ${st.warningCount}: Tab switch detected. Stay on exam screen.`
       );
+      updateStressDetector();
     });
 
     document.addEventListener("contextmenu", (event) => {
@@ -2515,6 +4286,45 @@
     document.addEventListener("mousemove", () => {
       st.diagnostics.mouseSeen = true;
     });
+    document.addEventListener("click", () => {
+      const start = typeof performance !== "undefined" ? performance.now() : Date.now();
+      window.requestAnimationFrame(() => {
+        recordInputLatencySample(start);
+      });
+    });
+    document.addEventListener("copy", (event) => {
+      event.preventDefault();
+      st.clipboardLogs.push({ at: new Date().toISOString(), kind: "copy_blocked" });
+      if (st.clipboardLogs.length > 60) {
+        st.clipboardLogs = st.clipboardLogs.slice(-60);
+      }
+      renderClipboardLogs();
+      persistAttemptCache();
+      playAlertTone(430, 120);
+      updateStressDetector();
+    });
+    document.addEventListener("cut", (event) => {
+      event.preventDefault();
+      st.clipboardLogs.push({ at: new Date().toISOString(), kind: "cut_blocked" });
+      if (st.clipboardLogs.length > 60) {
+        st.clipboardLogs = st.clipboardLogs.slice(-60);
+      }
+      renderClipboardLogs();
+      persistAttemptCache();
+      playAlertTone(430, 120);
+      updateStressDetector();
+    });
+    document.addEventListener("paste", (event) => {
+      event.preventDefault();
+      st.clipboardLogs.push({ at: new Date().toISOString(), kind: "paste_blocked" });
+      if (st.clipboardLogs.length > 60) {
+        st.clipboardLogs = st.clipboardLogs.slice(-60);
+      }
+      renderClipboardLogs();
+      persistAttemptCache();
+      playAlertTone(430, 120);
+      updateStressDetector();
+    });
 
     window.addEventListener("online", () => {
       flushPendingQueue();
@@ -2522,11 +4332,17 @@
       updateSyncHealthIndicator();
       pingServerHeartbeat();
       pullBroadcasts();
+      updateSyncDiagnostics();
+      updateStressDetector();
     });
 
     window.addEventListener("offline", () => {
       updateSyncHealthIndicator();
       updateHeartbeatIndicator("offline", "Server: Unreachable");
+      updateNetworkQuality();
+      updateSyncDiagnostics();
+      playAlertTone(420, 150);
+      updateStressDetector();
     });
 
     window.addEventListener("beforeunload", (event) => {
@@ -2553,11 +4369,16 @@
       if (st.attemptStatusTimerId) {
         clearInterval(st.attemptStatusTimerId);
       }
+      stopExamTipsFeed();
       stopQuestionTimeTracking();
       stopBreathingPrompt();
     });
 
     window.addEventListener("keydown", (event) => {
+      const start = typeof performance !== "undefined" ? performance.now() : Date.now();
+      window.requestAnimationFrame(() => {
+        recordInputLatencySample(start);
+      });
       if (event.key === "Escape" && !el.submitModal.hidden) {
         closeSubmitModal();
         return;
@@ -2573,6 +4394,22 @@
       }
       if (event.key === "Escape" && el.shortcutsModal && !el.shortcutsModal.hidden) {
         closeShortcutsModal();
+        return;
+      }
+      if (event.key === "Escape" && el.glossaryModal && !el.glossaryModal.hidden) {
+        closeGlossaryModal();
+        return;
+      }
+      if (event.key === "Escape" && el.conflictModal && !el.conflictModal.hidden) {
+        closeConflictResolver("keep_local");
+        return;
+      }
+      if (event.key === "Escape" && el.resumeWizardModal && !el.resumeWizardModal.hidden) {
+        closeResumeWizard("resume");
+        return;
+      }
+      if (event.key === "Escape" && el.calmModeOverlay && !el.calmModeOverlay.hidden) {
+        closeCalmMode();
         return;
       }
       const target = event.target;
@@ -2664,12 +4501,101 @@
     if (el.broadcastBadge) {
       el.broadcastBadge.textContent = "No alerts";
     }
+    if (el.resultExplainBox) {
+      el.resultExplainBox.textContent = "Result explanation cards will appear here after submission.";
+    }
+    if (el.attemptCompareBox) {
+      el.attemptCompareBox.textContent = "Attempt comparison insights will appear here after at least 2 attempts.";
+    }
+    if (el.topicStrengthBox) {
+      el.topicStrengthBox.textContent = "Topic strength map will appear here after submission.";
+    }
+    if (el.weakTopicPlanBox) {
+      el.weakTopicPlanBox.textContent = "Weak-topic action plan will appear here after submission.";
+    }
+    if (el.networkQuality) {
+      el.networkQuality.textContent = "Network quality: waiting...";
+    }
+    if (el.syncDiagnostics) {
+      el.syncDiagnostics.textContent = "Sync diagnostics: waiting...";
+    }
+    if (el.integrityHash) {
+      el.integrityHash.textContent = "Integrity checksum: -";
+    }
+    if (el.clipboardLog) {
+      el.clipboardLog.textContent = "No clipboard attempts yet.";
+    }
+    if (el.tipsFeed) {
+      el.tipsFeed.textContent = "Tip feed loading...";
+    }
+    if (el.inputLatencyMeter) {
+      el.inputLatencyMeter.textContent = "Input latency: waiting...";
+    }
+    if (el.stressDetector) {
+      el.stressDetector.textContent = "Stress detector: normal";
+    }
+    if (el.practiceSimBox) {
+      el.practiceSimBox.textContent = "Practice simulation output will appear here.";
+    }
+    if (el.mockAnalyticsBox) {
+      el.mockAnalyticsBox.textContent = "Mock analytics mirror will appear here.";
+    }
+    if (el.matchModeBox) {
+      el.matchModeBox.textContent = "Match mode not generated yet.";
+    }
+    if (el.equationPreview) {
+      el.equationPreview.textContent = "Equation preview will appear here.";
+    }
+    if (el.receiptQrBox) {
+      el.receiptQrBox.textContent = "Signed QR receipt will appear here after submission.";
+    }
+    if (el.roughPad) {
+      el.roughPad.value = "";
+    }
+    if (el.equationEditor) {
+      el.equationEditor.value = "";
+    }
+    if (el.codeEditor) {
+      el.codeEditor.value = "";
+    }
+    if (el.captionSize) {
+      el.captionSize.value = "16";
+    }
+    updateCaptionPreview();
     st.broadcastHistory = [];
     if (el.shortcutsModal) {
       el.shortcutsModal.hidden = true;
     }
+    if (el.resumeWizardModal) {
+      el.resumeWizardModal.hidden = true;
+    }
+    if (el.glossaryModal) {
+      el.glossaryModal.hidden = true;
+    }
+    if (el.conflictModal) {
+      el.conflictModal.hidden = true;
+    }
+    if (el.calmModeOverlay) {
+      el.calmModeOverlay.hidden = true;
+    }
+    st.dragDropMode = false;
+    st.questionTopicById = {};
+    st.codeDraftByQuestion = {};
+    st.inputLatencySamples = [];
+    st.stressLevel = "normal";
+    st.captionSize = 16;
     renderAnswerTimeline();
+    renderClipboardLogs();
+    updateBucketSummary();
+    updateOptionModeButtons();
     updateMiniProgressWidget();
+    updateSyncDiagnostics();
+    updateInputLatencyMeter();
+    updateStressDetector();
+    initializeDiagramCanvas();
+    clearDiagramCanvas();
+    renderExamTips();
+    startExamTipsFeed();
     setAutosaveIndicator("synced", "Waiting");
     updateSyncHealthIndicator();
     updateHeartbeatIndicator("degraded", "Server: Checking...");

@@ -62,6 +62,18 @@
           <input id="confirm-unanswered-toggle" type="checkbox" checked>
           Confirm Unanswered
         </label>
+        <label class="utility-check">
+          <input id="colorblind-toggle" type="checkbox">
+          Colorblind Theme
+        </label>
+        <label class="utility-check">
+          <input id="reduced-motion-toggle" type="checkbox">
+          Reduced Motion
+        </label>
+        <label class="utility-check">
+          <input id="large-cursor-toggle" type="checkbox">
+          Large Cursor
+        </label>
         <span id="autosave-indicator" class="status-pill autosave-synced">Autosave: Synced</span>
         <span id="sync-health-indicator" class="status-pill sync-online">LAN: Healthy</span>
         <span id="heartbeat-indicator" class="status-pill sync-online">Server: Checking...</span>
@@ -98,6 +110,10 @@
 
         <section>
           <h3 class="options-title">Choose One Option</h3>
+          <div class="row" style="margin-bottom:8px">
+            <button id="toggle-eliminate-mode" class="btn-outline" type="button">Eliminate Mode: Off</button>
+            <button id="toggle-strike-mode" class="btn-outline" type="button">Strike Mode: Off</button>
+          </div>
           <div id="options-list" class="option-list"></div>
           <div class="confidence-row" role="group" aria-label="Answer confidence">
             <span class="small">Confidence:</span>
@@ -124,11 +140,49 @@
             <p id="turbo-mode-hint" class="small" hidden>Turbo mode: last 5 min. Prioritize marked + easy wins.</p>
           </section>
 
+          <section class="card tools-card">
+            <p class="section-label">Exam Tools</p>
+            <div class="row">
+              <button id="predownload-questions" class="btn-outline" type="button">Pre-download Questions</button>
+              <button id="fullscreen-retry" class="btn-outline" type="button">Fullscreen Retry</button>
+              <button id="replay-rules" class="btn-outline" type="button">Replay Rules</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="open-glossary" class="btn-outline" type="button">Glossary</button>
+              <button id="toggle-translate" class="btn-outline" type="button">Inline Translate</button>
+              <button id="instant-support" class="btn-outline" type="button">Instant Support</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label class="utility-check">
+                <input id="sound-alert-toggle" type="checkbox" checked>
+                Alert Sound
+              </label>
+              <label class="utility-field" for="sound-volume" style="max-width:180px">
+                Volume
+                <input id="sound-volume" type="range" min="0" max="100" value="60">
+              </label>
+            </div>
+            <div id="integrity-hash" class="small">Integrity checksum: -</div>
+            <div id="network-quality" class="small">Network quality: waiting...</div>
+            <div id="sync-diagnostics" class="small">Sync diagnostics: waiting...</div>
+            <div id="input-latency-meter" class="small">Input latency: waiting...</div>
+            <div id="stress-detector" class="small">Stress detector: normal</div>
+          </section>
+
           <section class="card mini-progress-card">
             <p class="section-label">Mini Progress</p>
             <p id="progress-mini-summary" class="small">Answered 0 | Review 0 | Pending 0</p>
             <p class="small">Focus streak: <strong id="focus-streak">0</strong></p>
             <p class="small">Q time spent: <strong id="question-time-spent">0s</strong></p>
+          </section>
+
+          <section class="card strategy-card">
+            <div class="row">
+              <h3 style="margin:0">Strategy Buckets</h3>
+              <button id="toggle-hard-bucket" class="btn-outline" type="button">Toggle Hard</button>
+              <button id="toggle-easy-bucket" class="btn-outline" type="button">Toggle Easy</button>
+            </div>
+            <div id="bucket-summary" class="small">Hard 0 | Easy 0</div>
           </section>
 
           <section class="card morale-card">
@@ -202,6 +256,73 @@
             <div id="answer-timeline" class="small">No answer changes yet.</div>
           </section>
 
+          <section class="card roughpad-card">
+            <div class="row">
+              <h3 style="margin:0">Rough Pad</h3>
+            </div>
+            <textarea id="rough-pad" rows="5" placeholder="Rough work, formulas, quick notes..."></textarea>
+          </section>
+
+          <section class="card diagram-card">
+            <div class="row">
+              <h3 style="margin:0">Diagram Canvas</h3>
+              <button id="clear-diagram" class="btn-outline" type="button">Clear</button>
+            </div>
+            <canvas id="diagram-canvas" width="340" height="170"></canvas>
+          </section>
+
+          <section class="card advanced-card">
+            <div class="row">
+              <h3 style="margin:0">Advanced Answer Lab</h3>
+              <button id="toggle-calm-mode" class="btn-outline" type="button">Calm Mode</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button id="run-practice-sim" class="btn-outline" type="button">Practice Simulation</button>
+              <button id="run-mock-analytics" class="btn-outline" type="button">Mock Analytics Mirror</button>
+            </div>
+            <div id="practice-sim-box" class="small">Practice simulation output will appear here.</div>
+            <div id="mock-analytics-box" class="small">Mock analytics mirror will appear here.</div>
+            <label class="small" for="equation-editor">Equation Editor (LaTeX style)</label>
+            <textarea id="equation-editor" rows="2" placeholder="Example: x^2 + y^2 = z^2"></textarea>
+            <div id="equation-preview" class="small">Equation preview will appear here.</div>
+            <label class="small" for="code-language">Code Editor</label>
+            <select id="code-language">
+              <option value="python">Python</option>
+              <option value="cpp">C++</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+            </select>
+            <textarea id="code-editor" rows="4" placeholder="// Write your answer draft code here"></textarea>
+            <div class="row" style="margin-top:8px">
+              <button id="play-question-audio" class="btn-outline" type="button">Audio Question Player</button>
+              <label class="utility-field" for="caption-size" style="max-width:180px">
+                Caption Size
+                <input id="caption-size" type="range" min="12" max="28" value="16">
+              </label>
+            </div>
+            <div id="caption-preview" class="small">Caption preview text</div>
+            <div class="row" style="margin-top:8px">
+              <button id="enable-drag-drop-options" class="btn-outline" type="button">Drag-Drop Answer Mode</button>
+              <button id="generate-match-mode" class="btn-outline" type="button">Match-the-Following</button>
+            </div>
+            <div id="match-mode-box" class="small">Match mode not generated yet.</div>
+          </section>
+
+          <section class="card tips-card">
+            <div class="row">
+              <h3 style="margin:0">Exam-day Tips</h3>
+              <a id="emergency-contact-link" class="btn-outline" href="tel:+911000000000">Emergency Contact</a>
+            </div>
+            <div id="tips-feed" class="small">Tip feed loading...</div>
+          </section>
+
+          <section class="card clipboard-card">
+            <div class="row">
+              <h3 style="margin:0">Clipboard Log</h3>
+            </div>
+            <div id="clipboard-log" class="small">No clipboard attempts yet.</div>
+          </section>
+
           <section class="card stress-card">
             <div class="row">
               <h3 style="margin:0">Stress Reset</h3>
@@ -224,6 +345,11 @@
       <h3>Result Summary</h3>
       <div id="result-box" class="result-placeholder">Result summary will appear here after submission.</div>
       <div id="receipt-box" class="result-placeholder">Acknowledgement receipt will appear here after submission.</div>
+      <div id="receipt-qr-box" class="result-placeholder">Signed QR receipt will appear here after submission.</div>
+      <div id="result-explain-box" class="result-placeholder">Result explanation cards will appear here after submission.</div>
+      <div id="attempt-compare-box" class="result-placeholder">Attempt comparison insights will appear here after at least 2 attempts.</div>
+      <div id="topic-strength-box" class="result-placeholder">Topic strength map will appear here after submission.</div>
+      <div id="weak-topic-plan-box" class="result-placeholder">Weak-topic action plan will appear here after submission.</div>
     </section>
   </main>
 
@@ -266,6 +392,39 @@
     </div>
   </div>
 
+  <div id="resume-wizard-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="resume-wizard-title">
+      <h3 id="resume-wizard-title">Resume Wizard</h3>
+      <p class="modal-subtitle">Local draft mila hai. Aap last saved state se continue karna chahte ho ya fresh start?</p>
+      <div id="resume-wizard-summary" class="submit-summary"></div>
+      <div class="modal-actions">
+        <button id="resume-from-cache" class="btn-primary" type="button">Resume from Draft</button>
+        <button id="discard-cache-start-fresh" class="btn-outline" type="button">Start Fresh</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="glossary-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="glossary-title">
+      <h3 id="glossary-title">Exam Glossary</h3>
+      <div id="glossary-content" class="small"></div>
+      <div class="modal-actions">
+        <button id="close-glossary" class="btn-primary" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="conflict-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+      <h3 id="conflict-title">Sync Conflict Detected</h3>
+      <p class="modal-subtitle">Server ne latest answer reject kiya. Local draft preserve karna hai ya server state reload karni hai?</p>
+      <div class="modal-actions">
+        <button id="conflict-keep-local" class="btn-primary" type="button">Keep Local Draft</button>
+        <button id="conflict-reload-server" class="btn-outline" type="button">Reload Server State</button>
+      </div>
+    </div>
+  </div>
+
   <div id="shortcuts-modal" class="modal-backdrop" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
       <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
@@ -278,6 +437,16 @@
       </ul>
       <div class="modal-actions">
         <button id="close-shortcuts" class="btn-primary" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="calm-mode-overlay" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="calm-title">
+      <h3 id="calm-title">Calm Mode Active</h3>
+      <p class="modal-subtitle">Slow inhale 4s, hold 2s, exhale 4s. Jab ready ho tab close karo.</p>
+      <div class="modal-actions">
+        <button id="close-calm-mode" class="btn-primary" type="button">Close Calm Mode</button>
       </div>
     </div>
   </div>

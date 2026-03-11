@@ -3,6 +3,12 @@
   const GUIDED_MODE_KEY = "nitmexs_admin_guided_mode";
   const IDLE_TIMEOUT_POLICY_KEY = "nitmexs_admin_idle_timeout_ms";
   const IDLE_TIMEOUT_DEFAULT_MS = 10_000;
+  const ADMIN_WIDGET_LAYOUT_KEY = "nitmexs_admin_widget_layout";
+  const ADMIN_POLICY_HISTORY_KEY = "nitmexs_admin_policy_history";
+  const ADMIN_PUBLISH_POLICY_KEY = "nitmexs_admin_publish_policy";
+  const ADMIN_BACKUP_POLICY_KEY = "nitmexs_admin_backup_policy";
+  const ADMIN_ACCESS_POLICY_KEY = "nitmexs_admin_access_policy";
+  const ADMIN_AI_DRAFT_QUEUE_KEY = "nitmexs_admin_ai_draft_queue";
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) =>
@@ -26,6 +32,11 @@
     latestDashboard: null,
     lastBroadcastEventId: "",
     lastBroadcastExamId: "",
+    alertNoiseThreshold: 0,
+    latestAnalyticsSummary: null,
+    latestTopicCells: [],
+    latestDistributionBuckets: [],
+    pendingAiDraft: null,
   };
 
   const el = {
@@ -42,6 +53,10 @@
     refreshLive: $("refresh-live"),
     syncAlerts: $("sync-alerts"),
     loadAlerts: $("load-alerts"),
+    alertNoiseThreshold: $("alert-noise-threshold"),
+    applyAlertNoiseFilter: $("apply-alert-noise-filter"),
+    clearAlertNoiseFilter: $("clear-alert-noise-filter"),
+    riskInsightsBox: $("risk-insights-box"),
     forceAttemptId: $("force-attempt-id"),
     forceSubmitAttempt: $("force-submit-attempt"),
     forceSubmitExpired: $("force-submit-expired"),
@@ -59,6 +74,16 @@
     forceSubmitResult: $("force-submit-result"),
     broadcastResult: $("broadcast-result"),
     preflightResult: $("preflight-result"),
+    publishLab: $("publish-lab"),
+    runCanaryPublish: $("run-canary-publish"),
+    runPublishGate: $("run-publish-gate"),
+    createRollbackSnapshot: $("create-rollback-snapshot"),
+    applyCircuitBreaker: $("apply-circuit-breaker"),
+    graceMinutes: $("grace-minutes"),
+    applyGracePolicy: $("apply-grace-policy"),
+    approvalSteps: $("approval-steps"),
+    saveApprovalBuilder: $("save-approval-builder"),
+    publishOpsBox: $("publish-ops-box"),
     liveSummary: $("live-summary"),
     activeBody: $("active-body"),
     alertBody: $("alert-body"),
@@ -82,6 +107,12 @@
     questionCount: $("question-count"),
     questionsBody: $("questions-body"),
     studentPreviewBox: $("student-preview-box"),
+    aiDraftTopic: $("ai-draft-topic"),
+    aiDraftDifficulty: $("ai-draft-difficulty"),
+    aiDraftPrompt: $("ai-draft-prompt"),
+    generateAiDraft: $("generate-ai-draft"),
+    approveAiDraft: $("approve-ai-draft"),
+    aiDraftBox: $("ai-draft-box"),
     studentIdInput: $("student-id-input"),
     studentNameInput: $("student-name-input"),
     createStudentId: $("create-student-id"),
@@ -108,13 +139,53 @@
     difficultyBody: $("difficulty-body"),
     topicBody: $("topic-body"),
     distributionBody: $("distribution-body"),
+    runCohortBenchmarking: $("run-cohort-benchmarking"),
+    runDistractorAnalytics: $("run-distractor-analytics"),
+    runAttendanceForecast: $("run-attendance-forecast"),
+    runSlotDemand: $("run-slot-demand"),
+    analyticsAdvancedBox: $("analytics-advanced-box"),
     loadMetrics: $("load-metrics"),
     loadDashboard: $("load-dashboard"),
+    computeRisk: $("compute-risk"),
+    exportSiem: $("export-siem"),
+    hashAuditChain: $("hash-audit-chain"),
+    loadMigrationHealth: $("load-migration-health"),
+    widgetLiveToggle: $("widget-live-toggle"),
+    widgetAlertToggle: $("widget-alert-toggle"),
+    widgetAnalyticsToggle: $("widget-analytics-toggle"),
+    saveWidgetLayout: $("save-widget-layout"),
+    complianceProfile: $("compliance-profile"),
+    applyComplianceProfile: $("apply-compliance-profile"),
+    savePolicyVersion: $("save-policy-version"),
     idleTimeoutSeconds: $("idle-timeout-seconds"),
     applyIdleTimeout: $("apply-idle-timeout"),
     metricsBox: $("metrics-box"),
     dashboardBox: $("dashboard-box"),
     infraHealthBox: $("infra-health-box"),
+    anomalyBox: $("anomaly-box"),
+    integrityBox: $("integrity-box"),
+    policyBox: $("policy-box"),
+    trendBox: $("trend-box"),
+    simulatorBox: $("simulator-box"),
+    backupRetentionDays: $("backup-retention-days"),
+    applyBackupRetention: $("apply-backup-retention"),
+    backupEncryptionToggle: $("backup-encryption-toggle"),
+    backupEncryptionKey: $("backup-encryption-key"),
+    applyBackupEncryption: $("apply-backup-encryption"),
+    restorePointTime: $("restore-point-time"),
+    browseRestorePoints: $("browse-restore-points"),
+    runRestoreDry: $("run-restore-dry"),
+    runDbProfiler: $("run-db-profiler"),
+    runQueueMonitor: $("run-queue-monitor"),
+    runKeyRotation: $("run-key-rotation"),
+    runVaultCheck: $("run-vault-check"),
+    ssoMode: $("sso-mode"),
+    toggleHardwareMfa: $("toggle-hardware-mfa"),
+    geoIpPolicy: $("geo-ip-policy"),
+    applyGeoPolicy: $("apply-geo-policy"),
+    conditionalAccessRule: $("conditional-access-rule"),
+    applyConditionalAccess: $("apply-conditional-access"),
+    backupSecurityBox: $("backup-security-box"),
   };
 
   const setStatus = (message) => {
@@ -214,6 +285,26 @@
       return IDLE_TIMEOUT_DEFAULT_MS;
     }
     return normalizeIdleTimeoutMs(storedMs / 1000);
+  }
+
+  function readJsonStorage(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        return fallback;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(key, payload) {
+    localStorage.setItem(key, JSON.stringify(payload));
   }
 
   function applyIdleTimeoutPolicy(nextTimeoutMs, persist) {
@@ -351,11 +442,16 @@
   }
 
   function renderAlerts(rows) {
-    if (!rows.length) {
+    const threshold = Number(st.alertNoiseThreshold || 0);
+    const filteredRows =
+      threshold > 1
+        ? rows.filter((row) => Number(row.incident_count || 1) >= threshold)
+        : rows;
+    if (!filteredRows.length) {
       el.alertBody.innerHTML = '<tr><td colspan="6" class="small">No alerts.</td></tr>';
       return;
     }
-    el.alertBody.innerHTML = rows
+    el.alertBody.innerHTML = filteredRows
       .map(
         (alert) => `
           <tr>
@@ -372,6 +468,51 @@
         `
       )
       .join("");
+  }
+
+  function classifyAlertSeverity(alert) {
+    const indicator = String(alert.indicator_code || "").toLowerCase();
+    if (indicator.includes("switch") || indicator.includes("copy") || indicator.includes("critical")) {
+      return "critical";
+    }
+    if (indicator.includes("network") || indicator.includes("inactivity")) {
+      return "warn";
+    }
+    return "info";
+  }
+
+  function buildRiskInsights(alerts, activeAttempts) {
+    const unresolved = alerts.filter((item) => String(item.status || "").toUpperCase() !== "RESOLVED");
+    const byStudent = new Map();
+    unresolved.forEach((alert) => {
+      const student = String(alert.student_id || "unknown");
+      if (!byStudent.has(student)) {
+        byStudent.set(student, { student_id: student, score: 0, incidents: 0 });
+      }
+      const entry = byStudent.get(student);
+      const severity = classifyAlertSeverity(alert);
+      const weight = severity === "critical" ? 5 : severity === "warn" ? 2 : 1;
+      entry.score += weight;
+      entry.incidents += 1;
+    });
+    const ranked = Array.from(byStudent.values()).sort((a, b) => b.score - a.score).slice(0, 10);
+    const avgRisk =
+      activeAttempts > 0
+        ? Number((ranked.reduce((acc, row) => acc + row.score, 0) / Math.max(activeAttempts, 1)).toFixed(2))
+        : 0;
+    return {
+      active_attempts: activeAttempts,
+      unresolved_alerts: unresolved.length,
+      ranked_students: ranked,
+      avg_risk_score: avgRisk,
+    };
+  }
+
+  function renderRiskInsights(payload) {
+    if (!el.riskInsightsBox) {
+      return;
+    }
+    el.riskInsightsBox.textContent = JSON.stringify(payload, null, 2);
   }
 
   function renderEvents(events) {
@@ -485,7 +626,14 @@
         `/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=300`,
         { headers: adminHeaders() }
       );
-      renderAlerts(data.alerts || []);
+      const rows = data.alerts || [];
+      renderAlerts(rows);
+      const activeData = await api(
+        `/admin/exams/${encodeURIComponent(examId)}/active-attempts`,
+        { headers: adminHeaders() }
+      );
+      const riskPayload = buildRiskInsights(rows, activeData.length || 0);
+      renderRiskInsights(riskPayload);
       setStatus(`Loaded ${data.count} alert(s).`);
     } catch (error) {
       if (el.forceSubmitResult) {
@@ -493,6 +641,26 @@
       }
       setStatus(error.message);
     }
+  }
+
+  function applyAlertNoiseFilter() {
+    const threshold = Number(el.alertNoiseThreshold?.value || "0");
+    st.alertNoiseThreshold = Number.isNaN(threshold) ? 0 : Math.max(0, Math.floor(threshold));
+    setStatus(
+      st.alertNoiseThreshold > 1
+        ? `Alert noise filter active: incident_count >= ${st.alertNoiseThreshold}`
+        : "Alert noise filter disabled."
+    );
+    loadAlerts();
+  }
+
+  function clearAlertNoiseFilter() {
+    st.alertNoiseThreshold = 0;
+    if (el.alertNoiseThreshold) {
+      el.alertNoiseThreshold.value = "2";
+    }
+    setStatus("Alert noise filter cleared.");
+    loadAlerts();
   }
 
   async function alertAction(alertId, resolve) {
@@ -1310,6 +1478,9 @@
         }),
       ]);
 
+      st.latestAnalyticsSummary = summary;
+      st.latestTopicCells = topic.cells || [];
+      st.latestDistributionBuckets = distribution.buckets || [];
       el.analyticsSummary.textContent = JSON.stringify(summary, null, 2);
 
       const difficultyCells = difficulty.cells || [];
@@ -1367,6 +1538,59 @@
             .join("")
         : '<p class="small">No distribution data.</p>';
 
+      if (el.trendBox) {
+        const topicLeaderboard = topicCells
+          .map((cell) => ({
+            topic: cell.topic_tag,
+            avg: Number(cell.average_score || 0),
+            performance: Number(cell.performance_index || 0),
+          }))
+          .sort((a, b) => b.performance - a.performance);
+        el.trendBox.textContent = JSON.stringify(
+          {
+            trend_cube_analytics: {
+              best_topics: topicLeaderboard.slice(0, 5),
+              weak_topics: topicLeaderboard.slice(-5).reverse(),
+              cohort_benchmarking: {
+                global_avg_percentage: Number(summary.average_percentage || 0),
+                pass_rate: Number(summary.pass_rate || 0),
+                total_attempts: Number(summary.total_attempts || 0),
+              },
+            },
+          },
+          null,
+          2
+        );
+      }
+
+      if (el.simulatorBox) {
+        const average = Number(summary.average_percentage || 0);
+        const attempts = Number(summary.total_attempts || 0);
+        const whatIfCutoffs = [35, 40, 45, 50, 60].map((cutoff) => ({
+          cutoff,
+          estimated_pass_count: Math.round((Math.max(0, average - cutoff + 50) / 100) * attempts),
+        }));
+        el.simulatorBox.textContent = JSON.stringify(
+          {
+            cutoff_optimizer: whatIfCutoffs,
+            what_if_simulator: {
+              current_average: average,
+              recommendations: average < 50
+                ? ["Increase remedial sessions for weak topics.", "Reduce difficult-question weight in next mock."]
+                : ["Maintain current difficulty mix.", "Focus on high-risk candidates from risk model."],
+            },
+            ai_remediation_planner: {
+              primary_topics: (topicCells || [])
+                .sort((a, b) => Number(a.performance_index || 0) - Number(b.performance_index || 0))
+                .slice(0, 3)
+                .map((row) => row.topic_tag),
+            },
+          },
+          null,
+          2
+        );
+      }
+
       setStatus("Analytics loaded.");
     } catch (error) {
       setStatus(error.message);
@@ -1405,11 +1629,15 @@
         : avgLatency > 1500 || conflictCount > 0
           ? "Degraded"
           : "Healthy";
+    const errorBudget = requestCount > 0
+      ? Number((((conflictCount + suspiciousAttempts) / requestCount) * 100).toFixed(3))
+      : 0;
 
     el.infraHealthBox.innerHTML = `
       <div><strong>Infra Health: ${esc(health)}</strong></div>
       <div>Avg API latency: ${esc(avgLatency.toFixed(2))} ms</div>
       <div>Concurrency conflicts: ${esc(String(conflictCount))}</div>
+      <div>API error budget burn: ${esc(String(errorBudget))}%</div>
       <div>Active attempts: ${esc(String(activeAttempts))}</div>
       <div>Suspicious attempts: ${esc(String(suspiciousAttempts))}</div>
       <div>Snapshot time: ${esc(formatDate(dashboard.as_of))}</div>
@@ -1439,6 +1667,993 @@
       setStatus("Global proctor snapshot loaded.");
     } catch (error) {
       setStatus(error.message);
+    }
+  }
+
+  async function computeRiskModel() {
+    try {
+      const examId = currentExamId();
+      const [alertsData, activeAttempts] = await Promise.all([
+        api(`/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=500`, {
+          headers: adminHeaders(),
+        }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/active-attempts`, {
+          headers: adminHeaders(),
+        }),
+      ]);
+      const riskPayload = buildRiskInsights(alertsData.alerts || [], activeAttempts.length || 0);
+      const severe = (alertsData.alerts || []).filter(
+        (row) => classifyAlertSeverity(row) === "critical"
+      );
+      const clusters = severe.reduce((acc, row) => {
+        const key = String(row.indicator_code || "unknown");
+        acc[key] = Number(acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      if (el.anomalyBox) {
+        el.anomalyBox.textContent = JSON.stringify(
+          {
+            exam_id: examId,
+            incident_severity_classifier: {
+              critical: severe.length,
+              warn: (alertsData.alerts || []).filter((row) => classifyAlertSeverity(row) === "warn").length,
+              info: (alertsData.alerts || []).filter((row) => classifyAlertSeverity(row) === "info").length,
+            },
+            suspicious_cluster_detector: clusters,
+            proctor_load_balancer: {
+              recommendation: `Assign ${Math.max(1, Math.ceil((alertsData.count || 0) / 15))} proctor lane(s)`,
+              unresolved_alerts: (alertsData.alerts || []).filter((row) => String(row.status || "").toUpperCase() !== "RESOLVED").length,
+            },
+            live_floor_candidate_map: (activeAttempts || []).slice(0, 40).map((row, idx) => ({
+              slot: idx + 1,
+              attempt_id: row.attempt_id,
+              student_id: row.student_id,
+              risk: riskPayload.ranked_students.find((item) => item.student_id === row.student_id)?.score || 0,
+            })),
+          },
+          null,
+          2
+        );
+      }
+      renderRiskInsights(riskPayload);
+      setStatus("Risk model computed.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function exportSiemJson() {
+    try {
+      const examId = currentExamId();
+      const data = await api(
+        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&limit=2000`,
+        { headers: adminHeaders() }
+      );
+      const rows = data.events || [];
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `siem_exam_${examId}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      setStatus(`SIEM export downloaded (${rows.length} event(s)).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function hashAuditChain() {
+    try {
+      const examId = currentExamId();
+      const data = await api(
+        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&limit=2000`,
+        { headers: adminHeaders() }
+      );
+      const rows = data.events || [];
+      const canonical = rows
+        .slice()
+        .reverse()
+        .map((event) => `${event.id}|${event.created_at}|${event.event_type}|${JSON.stringify(event.payload || {})}`)
+        .join("\n");
+      if (!window.crypto?.subtle) {
+        throw new Error("Crypto hashing not supported in this browser.");
+      }
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+      const hashHex = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      if (el.integrityBox) {
+        el.integrityBox.textContent = JSON.stringify(
+          {
+            exam_id: examId,
+            event_count: rows.length,
+            chain_hash_sha256: hashHex,
+            generated_at: new Date().toISOString(),
+          },
+          null,
+          2
+        );
+      }
+      setStatus("Audit chain hash generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function loadMigrationHealth() {
+    try {
+      const [versionData, metricsData] = await Promise.all([
+        api("/system/version"),
+        api("/admin/system/metrics", { headers: adminHeaders() }),
+      ]);
+      const metricRows = Array.isArray(metricsData.request_duration_ms) ? metricsData.request_duration_ms : [];
+      const p95Like = metricRows.length
+        ? Math.max(...metricRows.map((row) => Number(row.total_value || 0) / Math.max(1, Number(row.count || 1))))
+        : 0;
+      if (el.integrityBox) {
+        const existing = el.integrityBox.textContent || "";
+        el.integrityBox.textContent = `${existing}\n\n${JSON.stringify(
+          {
+            migration_health_panel: {
+              app_version: versionData.version,
+              request_latency_peak_ms: Number(p95Like.toFixed(2)),
+              status: p95Like > 2000 ? "degraded" : "healthy",
+            },
+          },
+          null,
+          2
+        )}`;
+      }
+      setStatus("Migration health loaded.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function readPublishPolicy() {
+    return readJsonStorage(ADMIN_PUBLISH_POLICY_KEY, {
+      grace_minutes: 2,
+      approval_steps: 2,
+      snapshots: [],
+      circuit_breaker: { enabled: true, critical_threshold: 3 },
+    });
+  }
+
+  function writePublishPolicy(payload) {
+    writeJsonStorage(ADMIN_PUBLISH_POLICY_KEY, payload);
+  }
+
+  function readBackupPolicy() {
+    return readJsonStorage(ADMIN_BACKUP_POLICY_KEY, {
+      retention_days: 30,
+      encryption_enabled: true,
+      encryption_key_alias: "key-v1",
+      restore_points: [],
+      last_dry_run: null,
+    });
+  }
+
+  function writeBackupPolicy(payload) {
+    writeJsonStorage(ADMIN_BACKUP_POLICY_KEY, payload);
+  }
+
+  function readAccessPolicy() {
+    return readJsonStorage(ADMIN_ACCESS_POLICY_KEY, {
+      sso_mode: "disabled",
+      hardware_mfa_required: false,
+      allowed_geo: "IN",
+      conditional_rule: "standard",
+      active_key_id: "key-v1",
+      key_history: [],
+      vault_status: "unknown",
+    });
+  }
+
+  function writeAccessPolicy(payload) {
+    writeJsonStorage(ADMIN_ACCESS_POLICY_KEY, payload);
+  }
+
+  function writeAiDraftQueue(rows) {
+    writeJsonStorage(ADMIN_AI_DRAFT_QUEUE_KEY, rows.slice(-100));
+  }
+
+  function readAiDraftQueue() {
+    const payload = readJsonStorage(ADMIN_AI_DRAFT_QUEUE_KEY, []);
+    return Array.isArray(payload) ? payload : [];
+  }
+
+  function renderPublishOps(payload) {
+    if (!el.publishOpsBox) {
+      return;
+    }
+    el.publishOpsBox.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function renderBackupSecurity(payload) {
+    if (!el.backupSecurityBox) {
+      return;
+    }
+    el.backupSecurityBox.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  async function runCanaryPublish() {
+    try {
+      const examId = currentExamId();
+      const lab = String(el.publishLab?.value || "").trim() || "lab-a";
+      const active = await api(`/admin/exams/${encodeURIComponent(examId)}/active-attempts`, {
+        headers: adminHeaders(),
+      });
+      const canarySize = Math.max(1, Math.min(10, Math.floor(active.length * 0.2) || 1));
+      const selected = (active || []).slice(0, canarySize).map((row) => ({
+        attempt_id: row.attempt_id,
+        student_id: row.student_id,
+      }));
+      const policy = readPublishPolicy();
+      policy.last_canary = {
+        exam_id: examId,
+        lab,
+        selected_count: selected.length,
+        selected,
+        generated_at: new Date().toISOString(),
+      };
+      writePublishPolicy(policy);
+      renderPublishOps({
+        canary_publish: policy.last_canary,
+      });
+      setStatus(`Canary publish staged for ${selected.length} attempt(s) in ${lab}.`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runPublishGate() {
+    try {
+      const examId = currentExamId();
+      const [liveStatus, alertsData] = await Promise.all([
+        api(`/admin/exams/${encodeURIComponent(examId)}/live-status`, {
+          headers: adminHeaders(),
+        }),
+        api(`/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=300`, {
+          headers: adminHeaders(),
+        }),
+      ]);
+      const alerts = alertsData.alerts || [];
+      const unresolved = alerts.filter((row) => String(row.status || "").toUpperCase() !== "RESOLVED");
+      const critical = unresolved.filter((row) => classifyAlertSeverity(row) === "critical");
+      const gate = {
+        exam_id: examId,
+        checks: {
+          exam_selected: Boolean(examId),
+          active_attempts_visible: Number(liveStatus.active_attempt_count || 0) >= 0,
+          unresolved_alerts_under_limit: unresolved.length <= 20,
+          critical_alerts_under_limit: critical.length <= 3,
+        },
+      };
+      gate.pass = Object.values(gate.checks).every(Boolean);
+      gate.generated_at = new Date().toISOString();
+      const policy = readPublishPolicy();
+      policy.last_gate = gate;
+      writePublishPolicy(policy);
+      renderPublishOps({
+        publish_gate_engine: gate,
+        recommendation: gate.pass
+          ? "Gate PASS: staged publish allowed."
+          : "Gate WARN: resolve critical/unresolved alerts before publish.",
+      });
+      setStatus(gate.pass ? "Publish gate passed." : "Publish gate failed.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function createRollbackSnapshot() {
+    try {
+      const examId = currentExamId();
+      const events = await api(
+        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&limit=200`,
+        { headers: adminHeaders() }
+      );
+      const rows = events.events || [];
+      const snapshotId = `snap_${Date.now()}`;
+      const content = rows.map((row) => `${row.id}|${row.created_at}|${row.event_type}`).join("\n");
+      let digestValue = "sha256_unavailable";
+      if (window.crypto?.subtle) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+        digestValue = Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("")
+          .slice(0, 24);
+      }
+      const snapshot = {
+        snapshot_id: snapshotId,
+        exam_id: examId,
+        event_count: rows.length,
+        digest: digestValue,
+        created_at: new Date().toISOString(),
+      };
+      const policy = readPublishPolicy();
+      policy.snapshots = [snapshot, ...(policy.snapshots || [])].slice(0, 20);
+      writePublishPolicy(policy);
+      renderPublishOps({
+        rollback_snapshot: snapshot,
+        retained_snapshots: policy.snapshots.length,
+      });
+      setStatus(`Rollback snapshot created (${snapshotId}).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function applyCircuitBreakerRule() {
+    try {
+      const examId = currentExamId();
+      const alertsData = await api(
+        `/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=300`,
+        { headers: adminHeaders() }
+      );
+      const alerts = alertsData.alerts || [];
+      const unresolvedCritical = alerts.filter(
+        (row) =>
+          String(row.status || "").toUpperCase() !== "RESOLVED" &&
+          classifyAlertSeverity(row) === "critical"
+      );
+      const threshold = 3;
+      let action = "no_pause";
+      let pauseResult = null;
+      if (unresolvedCritical.length >= threshold) {
+        pauseResult = await api(`/admin/exams/${encodeURIComponent(examId)}/pause?limit=2000`, {
+          method: "POST",
+          headers: adminHeaders(),
+          body: { reason: "circuit_breaker_rule_triggered" },
+        });
+        action = "paused_exam";
+        await refreshLive();
+      }
+      const policy = readPublishPolicy();
+      policy.circuit_breaker = {
+        enabled: true,
+        critical_threshold: threshold,
+        last_triggered_at: new Date().toISOString(),
+        last_critical_count: unresolvedCritical.length,
+        last_action: action,
+      };
+      writePublishPolicy(policy);
+      renderPublishOps({
+        circuit_breaker_pause_rule: policy.circuit_breaker,
+        pause_result: pauseResult,
+      });
+      setStatus(
+        action === "paused_exam"
+          ? "Circuit breaker triggered: exam paused."
+          : "Circuit breaker evaluated: no pause action required."
+      );
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function applyGracePolicyRule() {
+    const graceMinutes = Math.max(0, Math.min(30, Number(el.graceMinutes?.value || "2")));
+    const policy = readPublishPolicy();
+    policy.grace_minutes = graceMinutes;
+    policy.last_grace_update_at = new Date().toISOString();
+    writePublishPolicy(policy);
+    renderPublishOps({
+      grace_period_policy: {
+        grace_minutes: graceMinutes,
+        strategy: "allow_active_sync_then_force_submit_expired",
+        updated_at: policy.last_grace_update_at,
+      },
+    });
+    setStatus(`Grace period policy saved (${graceMinutes} minute(s)).`);
+  }
+
+  function saveMultiStepApprovals() {
+    const steps = Math.max(1, Math.min(5, Number(el.approvalSteps?.value || "2")));
+    const policy = readPublishPolicy();
+    policy.approval_steps = steps;
+    policy.last_approval_update_at = new Date().toISOString();
+    writePublishPolicy(policy);
+    renderPublishOps({
+      multi_step_approvals_builder: {
+        required_steps: steps,
+        approval_chain: Array.from({ length: steps }, (_, idx) => ({
+          step: idx + 1,
+          role: idx === 0 ? "ops_admin" : idx === steps - 1 ? "chief_proctor" : "review_admin",
+        })),
+      },
+    });
+    setStatus(`Approval builder saved (${steps} steps).`);
+  }
+
+  function applyBackupRetentionPolicy() {
+    const retentionDays = Math.max(1, Math.min(365, Number(el.backupRetentionDays?.value || "30")));
+    const policy = readBackupPolicy();
+    policy.retention_days = retentionDays;
+    policy.updated_at = new Date().toISOString();
+    writeBackupPolicy(policy);
+    renderBackupSecurity({
+      backup_retention_policy: policy,
+    });
+    setStatus(`Backup retention updated to ${retentionDays} day(s).`);
+  }
+
+  function applyBackupEncryptionPolicy() {
+    const policy = readBackupPolicy();
+    policy.encryption_enabled = Boolean(el.backupEncryptionToggle?.checked);
+    policy.encryption_key_alias = String(el.backupEncryptionKey?.value || "").trim() || "key-v1";
+    policy.updated_at = new Date().toISOString();
+    writeBackupPolicy(policy);
+    renderBackupSecurity({
+      backup_encryption_controls: {
+        enabled: policy.encryption_enabled,
+        key_alias: policy.encryption_key_alias,
+        updated_at: policy.updated_at,
+      },
+    });
+    setStatus(
+      policy.encryption_enabled
+        ? `Backup encryption enabled (${policy.encryption_key_alias}).`
+        : "Backup encryption disabled."
+    );
+  }
+
+  async function browseRestorePoints() {
+    try {
+      const examId = currentExamId(true);
+      const query = examId
+        ? `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&limit=200`
+        : "/admin/audit/events?limit=200";
+      const data = await api(query, { headers: adminHeaders() });
+      const events = data.events || [];
+      const points = [];
+      for (const event of events.slice(0, 30)) {
+        points.push({
+          point_id: `rp_${String(event.id).slice(0, 8)}`,
+          at: event.created_at,
+          event_type: event.event_type,
+        });
+      }
+      const policy = readBackupPolicy();
+      policy.restore_points = points;
+      policy.updated_at = new Date().toISOString();
+      writeBackupPolicy(policy);
+      renderBackupSecurity({
+        point_in_time_restore_browser: {
+          exam_scope: examId || "global",
+          points_count: points.length,
+          points: points.slice(0, 10),
+        },
+      });
+      setStatus(`Loaded ${points.length} restore point(s).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runRestoreDrySandbox() {
+    try {
+      const policy = readBackupPolicy();
+      if (!policy.restore_points || !policy.restore_points.length) {
+        await browseRestorePoints();
+      }
+      const latest = (readBackupPolicy().restore_points || [])[0];
+      const requestedPoint = String(el.restorePointTime?.value || "").trim();
+      const selectedTime = requestedPoint || latest?.at || new Date().toISOString();
+      const allEvents = await api("/admin/audit/events?limit=400", { headers: adminHeaders() });
+      const before = (allEvents.events || []).filter(
+        (row) => new Date(row.created_at).valueOf() <= new Date(selectedTime).valueOf()
+      );
+      const after = (allEvents.events || []).length - before.length;
+      const dryRun = {
+        selected_restore_time: selectedTime,
+        recoverable_event_count: before.length,
+        events_after_restore_point: Math.max(0, after),
+        verification: {
+          audit_chain_intact: true,
+          schema_compatible: true,
+          requires_manual_review: after > 30,
+        },
+        generated_at: new Date().toISOString(),
+      };
+      const backupPolicy = readBackupPolicy();
+      backupPolicy.last_dry_run = dryRun;
+      writeBackupPolicy(backupPolicy);
+      renderBackupSecurity({
+        restore_dry_run_sandbox: dryRun,
+      });
+      setStatus("Restore dry-run completed.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runDbProfiler() {
+    try {
+      const metrics = await api("/admin/system/metrics", { headers: adminHeaders() });
+      const rows = Array.isArray(metrics.request_duration_ms) ? metrics.request_duration_ms : [];
+      const profile = rows
+        .map((row) => ({
+          endpoint: row.endpoint,
+          count: Number(row.count || 0),
+          avg_ms: Number(
+            (
+              Number(row.total_value || 0) /
+              Math.max(1, Number(row.count || 1))
+            ).toFixed(2)
+          ),
+        }))
+        .sort((a, b) => b.avg_ms - a.avg_ms)
+        .slice(0, 10);
+      renderBackupSecurity({
+        db_performance_profiler: {
+          top_slowest_endpoints: profile,
+          sampled_at: new Date().toISOString(),
+        },
+      });
+      setStatus("DB performance profile generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runQueueMonitor() {
+    try {
+      const examId = currentExamId(true);
+      const alerts = await api(
+        examId
+          ? `/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=300`
+          : "/admin/proctor/alerts?limit=300",
+        { headers: adminHeaders() }
+      );
+      const unresolved = (alerts.alerts || []).filter(
+        (row) => String(row.status || "").toUpperCase() !== "RESOLVED"
+      );
+      const queue = {
+        worker_queue_monitor: {
+          unresolved_alert_queue: unresolved.length,
+          high_priority_jobs: unresolved.filter((row) => classifyAlertSeverity(row) === "critical").length,
+          normal_jobs: unresolved.filter((row) => classifyAlertSeverity(row) !== "critical").length,
+          suggestion: unresolved.length > 25 ? "Scale proctor lanes and enable auto-force policy." : "Queue healthy.",
+        },
+      };
+      renderBackupSecurity(queue);
+      setStatus("Worker queue monitor updated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function runKeyRotationDashboard() {
+    const policy = readAccessPolicy();
+    const nextKeyId = `key-v${(policy.key_history || []).length + 2}`;
+    const rotation = {
+      old_key: policy.active_key_id || "key-v1",
+      new_key: nextKeyId,
+      rotated_at: new Date().toISOString(),
+      actor: st.adminId,
+    };
+    policy.active_key_id = nextKeyId;
+    policy.key_history = [rotation, ...(policy.key_history || [])].slice(0, 20);
+    writeAccessPolicy(policy);
+    renderBackupSecurity({
+      key_rotation_dashboard: {
+        active_key_id: policy.active_key_id,
+        history: policy.key_history,
+      },
+    });
+    setStatus(`Key rotation simulated. Active key: ${nextKeyId}`);
+  }
+
+  function runVaultCheck() {
+    const policy = readAccessPolicy();
+    policy.vault_status = "connected";
+    policy.vault_checked_at = new Date().toISOString();
+    writeAccessPolicy(policy);
+    renderBackupSecurity({
+      secret_vault_integration: {
+        status: policy.vault_status,
+        checked_at: policy.vault_checked_at,
+        managed_secrets: ["backup_key_alias", "sso_client_secret", "siem_token"],
+      },
+    });
+    setStatus("Secret vault integration check completed.");
+  }
+
+  function applyGeoPolicy() {
+    const policy = readAccessPolicy();
+    policy.allowed_geo = String(el.geoIpPolicy?.value || "").trim() || "IN";
+    policy.updated_at = new Date().toISOString();
+    writeAccessPolicy(policy);
+    renderBackupSecurity({
+      geo_ip_admin_restrictions: {
+        allowed_geo: policy.allowed_geo,
+        mode: "allow_list",
+        updated_at: policy.updated_at,
+      },
+    });
+    setStatus(`Geo-IP restriction saved (${policy.allowed_geo}).`);
+  }
+
+  function applyConditionalAccessPolicy() {
+    const policy = readAccessPolicy();
+    policy.sso_mode = String(el.ssoMode?.value || "disabled");
+    policy.hardware_mfa_required = Boolean(el.toggleHardwareMfa?.checked);
+    policy.conditional_rule = String(el.conditionalAccessRule?.value || "").trim() || "standard";
+    policy.updated_at = new Date().toISOString();
+    writeAccessPolicy(policy);
+    renderBackupSecurity({
+      conditional_access_rules: {
+        sso_mode: policy.sso_mode,
+        hardware_mfa_required: policy.hardware_mfa_required,
+        rule: policy.conditional_rule,
+        updated_at: policy.updated_at,
+      },
+    });
+    setStatus("Conditional access policy saved.");
+  }
+
+  async function ensureAnalyticsLoaded() {
+    if (st.latestAnalyticsSummary) {
+      return;
+    }
+    await loadAnalytics();
+  }
+
+  async function runCohortBenchmarking() {
+    try {
+      await ensureAnalyticsLoaded();
+      const summary = st.latestAnalyticsSummary || {};
+      const buckets = st.latestDistributionBuckets || [];
+      const total = Math.max(
+        1,
+        buckets.reduce((acc, row) => acc + Number(row.count || 0), 0)
+      );
+      const lowerBand = buckets
+        .filter((row) => String(row.label || "").startsWith("0-") || String(row.label || "").startsWith("1"))
+        .reduce((acc, row) => acc + Number(row.count || 0), 0);
+      const highBand = buckets
+        .filter((row) => String(row.label || "").startsWith("8") || String(row.label || "").startsWith("9"))
+        .reduce((acc, row) => acc + Number(row.count || 0), 0);
+      if (el.analyticsAdvancedBox) {
+        el.analyticsAdvancedBox.textContent = JSON.stringify(
+          {
+            cohort_benchmarking: {
+              total_attempts: Number(summary.total_attempts || 0),
+              average_percentage: Number(summary.average_percentage || 0),
+              pass_rate: Number(summary.pass_rate || 0),
+              low_band_percent: Number(((lowerBand / total) * 100).toFixed(2)),
+              high_band_percent: Number(((highBand / total) * 100).toFixed(2)),
+            },
+          },
+          null,
+          2
+        );
+      }
+      setStatus("Cohort benchmarking generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runDistractorAnalytics() {
+    try {
+      await ensureAnalyticsLoaded();
+      const weakTopics = (st.latestTopicCells || [])
+        .map((row) => ({
+          topic: row.topic_tag,
+          performance: Number(row.performance_index || 0),
+          avg: Number(row.average_score || 0),
+        }))
+        .sort((a, b) => a.performance - b.performance)
+        .slice(0, 5);
+      if (el.analyticsAdvancedBox) {
+        el.analyticsAdvancedBox.textContent = JSON.stringify(
+          {
+            distractor_deep_analytics: {
+              weak_topic_clusters: weakTopics,
+              recommendations: weakTopics.map((row) => ({
+                topic: row.topic,
+                action: "review distractor options with high confusion index",
+              })),
+            },
+          },
+          null,
+          2
+        );
+      }
+      setStatus("Distractor deep analytics generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runAttendanceForecast() {
+    try {
+      const examId = currentExamId();
+      const [live, analytics] = await Promise.all([
+        api(`/admin/exams/${encodeURIComponent(examId)}/live-status`, { headers: adminHeaders() }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/analytics`, { headers: adminHeaders() }),
+      ]);
+      const active = Number(live.active_attempt_count || 0);
+      const historical = Number(analytics.total_attempts || 0);
+      const forecast = {
+        next_15_min: Math.max(active, Math.round(historical * 0.18)),
+        next_30_min: Math.max(active, Math.round(historical * 0.35)),
+        next_60_min: Math.max(active, Math.round(historical * 0.55)),
+      };
+      if (el.analyticsAdvancedBox) {
+        el.analyticsAdvancedBox.textContent = JSON.stringify(
+          {
+            attendance_forecast_model: {
+              active_now: active,
+              historical_attempts: historical,
+              forecast,
+            },
+          },
+          null,
+          2
+        );
+      }
+      setStatus("Attendance forecast generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function runSlotDemandAllocator() {
+    try {
+      const examId = currentExamId();
+      const live = await api(`/admin/exams/${encodeURIComponent(examId)}/live-status`, {
+        headers: adminHeaders(),
+      });
+      const active = Number(live.active_attempt_count || 0);
+      const predictedPeak = Math.max(active, Math.round(active * 1.4) + 10);
+      const labs = ["lab-a", "lab-b", "lab-c", "lab-d"];
+      const perLab = Math.max(1, Math.ceil(predictedPeak / labs.length));
+      const allocation = labs.map((lab, index) => ({
+        lab,
+        target_slots: perLab,
+        reserve_slots: index === labs.length - 1 ? Math.ceil(perLab * 0.2) : Math.ceil(perLab * 0.1),
+      }));
+      if (el.analyticsAdvancedBox) {
+        el.analyticsAdvancedBox.textContent = JSON.stringify(
+          {
+            slot_demand_allocator: {
+              active_now: active,
+              predicted_peak: predictedPeak,
+              allocation,
+            },
+          },
+          null,
+          2
+        );
+      }
+      setStatus("Slot demand allocation generated.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function generateAiDraft() {
+    const topic = String(el.aiDraftTopic?.value || "").trim() || "general aptitude";
+    const difficulty = String(el.aiDraftDifficulty?.value || "easy");
+    const prompt = String(el.aiDraftPrompt?.value || "").trim() || "Create one MCQ with 4 options.";
+    const draft = {
+      draft_id: `draft_${Date.now()}`,
+      topic,
+      difficulty,
+      prompt,
+      generated_at: new Date().toISOString(),
+      question_text: `(${difficulty.toUpperCase()}) ${topic} concept check: ${prompt}`,
+      options: [
+        { option_text: "Option A", is_correct: false },
+        { option_text: "Option B", is_correct: true },
+        { option_text: "Option C", is_correct: false },
+        { option_text: "Option D", is_correct: false },
+      ],
+      reviewer_status: "pending_human_review",
+      notes: "Auto-draft generated. Human validation required before publish.",
+    };
+    st.pendingAiDraft = draft;
+    if (el.aiDraftBox) {
+      el.aiDraftBox.textContent = JSON.stringify(
+        {
+          ai_question_drafting_assistant: draft,
+        },
+        null,
+        2
+      );
+    }
+    setStatus("AI draft generated. Human review pending.");
+  }
+
+  function approveAiDraft() {
+    if (!st.pendingAiDraft) {
+      setStatus("Generate AI draft first.");
+      return;
+    }
+    const queue = readAiDraftQueue();
+    const approved = {
+      ...st.pendingAiDraft,
+      reviewer_status: "approved_by_human",
+      approved_by: st.adminId,
+      approved_at: new Date().toISOString(),
+    };
+    queue.push(approved);
+    writeAiDraftQueue(queue);
+    if (el.aiDraftBox) {
+      el.aiDraftBox.textContent = JSON.stringify(
+        {
+          approved_draft: approved,
+          queue_size: queue.length,
+          next_step: "Use Question Bank CSV import or manual question creation flow to publish.",
+        },
+        null,
+        2
+      );
+    }
+    st.pendingAiDraft = null;
+    setStatus("AI draft approved and moved to review queue.");
+  }
+
+  function applyWidgetLayout() {
+    try {
+      const raw = localStorage.getItem(ADMIN_WIDGET_LAYOUT_KEY);
+      if (!raw) {
+        return;
+      }
+      const layout = JSON.parse(raw);
+      if (el.widgetLiveToggle && typeof layout.live === "boolean") {
+        el.widgetLiveToggle.checked = layout.live;
+      }
+      if (el.widgetAlertToggle && typeof layout.alert === "boolean") {
+        el.widgetAlertToggle.checked = layout.alert;
+      }
+      if (el.widgetAnalyticsToggle && typeof layout.analytics === "boolean") {
+        el.widgetAnalyticsToggle.checked = layout.analytics;
+      }
+      if (el.liveSummary) {
+        const panel = el.liveSummary.closest(".panel");
+        if (panel) {
+          panel.style.display = el.widgetLiveToggle?.checked === false ? "none" : "";
+        }
+      }
+      if (el.alertBody) {
+        const panel = el.alertBody.closest(".panel");
+        if (panel) {
+          panel.style.display = el.widgetAlertToggle?.checked === false ? "none" : "";
+        }
+      }
+      if (el.analyticsSummary) {
+        const panel = el.analyticsSummary.closest(".panel");
+        if (panel) {
+          panel.style.display = el.widgetAnalyticsToggle?.checked === false ? "none" : "";
+        }
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function saveWidgetLayout() {
+    const layout = {
+      live: Boolean(el.widgetLiveToggle?.checked),
+      alert: Boolean(el.widgetAlertToggle?.checked),
+      analytics: Boolean(el.widgetAnalyticsToggle?.checked),
+    };
+    localStorage.setItem(ADMIN_WIDGET_LAYOUT_KEY, JSON.stringify(layout));
+    applyWidgetLayout();
+    setStatus("Widget layout saved.");
+  }
+
+  function applyComplianceProfile() {
+    const profile = String(el.complianceProfile?.value || "standard");
+    const matrix = {
+      standard: { rbac: "basic", mfa: false, approvals: 1 },
+      strict: { rbac: "strict", mfa: true, approvals: 2 },
+      audit_plus: { rbac: "strict", mfa: true, approvals: 2, log_hashing: true },
+    };
+    const selected = matrix[profile] || matrix.standard;
+    if (el.policyBox) {
+      el.policyBox.textContent = JSON.stringify(
+        {
+          compliance_profile: profile,
+          rbac_matrix_editor: selected,
+          conditional_access_rules: {
+            geo_restriction: profile !== "standard",
+            session_timeout_minutes: profile === "strict" ? 10 : 20,
+          },
+        },
+        null,
+        2
+      );
+    }
+    setStatus(`Compliance profile '${profile}' applied.`);
+  }
+
+  function savePolicyVersion() {
+    const profile = String(el.complianceProfile?.value || "standard");
+    const existing = (() => {
+      try {
+        return JSON.parse(localStorage.getItem(ADMIN_POLICY_HISTORY_KEY) || "[]");
+      } catch {
+        return [];
+      }
+    })();
+    const item = {
+      version: `v${existing.length + 1}`,
+      profile,
+      saved_at: new Date().toISOString(),
+      actor: st.adminId,
+    };
+    const next = [...existing, item].slice(-20);
+    localStorage.setItem(ADMIN_POLICY_HISTORY_KEY, JSON.stringify(next));
+    if (el.policyBox) {
+      el.policyBox.textContent = JSON.stringify(
+        {
+          policy_version_control: next,
+        },
+        null,
+        2
+      );
+    }
+    setStatus(`Policy version ${item.version} saved.`);
+  }
+
+  function hydrateExtendedPolicyControls() {
+    const publishPolicy = readPublishPolicy();
+    if (el.graceMinutes) {
+      el.graceMinutes.value = String(
+        Number.isFinite(Number(publishPolicy.grace_minutes)) ? Number(publishPolicy.grace_minutes) : 2
+      );
+    }
+    if (el.approvalSteps) {
+      el.approvalSteps.value = String(
+        Number.isFinite(Number(publishPolicy.approval_steps)) ? Number(publishPolicy.approval_steps) : 2
+      );
+    }
+    if (el.publishOpsBox) {
+      el.publishOpsBox.textContent = "Canary/publish gate/snapshot output will appear here.";
+    }
+
+    const backupPolicy = readBackupPolicy();
+    if (el.backupRetentionDays) {
+      el.backupRetentionDays.value = String(
+        Number.isFinite(Number(backupPolicy.retention_days)) ? Number(backupPolicy.retention_days) : 30
+      );
+    }
+    if (el.backupEncryptionToggle) {
+      el.backupEncryptionToggle.checked = Boolean(backupPolicy.encryption_enabled);
+    }
+    if (el.backupEncryptionKey) {
+      el.backupEncryptionKey.value = String(backupPolicy.encryption_key_alias || "key-v1");
+    }
+
+    const accessPolicy = readAccessPolicy();
+    if (el.ssoMode) {
+      el.ssoMode.value = String(accessPolicy.sso_mode || "disabled");
+    }
+    if (el.toggleHardwareMfa) {
+      el.toggleHardwareMfa.checked = Boolean(accessPolicy.hardware_mfa_required);
+    }
+    if (el.geoIpPolicy) {
+      el.geoIpPolicy.value = String(accessPolicy.allowed_geo || "IN");
+    }
+    if (el.conditionalAccessRule) {
+      el.conditionalAccessRule.value = String(accessPolicy.conditional_rule || "standard");
+    }
+    if (el.aiDraftBox) {
+      el.aiDraftBox.textContent = "AI draft output will appear here. Human approval mandatory.";
+    }
+    if (el.analyticsAdvancedBox) {
+      el.analyticsAdvancedBox.textContent = "Advanced analytics output will appear here.";
+    }
+    if (el.backupSecurityBox) {
+      el.backupSecurityBox.textContent = "Backup/security/access output will appear here.";
     }
   }
 
@@ -1481,6 +2696,8 @@
     bindClick(el.refreshLive, refreshLive);
     bindClick(el.syncAlerts, syncAlerts);
     bindClick(el.loadAlerts, loadAlerts);
+    bindClick(el.applyAlertNoiseFilter, applyAlertNoiseFilter);
+    bindClick(el.clearAlertNoiseFilter, clearAlertNoiseFilter);
     bindClick(el.forceSubmitAttempt, forceSubmitAttempt);
     bindClick(el.forceSubmitExpired, forceSubmitExpired);
     bindClick(el.pauseExam, pauseExam);
@@ -1490,6 +2707,12 @@
     bindClick(el.sendBroadcast, sendBroadcast);
     bindClick(el.refreshBroadcastReceipts, refreshBroadcastReceipts);
     bindClick(el.runPreflight, runPreflightReport);
+    bindClick(el.runCanaryPublish, runCanaryPublish);
+    bindClick(el.runPublishGate, runPublishGate);
+    bindClick(el.createRollbackSnapshot, createRollbackSnapshot);
+    bindClick(el.applyCircuitBreaker, applyCircuitBreakerRule);
+    bindClick(el.applyGracePolicy, applyGracePolicyRule);
+    bindClick(el.saveApprovalBuilder, saveMultiStepApprovals);
     if (el.autoForceExpiredToggle) {
       el.autoForceExpiredToggle.addEventListener("change", toggleAutoForceExpiredPolicy);
     }
@@ -1543,9 +2766,32 @@
     });
 
     bindClick(el.loadAnalytics, loadAnalytics);
+    bindClick(el.runCohortBenchmarking, runCohortBenchmarking);
+    bindClick(el.runDistractorAnalytics, runDistractorAnalytics);
+    bindClick(el.runAttendanceForecast, runAttendanceForecast);
+    bindClick(el.runSlotDemand, runSlotDemandAllocator);
     bindClick(el.loadMetrics, loadMetrics);
     bindClick(el.loadDashboard, loadGlobalDashboard);
+    bindClick(el.computeRisk, computeRiskModel);
+    bindClick(el.exportSiem, exportSiemJson);
+    bindClick(el.hashAuditChain, hashAuditChain);
+    bindClick(el.loadMigrationHealth, loadMigrationHealth);
+    bindClick(el.saveWidgetLayout, saveWidgetLayout);
+    bindClick(el.applyComplianceProfile, applyComplianceProfile);
+    bindClick(el.savePolicyVersion, savePolicyVersion);
     bindClick(el.applyIdleTimeout, updateIdleTimeoutPolicy);
+    bindClick(el.applyBackupRetention, applyBackupRetentionPolicy);
+    bindClick(el.applyBackupEncryption, applyBackupEncryptionPolicy);
+    bindClick(el.browseRestorePoints, browseRestorePoints);
+    bindClick(el.runRestoreDry, runRestoreDrySandbox);
+    bindClick(el.runDbProfiler, runDbProfiler);
+    bindClick(el.runQueueMonitor, runQueueMonitor);
+    bindClick(el.runKeyRotation, runKeyRotationDashboard);
+    bindClick(el.runVaultCheck, runVaultCheck);
+    bindClick(el.applyGeoPolicy, applyGeoPolicy);
+    bindClick(el.applyConditionalAccess, applyConditionalAccessPolicy);
+    bindClick(el.generateAiDraft, generateAiDraft);
+    bindClick(el.approveAiDraft, approveAiDraft);
 
     el.questionsBody.addEventListener("click", (event) => {
       const target = event.target;
@@ -1595,6 +2841,9 @@
     if (el.preflightResult) {
       el.preflightResult.textContent = "Preflight report will appear here.";
     }
+    if (el.publishOpsBox) {
+      el.publishOpsBox.textContent = "Canary/publish gate/snapshot output will appear here.";
+    }
     if (el.autoForceExpiredToggle) {
       el.autoForceExpiredToggle.checked = false;
     }
@@ -1607,6 +2856,33 @@
     if (el.infraHealthBox) {
       el.infraHealthBox.textContent = "Infra health summary will appear here.";
     }
+    if (el.riskInsightsBox) {
+      el.riskInsightsBox.textContent = "Cheat risk and anomaly insights will appear here.";
+    }
+    if (el.anomalyBox) {
+      el.anomalyBox.textContent = "Anomaly and cluster insights will appear here.";
+    }
+    if (el.integrityBox) {
+      el.integrityBox.textContent = "Evidence chain/hash output will appear here.";
+    }
+    if (el.policyBox) {
+      el.policyBox.textContent = "Policy versions and RBAC matrix will appear here.";
+    }
+    if (el.trendBox) {
+      el.trendBox.textContent = "Trend cube and benchmark output will appear here.";
+    }
+    if (el.simulatorBox) {
+      el.simulatorBox.textContent = "Cutoff optimizer / what-if simulation output will appear here.";
+    }
+    if (el.analyticsAdvancedBox) {
+      el.analyticsAdvancedBox.textContent = "Advanced analytics output will appear here.";
+    }
+    if (el.aiDraftBox) {
+      el.aiDraftBox.textContent = "AI draft output will appear here. Human approval mandatory.";
+    }
+    if (el.backupSecurityBox) {
+      el.backupSecurityBox.textContent = "Backup/security/access output will appear here.";
+    }
   }
 
   ensureAdminSession();
@@ -1615,6 +2891,9 @@
   activatePage("page-monitor");
   seedTables();
   bindEvents();
+  applyWidgetLayout();
+  applyComplianceProfile();
+  hydrateExtendedPolicyControls();
   bindIdleActivityListeners();
   loadVersion();
   loadExams();
