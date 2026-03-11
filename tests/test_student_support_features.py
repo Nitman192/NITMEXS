@@ -128,6 +128,51 @@ class StudentSupportFeatureTests(unittest.TestCase):
         self.assertEqual(result["status"], "finalized")
         self.assertTrue(result["auto_submitted"])
 
+    def test_service_broadcast_read_receipts(self):
+        exam_id = self._seed_exam()
+        attempt_id = self._start_attempt(exam_id, "receipt-student")
+
+        with UnitOfWork(self.db) as uow:
+            delivery = DeliveryService(
+                uow.attempts,
+                uow.exams,
+                uow.questions,
+                audit_service=AuditService(uow.audit_events),
+                analytics_repo=uow.analytics,
+            )
+            delivery.publish_exam_broadcast(
+                exam_id=exam_id,
+                message="Receipt check broadcast",
+                severity="warn",
+                actor_id="ops-admin",
+            )
+            broadcasts = delivery.list_attempt_broadcasts(
+                attempt_id=attempt_id,
+                student_id="receipt-student",
+                limit=10,
+            )
+            broadcast_id = broadcasts["broadcasts"][0]["id"]
+            first_ack = delivery.acknowledge_attempt_broadcasts(
+                attempt_id=attempt_id,
+                student_id="receipt-student",
+                broadcast_ids=[broadcast_id],
+            )
+            second_ack = delivery.acknowledge_attempt_broadcasts(
+                attempt_id=attempt_id,
+                student_id="receipt-student",
+                broadcast_ids=[broadcast_id],
+            )
+            exam_timeline = uow.audit_events.list_events("exam", exam_id)
+
+        receipt_events = [
+            event for event in exam_timeline if event["event_type"] == "BROADCAST_RECEIVED"
+        ]
+        self.assertEqual(first_ack["acknowledged_count"], 1)
+        self.assertEqual(first_ack["already_acknowledged_count"], 0)
+        self.assertEqual(second_ack["acknowledged_count"], 0)
+        self.assertEqual(second_ack["already_acknowledged_count"], 1)
+        self.assertEqual(len(receipt_events), 1)
+
     @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI test client unavailable")
     def test_student_support_endpoints(self):
         exam_id = self._seed_exam()
@@ -176,6 +221,21 @@ class StudentSupportFeatureTests(unittest.TestCase):
                 f"/student/attempts/{attempt_id}/broadcasts?limit=20",
                 headers=student_headers,
             )
+            broadcast_ids = [
+                row["id"] for row in broadcasts.json()["data"]["broadcasts"]
+            ]
+            ack_broadcasts = client.post(
+                f"/student/attempts/{attempt_id}/broadcasts/ack",
+                headers=student_headers,
+                json={"broadcast_ids": broadcast_ids},
+            )
+            broadcast_receipts = client.get(
+                (
+                    f"/admin/audit/events?entity_type=exam&entity_id={exam_id}"
+                    "&event_type=BROADCAST_RECEIVED&limit=50"
+                ),
+                headers=admin_headers,
+            )
             expired_ts = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
             with UnitOfWork(self.db) as uow:
                 uow.conn.execute(
@@ -192,9 +252,13 @@ class StudentSupportFeatureTests(unittest.TestCase):
         self.assertEqual(rules_resp.status_code, 200)
         self.assertEqual(broadcast_resp.status_code, 200)
         self.assertEqual(broadcasts.status_code, 200)
+        self.assertEqual(ack_broadcasts.status_code, 200)
+        self.assertEqual(broadcast_receipts.status_code, 200)
         self.assertEqual(auto_submit_resp.status_code, 200)
         self.assertEqual(broadcast_resp.json()["data"]["severity"], "info")
         self.assertGreaterEqual(broadcasts.json()["data"]["count"], 1)
+        self.assertGreaterEqual(ack_broadcasts.json()["data"]["acknowledged_count"], 1)
+        self.assertGreaterEqual(broadcast_receipts.json()["data"]["count"], 1)
         self.assertTrue(auto_submit_resp.json()["data"]["auto_submitted"])
 
 

@@ -2,22 +2,26 @@
 
 Last updated: 2026-03-11
 
+Progress:
+- Student selected set: 8 / 50 complete (16%)
+- Admin selected set: 7 / 50 complete (14%)
+
 ## Student Top 50 (selected)
 
 | ID | Feature | Status |
 |---|---|---|
 | S01 | Timer auto-submit on expiry | Done |
 | S02 | Direct jump to question number | Done |
-| S03 | Shortcut cheat-sheet overlay | Planned |
-| S04 | Per-question time tracker | Planned |
-| S05 | Answer change timeline | Planned |
-| S06 | Focus streak meter | Planned |
+| S03 | Shortcut cheat-sheet overlay | Done |
+| S04 | Per-question time tracker | Done |
+| S05 | Answer change timeline | Done |
+| S06 | Focus streak meter | Done |
 | S07 | Option elimination tool | Planned |
 | S08 | Option strike-through | Planned |
 | S09 | Hard-question bucket | Planned |
 | S10 | Easy-win bucket | Planned |
-| S11 | Last-5-min turbo mode | Planned |
-| S12 | Mini progress widget | Planned |
+| S11 | Last-5-min turbo mode | Done |
+| S12 | Mini progress widget | Done |
 | S13 | Offline packet pre-download | Planned |
 | S14 | Smart resume wizard | Planned |
 | S15 | Local conflict resolver | Planned |
@@ -62,10 +66,10 @@ Last updated: 2026-03-11
 | ID | Feature | Status |
 |---|---|---|
 | A01 | Broadcast template library | Done |
-| A02 | Broadcast read receipts | Planned |
-| A03 | Broadcast templates by severity | Planned |
-| A04 | Preflight report card | Planned |
-| A05 | One-click remediation suggestions | Planned |
+| A02 | Broadcast read receipts | Done |
+| A03 | Broadcast templates by severity | Done |
+| A04 | Preflight report card | Done |
+| A05 | One-click remediation suggestions | Done |
 | A06 | API error budget panel | Planned |
 | A07 | Alert noise suppression rules | Planned |
 | A08 | Customizable command-center widgets | Planned |
@@ -73,9 +77,9 @@ Last updated: 2026-03-11
 | A10 | Publish gate engine | Planned |
 | A11 | Publish rollback snapshot | Planned |
 | A12 | Circuit-breaker pause rules | Planned |
-| A13 | Auto force-submit policies | Planned |
+| A13 | Auto force-submit policies | Done |
 | A14 | Grace period policy rules | Planned |
-| A15 | Incident SLA dashboard | Planned |
+| A15 | Incident SLA dashboard | Done |
 | A16 | Incident severity classifier | Planned |
 | A17 | Live cheating risk score | Planned |
 | A18 | Behavior anomaly alerts | Planned |

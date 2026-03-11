@@ -53,6 +53,7 @@ class AuditEventType:
     EXAM_PAUSED = "EXAM_PAUSED"
     EXAM_RESUMED = "EXAM_RESUMED"
     EXAM_BROADCAST = "EXAM_BROADCAST"
+    BROADCAST_RECEIVED = "BROADCAST_RECEIVED"
     QUESTION_ISSUE_REPORTED = "QUESTION_ISSUE_REPORTED"
     TECHNICAL_ISSUE_REPORTED = "TECHNICAL_ISSUE_REPORTED"
 
@@ -691,6 +692,98 @@ class DeliveryService:
             "exam_id": attempt.exam_id,
             "count": len(broadcasts),
             "broadcasts": broadcasts,
+        }
+
+    def acknowledge_attempt_broadcasts(
+        self,
+        attempt_id: str,
+        student_id: str,
+        broadcast_ids: list[str],
+        received_at: str | None = None,
+    ) -> dict:
+        attempt = self._assert_owned_attempt(attempt_id, student_id)
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        for broadcast_id in broadcast_ids:
+            value = str(broadcast_id or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized_ids.append(value)
+            if len(normalized_ids) >= 50:
+                break
+
+        if self._audit_service is None or not normalized_ids:
+            return {
+                "attempt_id": attempt.id,
+                "exam_id": attempt.exam_id,
+                "acknowledged_count": 0,
+                "already_acknowledged_count": 0,
+                "ignored_count": len(normalized_ids),
+                "acknowledged_broadcast_ids": [],
+            }
+
+        timeline = self._audit_service.list_entity_timeline("exam", attempt.exam_id)
+        known_broadcast_ids = {
+            event.get("id")
+            for event in timeline
+            if event.get("event_type") == AuditEventType.EXAM_BROADCAST
+        }
+        existing_receipts = {
+            (
+                (event.get("payload") or {}).get("broadcast_event_id"),
+                event.get("actor_id"),
+                (event.get("payload") or {}).get("attempt_id"),
+            )
+            for event in timeline
+            if event.get("event_type") == AuditEventType.BROADCAST_RECEIVED
+        }
+
+        ack_at = received_at or self._now_iso()
+        acknowledged_count = 0
+        already_acknowledged_count = 0
+        ignored_count = 0
+        acknowledged_ids: list[str] = []
+        for broadcast_id in normalized_ids:
+            if broadcast_id not in known_broadcast_ids:
+                ignored_count += 1
+                continue
+
+            receipt_key = (broadcast_id, student_id, attempt.id)
+            if receipt_key in existing_receipts:
+                already_acknowledged_count += 1
+                continue
+
+            payload = {
+                "exam_id": attempt.exam_id,
+                "attempt_id": attempt.id,
+                "student_id": student_id,
+                "broadcast_event_id": broadcast_id,
+            }
+            try:
+                self._audit_service.log_event(
+                    entity_type="exam",
+                    entity_id=attempt.exam_id,
+                    actor_type="student",
+                    actor_id=student_id,
+                    event_type=AuditEventType.BROADCAST_RECEIVED,
+                    payload=payload,
+                    created_at=ack_at,
+                )
+            except Exception:
+                ignored_count += 1
+                continue
+            existing_receipts.add(receipt_key)
+            acknowledged_ids.append(broadcast_id)
+            acknowledged_count += 1
+
+        return {
+            "attempt_id": attempt.id,
+            "exam_id": attempt.exam_id,
+            "acknowledged_count": acknowledged_count,
+            "already_acknowledged_count": already_acknowledged_count,
+            "ignored_count": ignored_count,
+            "acknowledged_broadcast_ids": acknowledged_ids,
         }
 
     def report_question_issue(

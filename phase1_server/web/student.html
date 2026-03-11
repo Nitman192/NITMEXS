@@ -18,6 +18,7 @@
         <span class="student-pill">Student: <strong id="session-student">...</strong></span>
         <span class="student-pill">Server: <span id="version">...</span></span>
         <button id="open-onboarding" class="btn-outline" type="button">Guide</button>
+        <button id="open-shortcuts" class="btn-outline" type="button">Shortcuts</button>
         <label class="theme-switch" for="theme-toggle">
           <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
           <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
@@ -120,6 +121,14 @@
           <section class="card timer-card">
             <p class="section-label">Time Left</p>
             <p id="remaining-time" class="timer-display">--:--</p>
+            <p id="turbo-mode-hint" class="small" hidden>Turbo mode: last 5 min. Prioritize marked + easy wins.</p>
+          </section>
+
+          <section class="card mini-progress-card">
+            <p class="section-label">Mini Progress</p>
+            <p id="progress-mini-summary" class="small">Answered 0 | Review 0 | Pending 0</p>
+            <p class="small">Focus streak: <strong id="focus-streak">0</strong></p>
+            <p class="small">Q time spent: <strong id="question-time-spent">0s</strong></p>
           </section>
 
           <section class="card morale-card">
@@ -186,6 +195,13 @@
             <div id="broadcast-feed" class="small">No broadcast messages yet.</div>
           </section>
 
+          <section class="card timeline-card">
+            <div class="row">
+              <h3 style="margin:0">Answer Timeline</h3>
+            </div>
+            <div id="answer-timeline" class="small">No answer changes yet.</div>
+          </section>
+
           <section class="card stress-card">
             <div class="row">
               <h3 style="margin:0">Stress Reset</h3>
@@ -246,6 +262,22 @@
       <div class="modal-actions">
         <button id="cancel-submit" class="btn-outline" type="button">Continue Exam</button>
         <button id="confirm-submit" class="btn-danger" type="button">Confirm Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shortcuts-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+      <ul class="guide-list">
+        <li><strong>M</strong> = Mark / Unmark current question</li>
+        <li><strong>N</strong> = Save &amp; Next</li>
+        <li><strong>J</strong> = Jump first unanswered</li>
+        <li><strong>?</strong> = Open shortcuts card</li>
+        <li><strong>ESC</strong> = Close open modal</li>
+      </ul>
+      <div class="modal-actions">
+        <button id="close-shortcuts" class="btn-primary" type="button">Close</button>
       </div>
     </div>
   </div>

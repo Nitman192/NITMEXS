@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from phase1_server.api.deps import student_identity
 from phase1_server.schemas import (
     AnswerSubmitSchema,
+    BroadcastReceiptSchema,
     StudentIssueReportSchema,
     TechnicalIssueReportSchema,
 )
@@ -330,6 +331,38 @@ def list_attempt_broadcasts(
                 student_id=student_id,
                 since=since,
                 limit=limit,
+            )
+        except OwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/{attempt_id}/broadcasts/ack")
+def acknowledge_attempt_broadcasts(
+    attempt_id: str,
+    payload: BroadcastReceiptSchema,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.acknowledge_attempt_broadcasts(
+                attempt_id=attempt_id,
+                student_id=student_id,
+                broadcast_ids=payload.broadcast_ids,
+                received_at=payload.received_at,
             )
         except OwnershipError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc

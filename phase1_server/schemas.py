@@ -91,5 +91,10 @@ class AdminBroadcastSchema(BaseModel):
     severity: Literal["info", "warn", "critical"] = "info"
 
 
+class BroadcastReceiptSchema(BaseModel):
+    broadcast_ids: list[str] = Field(min_length=1, max_length=50)
+    received_at: str | None = None
+
+
 class ExamControlSchema(BaseModel):
     reason: str | None = Field(default=None, max_length=300)

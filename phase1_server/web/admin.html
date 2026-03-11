@@ -106,10 +106,10 @@
             <div class="row" style="margin-top:8px">
               <select id="broadcast-template" style="width:240px">
                 <option value="">Select template...</option>
-                <option value="Please remain calm and continue answering.">Calm Continue</option>
-                <option value="Network fluctuation detected. Your answers are safe. Continue normally.">Network Reassurance</option>
-                <option value="Final 5 minutes left. Review marked questions first.">Final 5-Min Alert</option>
-                <option value="Technical team is active. Follow on-screen instructions and stay on exam tab.">Technical Advisory</option>
+                <option value="info::Please remain calm and continue answering.">Calm Continue (Info)</option>
+                <option value="warn::Network fluctuation detected. Your answers are safe. Continue normally.">Network Reassurance (Warn)</option>
+                <option value="warn::Final 5 minutes left. Review marked questions first.">Final 5-Min Alert (Warn)</option>
+                <option value="critical::Technical team is active. Follow on-screen instructions and stay on exam tab.">Technical Advisory (Critical)</option>
               </select>
               <button id="apply-broadcast-template" class="alt">Apply Template</button>
               <input id="broadcast-message" placeholder="Broadcast message to all active candidates..." style="flex:1 1 320px">
@@ -119,9 +119,15 @@
                 <option value="critical">Critical</option>
               </select>
               <button id="send-broadcast" class="alt">Send Broadcast</button>
+              <button id="refresh-broadcast-receipts" class="alt">Read Receipts</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label class="chip row"><input id="auto-force-expired-toggle" type="checkbox"> Auto force-submit expired (30s)</label>
+              <button id="run-preflight" class="alt">Run Preflight Report</button>
             </div>
             <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
             <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
+            <pre id="preflight-result" class="box mono">Preflight report will appear here.</pre>
           </article>
 
           <article class="panel">

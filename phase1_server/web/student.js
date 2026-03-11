@@ -6,6 +6,7 @@
   const INACTIVITY_TIMEOUT_MS = 120000;
   const HEARTBEAT_INTERVAL_MS = 15000;
   const BROADCAST_INTERVAL_MS = 10000;
+  const ATTEMPT_STATUS_INTERVAL_MS = 5000;
 
   const st = {
     studentId: "",
@@ -17,7 +18,9 @@
     currentQuestion: null,
     warningCount: 0,
     finalized: false,
+    paused: false,
     syncIntervalId: null,
+    attemptStatusTimerId: null,
     warningTimeoutId: null,
     moraleTimerId: null,
     inactivityTimerId: null,
@@ -28,11 +31,17 @@
     heartbeatLatencyMs: null,
     broadcastTimerId: null,
     broadcastCursor: null,
+    broadcastHistory: [],
     revisionMode: false,
     breathingTimerId: null,
     breathingSecondsLeft: 0,
     autoSubmitInProgress: false,
     receipt: null,
+    seenBroadcastIds: new Set(),
+    questionTimeBySequence: {},
+    questionTimeStartedAt: null,
+    answerTimeline: [],
+    focusStreak: 0,
     diagnostics: {
       keyboardSeen: false,
       mouseSeen: false,
@@ -46,6 +55,7 @@
     version: $("version"),
     sessionStudent: $("session-student"),
     logoutStudent: $("logout-student"),
+    openShortcuts: $("open-shortcuts"),
     loadExams: $("load-exams"),
     examSelect: $("exam-select"),
     startAttempt: $("start-attempt"),
@@ -72,8 +82,10 @@
     resultBox: $("result-box"),
     antiCheatWarning: $("anti-cheat-warning"),
     submitModal: $("submit-modal"),
+    shortcutsModal: $("shortcuts-modal"),
     submitSummary: $("submit-summary"),
     cancelSubmit: $("cancel-submit"),
+    closeShortcuts: $("close-shortcuts"),
     confirmSubmit: $("confirm-submit"),
     onboardingModal: $("onboarding-modal"),
     dismissOnboarding: $("dismiss-onboarding"),
@@ -111,6 +123,11 @@
     continueAfterInactive: $("continue-after-inactive"),
     printResult: $("print-result"),
     receiptBox: $("receipt-box"),
+    progressMiniSummary: $("progress-mini-summary"),
+    focusStreak: $("focus-streak"),
+    questionTimeSpent: $("question-time-spent"),
+    answerTimeline: $("answer-timeline"),
+    turboModeHint: $("turbo-mode-hint"),
   };
 
   const uiPrefs = {
@@ -404,6 +421,7 @@
 
   const timerState = createTimerState((remainingText, remainingSeconds) => {
     el.remainingTime.textContent = remainingText;
+    updateMiniProgressWidget();
     if (st.attemptId && !st.finalized && remainingSeconds > 0) {
       evaluateLowTimeAlerts(remainingSeconds);
     }
@@ -428,6 +446,139 @@
   const setStatus = (message) => {
     el.status.textContent = message;
   };
+
+  function renderAnswerTimeline() {
+    if (!el.answerTimeline) {
+      return;
+    }
+    if (!st.answerTimeline.length) {
+      el.answerTimeline.textContent = "No answer changes yet.";
+      return;
+    }
+    el.answerTimeline.innerHTML = st.answerTimeline
+      .slice(-8)
+      .map(
+        (item) => `
+          <div class="timeline-item">
+            <strong>Q${esc(String(item.sequence))}</strong> - ${esc(item.action)}
+            <span class="small">${esc(formatDate(item.at))}</span>
+          </div>
+        `
+      )
+      .join("");
+  }
+
+  function appendAnswerTimeline(action, sequenceNumber) {
+    const sequence = Number(sequenceNumber || st.sequence || 0);
+    if (!sequence) {
+      return;
+    }
+    st.answerTimeline.push({
+      sequence,
+      action: String(action || "updated"),
+      at: new Date().toISOString(),
+    });
+    if (st.answerTimeline.length > 120) {
+      st.answerTimeline = st.answerTimeline.slice(-120);
+    }
+    renderAnswerTimeline();
+    persistAttemptCache();
+  }
+
+  function stopQuestionTimeTracking() {
+    if (!st.questionTimeStartedAt || !st.sequence) {
+      st.questionTimeStartedAt = null;
+      return;
+    }
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((Date.now() - st.questionTimeStartedAt) / 1000)
+    );
+    if (!st.questionTimeBySequence[st.sequence]) {
+      st.questionTimeBySequence[st.sequence] = 0;
+    }
+    st.questionTimeBySequence[st.sequence] += elapsedSeconds;
+    st.questionTimeStartedAt = null;
+  }
+
+  function startQuestionTimeTracking(sequenceNumber) {
+    const sequence = Number(sequenceNumber || 0);
+    if (!sequence) {
+      return;
+    }
+    stopQuestionTimeTracking();
+    st.questionTimeStartedAt = Date.now();
+    if (!st.questionTimeBySequence[sequence]) {
+      st.questionTimeBySequence[sequence] = 0;
+    }
+  }
+
+  function getCurrentQuestionElapsedSeconds() {
+    const sequence = Number(st.sequence || 0);
+    if (!sequence) {
+      return 0;
+    }
+    const spent = Number(st.questionTimeBySequence[sequence] || 0);
+    if (!st.questionTimeStartedAt) {
+      return spent;
+    }
+    return spent + Math.max(0, Math.floor((Date.now() - st.questionTimeStartedAt) / 1000));
+  }
+
+  function updateMiniProgressWidget() {
+    const total = Number(st.totalQuestions || 0);
+    const answered = answerState.getAnsweredCount(total);
+    const review = answerState.getMarkedCount();
+    const pending = answerState.getPendingCount();
+    if (el.progressMiniSummary) {
+      el.progressMiniSummary.textContent = `Answered ${answered}/${total} | Review ${review} | Pending ${pending}`;
+    }
+    if (el.focusStreak) {
+      el.focusStreak.textContent = String(st.focusStreak);
+    }
+    if (el.questionTimeSpent) {
+      el.questionTimeSpent.textContent = `${getCurrentQuestionElapsedSeconds()}s`;
+    }
+  }
+
+  function openShortcutsModal() {
+    if (!el.shortcutsModal) {
+      return;
+    }
+    el.shortcutsModal.hidden = false;
+    syncModalOpenState();
+  }
+
+  function closeShortcutsModal() {
+    if (!el.shortcutsModal) {
+      return;
+    }
+    el.shortcutsModal.hidden = true;
+    syncModalOpenState();
+  }
+
+  function setPausedState(paused, reason) {
+    const changed = st.paused !== Boolean(paused);
+    st.paused = Boolean(paused);
+    if (st.finalized) {
+      return;
+    }
+    if (st.paused && st.inactivityModalOpen) {
+      closeInactivityModal();
+    }
+    if (st.paused) {
+      stopQuestionTimeTracking();
+    } else if (st.sequence) {
+      startQuestionTimeTracking(st.sequence);
+    }
+    setAttemptControlsEnabled(!st.paused);
+    if (st.paused && (changed || reason)) {
+      setStatus(reason || "Exam is paused by admin. Wait for resume.");
+    } else if (!st.paused && st.attemptId && (changed || reason)) {
+      setStatus(reason || "Exam resumed. Continue from current question.");
+      resetInactivityTimer();
+    }
+  }
 
   function readUiPrefs() {
     try {
@@ -515,7 +666,8 @@
     const anyOpen =
       !el.submitModal.hidden ||
       !el.onboardingModal.hidden ||
-      !el.inactivityModal.hidden;
+      !el.inactivityModal.hidden ||
+      (el.shortcutsModal ? !el.shortcutsModal.hidden : false);
     document.body.classList.toggle("modal-open", anyOpen);
   }
 
@@ -761,8 +913,34 @@
       .join("");
   }
 
+  async function acknowledgeBroadcastReceipts(rows) {
+    if (!st.attemptId || !Array.isArray(rows) || rows.length === 0) {
+      return;
+    }
+    const pendingIds = rows
+      .map((item) => String(item.id || "").trim())
+      .filter((value) => value && !st.seenBroadcastIds.has(value));
+    if (!pendingIds.length) {
+      return;
+    }
+    try {
+      const ack = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/broadcasts/ack`,
+        {
+          method: "POST",
+          headers: studentHeaders(),
+          body: { broadcast_ids: pendingIds },
+        }
+      );
+      const accepted = ack.acknowledged_broadcast_ids || pendingIds;
+      accepted.forEach((id) => st.seenBroadcastIds.add(String(id)));
+    } catch {
+      return;
+    }
+  }
+
   async function pullBroadcasts() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       return;
     }
     try {
@@ -779,15 +957,28 @@
       const rows = data.broadcasts || [];
       if (rows.length > 0) {
         st.broadcastCursor = rows[rows.length - 1].created_at || st.broadcastCursor;
+        const byId = new Map(st.broadcastHistory.map((item) => [String(item.id), item]));
+        rows.forEach((item) => {
+          const id = String(item.id || "").trim();
+          if (!id) {
+            return;
+          }
+          byId.set(id, item);
+        });
+        st.broadcastHistory = Array.from(byId.values())
+          .sort((left, right) => String(left.created_at || "").localeCompare(String(right.created_at || "")))
+          .slice(-50);
       }
-      renderBroadcasts(rows);
+      renderBroadcasts(st.broadcastHistory);
+      persistAttemptCache();
+      await acknowledgeBroadcastReceipts(rows);
     } catch {
       return;
     }
   }
 
   async function reportQuestionIssue() {
-    if (!st.attemptId || !st.currentQuestion || st.finalized) {
+    if (!st.attemptId || !st.currentQuestion || st.finalized || st.paused) {
       setStatus("Active question required to report issue.");
       return;
     }
@@ -813,7 +1004,7 @@
   }
 
   async function reportTechnicalIssue() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       setStatus("Active attempt required to report technical issue.");
       return;
     }
@@ -871,7 +1062,7 @@
   }
 
   async function enterRevisionMode() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       setStatus("Active exam required for revision mode.");
       return;
     }
@@ -987,6 +1178,9 @@
   }
 
   function evaluateLowTimeAlerts(remainingSeconds) {
+    if (el.turboModeHint) {
+      el.turboModeHint.hidden = remainingSeconds > 300 || st.finalized;
+    }
     const thresholds = [
       { seconds: 300, message: "5 minutes left. High-confidence questions pe focus karo." },
       { seconds: 120, message: "2 minutes left. Review complete karke submit readiness check karo." },
@@ -1010,6 +1204,8 @@
       return;
     }
     st.inactivityModalOpen = true;
+    st.focusStreak = 0;
+    updateMiniProgressWidget();
     el.inactivityModal.hidden = false;
     syncModalOpenState();
     setStatus("Inactivity warning: continue exam to resume active session tracking.");
@@ -1026,7 +1222,7 @@
       clearTimeout(st.inactivityTimerId);
       st.inactivityTimerId = null;
     }
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       return;
     }
     if (st.inactivityModalOpen) {
@@ -1172,6 +1368,12 @@
       exam_name: st.examName,
       sequence: st.sequence,
       total_questions: st.totalQuestions,
+      paused: st.paused,
+      focus_streak: st.focusStreak,
+      question_time_by_sequence: st.questionTimeBySequence,
+      answer_timeline: st.answerTimeline,
+      seen_broadcast_ids: Array.from(st.seenBroadcastIds),
+      broadcast_history: st.broadcastHistory,
       expires_at: timerState.getExpiresAt(),
       updated_at: new Date().toISOString(),
       ...answerState.serialize(),
@@ -1208,12 +1410,42 @@
       if (Number.isInteger(cache.total_questions) && cache.total_questions > 0) {
         st.totalQuestions = cache.total_questions;
       }
+      if (typeof cache.focus_streak === "number" && Number.isFinite(cache.focus_streak)) {
+        st.focusStreak = Math.max(0, Math.floor(cache.focus_streak));
+      }
+      if (cache.question_time_by_sequence && typeof cache.question_time_by_sequence === "object") {
+        st.questionTimeBySequence = { ...cache.question_time_by_sequence };
+      }
+      if (Array.isArray(cache.answer_timeline)) {
+        st.answerTimeline = cache.answer_timeline.slice(-120).map((item) => ({
+          sequence: Number(item.sequence || 0),
+          action: String(item.action || "updated"),
+          at: item.at || new Date().toISOString(),
+        }));
+      }
+      if (Array.isArray(cache.seen_broadcast_ids)) {
+        st.seenBroadcastIds = new Set(cache.seen_broadcast_ids.map(String));
+      }
+      if (Array.isArray(cache.broadcast_history)) {
+        st.broadcastHistory = cache.broadcast_history
+          .slice(-50)
+          .map((item) => ({
+            id: item.id,
+            created_at: item.created_at,
+            message: item.message,
+            severity: item.severity || "info",
+          }))
+          .filter((item) => item.id && item.created_at);
+        renderBroadcasts(st.broadcastHistory);
+      }
       if (cache.exam_name) {
         st.examName = String(cache.exam_name);
       }
       if (cache.expires_at) {
         timerState.start(cache.expires_at);
       }
+      renderAnswerTimeline();
+      updateMiniProgressWidget();
     } catch {
       return;
     }
@@ -1273,7 +1505,8 @@
     const answered = answerState.getAnsweredCount(total);
     el.questionProgress.textContent = `Question ${st.sequence} of ${total || "-"}`;
     el.paletteStats.textContent = `Answered ${answered} / ${total}`;
-    el.prevQuestion.disabled = st.sequence <= 1 || st.finalized;
+    el.prevQuestion.disabled = st.sequence <= 1 || st.finalized || st.paused;
+    updateMiniProgressWidget();
   }
 
   function renderPalette() {
@@ -1341,9 +1574,11 @@
   }
 
   function renderQuestion(payload) {
+    stopQuestionTimeTracking();
     st.currentQuestion = payload.question;
     st.sequence = Number(payload.sequence_number);
     answerState.setSequenceQuestion(st.sequence, payload.question.id);
+    startQuestionTimeTracking(st.sequence);
 
     el.examName.textContent = st.examName || st.examId || "Exam";
     el.questionText.textContent = payload.question.text || "Question text unavailable.";
@@ -1384,10 +1619,11 @@
     renderPalette();
     persistAttemptCache();
     resetInactivityTimer();
+    updateMiniProgressWidget();
   }
 
   function setAttemptControlsEnabled(enabled) {
-    const active = Boolean(enabled) && !st.finalized;
+    const active = Boolean(enabled) && !st.finalized && !st.paused;
     el.markReview.disabled = !active;
     el.prevQuestion.disabled = !active || st.sequence <= 1;
     el.saveNext.disabled = !active;
@@ -1405,6 +1641,12 @@
     }
     el.submitExam.disabled = !active;
     el.jumpUnanswered.disabled = !active;
+    if (el.jumpSequence) {
+      el.jumpSequence.disabled = !active;
+    }
+    if (el.jumpSequenceBtn) {
+      el.jumpSequenceBtn.disabled = !active;
+    }
   }
 
   function currentlySelectedOptionId() {
@@ -1428,9 +1670,14 @@
     if (!selectedOptionId) {
       return "";
     }
+    const previousSelection = answerState.getSelection(st.currentQuestion.id);
     answerState.rememberSelection(st.currentQuestion.id, selectedOptionId);
     answerState.setConfidence(st.currentQuestion.id, currentlySelectedConfidenceTag() || null);
     setAutosaveIndicator("local", "Saved Locally");
+    if (previousSelection !== selectedOptionId) {
+      appendAnswerTimeline("option_changed", st.sequence);
+    }
+    updateMiniProgressWidget();
     return selectedOptionId;
   }
 
@@ -1528,6 +1775,7 @@
 
     renderAttemptMeta();
     updateSyncHealthIndicator();
+    updateMiniProgressWidget();
   }
 
   async function loadVersion() {
@@ -1563,9 +1811,21 @@
     answerState.recordServerAnswered(statusPayload.answered || []);
     renderAttemptMeta(statusPayload);
     updateSyncHealthIndicator();
-
-    if ((statusPayload.status || "").toUpperCase() !== "ACTIVE") {
+    const status = String(statusPayload.status || "").toUpperCase();
+    if (status === "ACTIVE") {
+      setPausedState(false);
+      if (!st.finalized) {
+        setAttemptControlsEnabled(true);
+      }
+    } else if (status === "PAUSED") {
+      setPausedState(true);
+    } else if (status === "FINALIZED" || status === "GRADED" || status === "ARCHIVED") {
       st.finalized = true;
+      st.paused = false;
+      setAttemptControlsEnabled(false);
+      timerState.stop();
+      setStatus("Attempt finalized by admin/system. View result.");
+    } else {
       setAttemptControlsEnabled(false);
     }
 
@@ -1575,7 +1835,7 @@
   }
 
   async function loadMoraleCoach() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       return;
     }
     try {
@@ -1641,11 +1901,18 @@
       st.totalQuestions = 0;
       st.currentQuestion = null;
       st.finalized = false;
+      st.paused = false;
       st.receipt = null;
       st.broadcastCursor = null;
+      st.broadcastHistory = [];
       st.revisionMode = false;
       st.autoSubmitInProgress = false;
       st.lowTimeAlerted.clear();
+      st.seenBroadcastIds.clear();
+      st.questionTimeBySequence = {};
+      st.questionTimeStartedAt = null;
+      st.answerTimeline = [];
+      st.focusStreak = 0;
       answerState.clear();
       setAutosaveIndicator("local", "Local Draft");
       updateSyncHealthIndicator();
@@ -1662,6 +1929,11 @@
       if (el.broadcastBadge) {
         el.broadcastBadge.textContent = "No alerts";
       }
+      if (el.turboModeHint) {
+        el.turboModeHint.hidden = true;
+      }
+      renderAnswerTimeline();
+      updateMiniProgressWidget();
       if (el.breathingPrompt) {
         el.breathingPrompt.textContent = "Use when you feel rushed. Slow inhale-exhale can stabilize focus.";
       }
@@ -1695,7 +1967,7 @@
   }
 
   async function saveAndNext() {
-    if (!st.attemptId || !st.currentQuestion || st.finalized) {
+    if (!st.attemptId || !st.currentQuestion || st.finalized || st.paused) {
       setStatus("Active exam attempt required.");
       return;
     }
@@ -1706,7 +1978,10 @@
       return;
     }
 
-    await submitAnswerToServer(st.currentQuestion.id, selectedOptionId, st.sequence);
+    const synced = await submitAnswerToServer(st.currentQuestion.id, selectedOptionId, st.sequence);
+    st.focusStreak += 1;
+    appendAnswerTimeline(synced ? "saved" : "queued_sync", st.sequence);
+    updateMiniProgressWidget();
     renderAttemptMeta();
 
     if (st.totalQuestions > 0 && st.sequence >= st.totalQuestions) {
@@ -1720,7 +1995,7 @@
   }
 
   function toggleMarkForReview() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       return;
     }
 
@@ -1735,7 +2010,7 @@
   }
 
   async function jumpToFirstUnanswered() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       setStatus("Active exam attempt required.");
       return;
     }
@@ -1756,7 +2031,7 @@
   }
 
   async function jumpToSequence() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       setStatus("Active exam attempt required.");
       return;
     }
@@ -1774,7 +2049,7 @@
   }
 
   function openSubmitModal() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       setStatus("No active exam to submit.");
       return;
     }
@@ -1849,7 +2124,9 @@
   }
 
   function applyFinalizationUi(finalizePayload, statusMessage) {
+    stopQuestionTimeTracking();
     st.finalized = true;
+    st.paused = false;
     st.autoSubmitInProgress = false;
     setAttemptControlsEnabled(false);
     timerState.stop();
@@ -1866,11 +2143,18 @@
       clearInterval(st.broadcastTimerId);
       st.broadcastTimerId = null;
     }
+    if (st.attemptStatusTimerId) {
+      clearInterval(st.attemptStatusTimerId);
+      st.attemptStatusTimerId = null;
+    }
     stopBreathingPrompt();
     clearAttemptCache();
     setAutosaveIndicator("synced", "Finalized");
     if (el.lowTimeAlert) {
       el.lowTimeAlert.hidden = true;
+    }
+    if (el.turboModeHint) {
+      el.turboModeHint.hidden = true;
     }
 
     renderResultSummary(finalizePayload.result || finalizePayload);
@@ -1908,7 +2192,7 @@
   }
 
   async function confirmSubmitExam() {
-    if (!st.attemptId || st.finalized) {
+    if (!st.attemptId || st.finalized || st.paused) {
       closeSubmitModal();
       return;
     }
@@ -1972,6 +2256,7 @@
 
   function logoutStudent() {
     timerState.stop();
+    stopQuestionTimeTracking();
     if (st.syncIntervalId) {
       clearInterval(st.syncIntervalId);
       st.syncIntervalId = null;
@@ -1992,6 +2277,10 @@
       clearInterval(st.broadcastTimerId);
       st.broadcastTimerId = null;
     }
+    if (st.attemptStatusTimerId) {
+      clearInterval(st.attemptStatusTimerId);
+      st.attemptStatusTimerId = null;
+    }
     stopBreathingPrompt();
     closeInactivityModal();
     localStorage.removeItem(STUDENT_SESSION_KEY);
@@ -2010,15 +2299,48 @@
     st.sequence = Number(cached.sequence || 1);
     st.totalQuestions = Number(cached.total_questions || 0);
     st.finalized = false;
+    st.paused = Boolean(cached.paused);
     st.autoSubmitInProgress = false;
     st.lowTimeAlerted.clear();
+    st.focusStreak = Number.isFinite(Number(cached.focus_streak))
+      ? Math.max(0, Math.floor(Number(cached.focus_streak)))
+      : 0;
+    st.questionTimeBySequence =
+      cached.question_time_by_sequence && typeof cached.question_time_by_sequence === "object"
+        ? { ...cached.question_time_by_sequence }
+        : {};
+    st.answerTimeline = Array.isArray(cached.answer_timeline)
+      ? cached.answer_timeline.slice(-120).map((item) => ({
+          sequence: Number(item.sequence || 0),
+          action: String(item.action || "updated"),
+          at: item.at || new Date().toISOString(),
+        }))
+      : [];
+    st.seenBroadcastIds = new Set(
+      Array.isArray(cached.seen_broadcast_ids) ? cached.seen_broadcast_ids.map(String) : []
+    );
+    st.broadcastHistory = Array.isArray(cached.broadcast_history)
+      ? cached.broadcast_history
+          .slice(-50)
+          .map((item) => ({
+            id: item.id,
+            created_at: item.created_at,
+            message: item.message,
+            severity: item.severity || "info",
+          }))
+          .filter((item) => item.id && item.created_at)
+      : [];
 
     answerState.hydrate(cached);
     timerState.start(cached.expires_at || null);
+    renderAnswerTimeline();
+    renderBroadcasts(st.broadcastHistory);
+    updateMiniProgressWidget();
 
     try {
       const statusPayload = await refreshAttemptStatus();
-      if (statusPayload && (statusPayload.status || "").toUpperCase() === "ACTIVE") {
+      const normalized = String(statusPayload?.status || "").toUpperCase();
+      if (statusPayload && normalized === "ACTIVE") {
         setAttemptControlsEnabled(true);
         const sequenceToLoad = Math.max(1, Math.min(st.sequence, st.totalQuestions || st.sequence));
         await fetchQuestion(sequenceToLoad);
@@ -2033,6 +2355,9 @@
         );
         updateSyncHealthIndicator();
         setStatus("Recovered your local in-progress attempt.");
+      } else if (normalized === "PAUSED") {
+        setAttemptControlsEnabled(false);
+        setStatus("Recovered paused attempt. Wait for admin resume.");
       }
     } catch {
       renderAttemptMeta();
@@ -2049,9 +2374,19 @@
     el.openOnboarding.addEventListener("click", () => {
       openOnboardingModal();
     });
+    if (el.openShortcuts) {
+      el.openShortcuts.addEventListener("click", () => {
+        openShortcutsModal();
+      });
+    }
     el.dismissOnboarding.addEventListener("click", () => {
       dismissOnboardingModal(true);
     });
+    if (el.closeShortcuts) {
+      el.closeShortcuts.addEventListener("click", () => {
+        closeShortcutsModal();
+      });
+    }
     el.continueAfterInactive.addEventListener("click", () => {
       closeInactivityModal();
       resetInactivityTimer();
@@ -2215,6 +2550,10 @@
       if (st.broadcastTimerId) {
         clearInterval(st.broadcastTimerId);
       }
+      if (st.attemptStatusTimerId) {
+        clearInterval(st.attemptStatusTimerId);
+      }
+      stopQuestionTimeTracking();
       stopBreathingPrompt();
     });
 
@@ -2232,15 +2571,26 @@
         resetInactivityTimer();
         return;
       }
-      if (!st.attemptId || st.finalized) {
+      if (event.key === "Escape" && el.shortcutsModal && !el.shortcutsModal.hidden) {
+        closeShortcutsModal();
         return;
       }
       const target = event.target;
-      if (
+      const isInputTarget =
         target instanceof HTMLInputElement ||
         target instanceof HTMLSelectElement ||
         target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLButtonElement
+        target instanceof HTMLButtonElement;
+      if (event.key === "?" && !isInputTarget) {
+        event.preventDefault();
+        openShortcutsModal();
+        return;
+      }
+      if (!st.attemptId || st.finalized || st.paused) {
+        return;
+      }
+      if (
+        isInputTarget
       ) {
         return;
       }
@@ -2266,6 +2616,15 @@
     st.moraleTimerId = window.setInterval(() => {
       loadMoraleCoach();
     }, 20000);
+
+    st.attemptStatusTimerId = window.setInterval(() => {
+      if (!st.attemptId || st.finalized) {
+        return;
+      }
+      refreshAttemptStatus().catch(() => {
+        return;
+      });
+    }, ATTEMPT_STATUS_INTERVAL_MS);
   }
 
   async function initialize() {
@@ -2282,6 +2641,9 @@
     }
     if (el.lowTimeAlert) {
       el.lowTimeAlert.hidden = true;
+    }
+    if (el.turboModeHint) {
+      el.turboModeHint.hidden = true;
     }
     if (el.faqContent) {
       el.faqContent.hidden = true;
@@ -2302,6 +2664,12 @@
     if (el.broadcastBadge) {
       el.broadcastBadge.textContent = "No alerts";
     }
+    st.broadcastHistory = [];
+    if (el.shortcutsModal) {
+      el.shortcutsModal.hidden = true;
+    }
+    renderAnswerTimeline();
+    updateMiniProgressWidget();
     setAutosaveIndicator("synced", "Waiting");
     updateSyncHealthIndicator();
     updateHeartbeatIndicator("degraded", "Server: Checking...");

@@ -1898,6 +1898,48 @@ body.student-body.student-high-contrast textarea {
   border-color: #ffffff !important;
 }
 
+body.student-body .mini-progress-card strong {
+  color: #0b5fcc;
+}
+
+body.student-body .timeline-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px solid #d5dfef;
+  border-radius: 8px;
+  background: #f7faff;
+}
+
+body.student-body .timeline-item .small {
+  color: #586881;
+}
+
+body.student-body .timer-card #turbo-mode-hint {
+  margin: 6px 0 0;
+  color: #7d4a08;
+  font-weight: 600;
+}
+
+body.student-body.theme-dark .mini-progress-card strong {
+  color: #7ab3ff;
+}
+
+body.student-body.theme-dark .timeline-item {
+  border-color: #304766;
+  background: #122038;
+}
+
+body.student-body.theme-dark .timeline-item .small {
+  color: #9fb2d2;
+}
+
+body.student-body.theme-dark .timer-card #turbo-mode-hint {
+  color: #ffc47f;
+}
+
 @media (max-width: 980px) {
   body.student-body .exam-layout {
     grid-template-columns: 1fr;

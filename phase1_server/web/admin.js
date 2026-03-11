@@ -17,12 +17,15 @@
     cursor: null,
     polling: false,
     pollTimerId: null,
+    autoForceExpiredTimerId: null,
     idleTimerId: null,
     idleLockMs: IDLE_TIMEOUT_DEFAULT_MS,
     seenEventIds: new Set(),
     questionMap: new Map(),
     latestMetrics: null,
     latestDashboard: null,
+    lastBroadcastEventId: "",
+    lastBroadcastExamId: "",
   };
 
   const el = {
@@ -50,8 +53,12 @@
     broadcastMessage: $("broadcast-message"),
     broadcastSeverity: $("broadcast-severity"),
     sendBroadcast: $("send-broadcast"),
+    refreshBroadcastReceipts: $("refresh-broadcast-receipts"),
+    autoForceExpiredToggle: $("auto-force-expired-toggle"),
+    runPreflight: $("run-preflight"),
     forceSubmitResult: $("force-submit-result"),
     broadcastResult: $("broadcast-result"),
+    preflightResult: $("preflight-result"),
     liveSummary: $("live-summary"),
     activeBody: $("active-body"),
     alertBody: $("alert-body"),
@@ -558,7 +565,7 @@
   async function pauseExam() {
     try {
       const examId = currentExamId();
-      const reason = (el.examControlReason.value || "").trim();
+      const reason = (el.examControlReason?.value || "").trim();
       const data = await api(
         `/admin/exams/${encodeURIComponent(examId)}/pause?limit=2000`,
         {
@@ -578,7 +585,7 @@
   async function resumeExam() {
     try {
       const examId = currentExamId();
-      const reason = (el.examControlReason.value || "").trim();
+      const reason = (el.examControlReason?.value || "").trim();
       const data = await api(
         `/admin/exams/${encodeURIComponent(examId)}/resume?limit=2000`,
         {
@@ -598,11 +605,11 @@
   async function sendBroadcast() {
     try {
       const examId = currentExamId();
-      const message = (el.broadcastMessage.value || "").trim();
+      const message = (el.broadcastMessage?.value || "").trim();
       if (!message) {
         throw new Error("Broadcast message required.");
       }
-      const severity = el.broadcastSeverity.value || "info";
+      const severity = el.broadcastSeverity?.value || "info";
       const data = await api(
         `/admin/exams/${encodeURIComponent(examId)}/broadcast`,
         {
@@ -611,16 +618,41 @@
           body: { message, severity },
         }
       );
-      const auditCheck = await api(
-        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&event_type=EXAM_BROADCAST&limit=1`,
-        { headers: adminHeaders() }
-      );
-      if (!auditCheck.count) {
-        throw new Error("Broadcast was sent but audit verification failed.");
+      let deliveryHint = "Broadcast sent.";
+      try {
+        const auditCheck = await api(
+          `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&event_type=EXAM_BROADCAST&limit=1`,
+          { headers: adminHeaders() }
+        );
+        const latestEvent = (auditCheck.events || [])[0];
+        if (latestEvent?.id) {
+          st.lastBroadcastEventId = latestEvent.id;
+          st.lastBroadcastExamId = examId;
+          deliveryHint = "Broadcast sent and audit-logged.";
+        } else {
+          st.lastBroadcastEventId = "";
+          st.lastBroadcastExamId = examId;
+          deliveryHint = "Broadcast sent (audit lookup pending).";
+        }
+      } catch {
+        st.lastBroadcastEventId = "";
+        st.lastBroadcastExamId = examId;
+        deliveryHint = "Broadcast sent (audit lookup failed).";
       }
-      el.broadcastResult.textContent = JSON.stringify(data, null, 2);
-      el.broadcastMessage.value = "";
-      setStatus(`Broadcast sent (${severity}) to exam candidates.`);
+      el.broadcastResult.textContent = JSON.stringify(
+        {
+          ...data,
+          audit_event_id: st.lastBroadcastEventId || null,
+          delivery_hint: deliveryHint,
+        },
+        null,
+        2
+      );
+      if (el.broadcastMessage) {
+        el.broadcastMessage.value = "";
+      }
+      setStatus(`Broadcast sent (${severity}) to exam candidates. ${deliveryHint}`);
+      await refreshBroadcastReceipts();
     } catch (error) {
       setStatus(error.message);
     }
@@ -632,8 +664,191 @@
       setStatus("Template select karo.");
       return;
     }
-    el.broadcastMessage.value = template;
+    const [templateSeverity, ...messageParts] = template.split("::");
+    const message = messageParts.length ? messageParts.join("::").trim() : template;
+    if (el.broadcastMessage) {
+      el.broadcastMessage.value = message;
+    }
+    if (el.broadcastSeverity && ["info", "warn", "critical"].includes(templateSeverity)) {
+      el.broadcastSeverity.value = templateSeverity;
+    }
     setStatus("Broadcast template applied.");
+  }
+
+  async function refreshBroadcastReceipts() {
+    try {
+      const examId = currentExamId();
+      let broadcastEventId = st.lastBroadcastEventId;
+      if (!broadcastEventId || st.lastBroadcastExamId !== examId) {
+        const latestBroadcast = await api(
+          `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&event_type=EXAM_BROADCAST&limit=1`,
+          { headers: adminHeaders() }
+        );
+        const latestEvent = (latestBroadcast.events || [])[0];
+        if (!latestEvent?.id) {
+          el.broadcastResult.textContent = JSON.stringify(
+            { exam_id: examId, receipts: 0, hint: "No broadcast found for this exam yet." },
+            null,
+            2
+          );
+          return;
+        }
+        st.lastBroadcastEventId = latestEvent.id;
+        st.lastBroadcastExamId = examId;
+        broadcastEventId = latestEvent.id;
+      }
+
+      const receiptEvents = await api(
+        `/admin/audit/events?entity_type=exam&entity_id=${encodeURIComponent(examId)}&event_type=BROADCAST_RECEIVED&limit=2000`,
+        { headers: adminHeaders() }
+      );
+      const rows = (receiptEvents.events || []).filter((event) => {
+        const payload = event.payload || {};
+        return payload.broadcast_event_id === broadcastEventId;
+      });
+      const uniqueStudents = new Set(
+        rows.map((row) => (row.payload || {}).student_id).filter(Boolean)
+      );
+      const uniqueAttempts = new Set(
+        rows.map((row) => (row.payload || {}).attempt_id).filter(Boolean)
+      );
+      el.broadcastResult.textContent = JSON.stringify(
+        {
+          exam_id: examId,
+          broadcast_event_id: broadcastEventId,
+          receipt_count: rows.length,
+          unique_students: uniqueStudents.size,
+          unique_attempts: uniqueAttempts.size,
+          last_receipt_at: rows[0]?.created_at || null,
+        },
+        null,
+        2
+      );
+      setStatus(`Broadcast read receipts loaded (${rows.length} receipt event(s)).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  function buildPreflightSuggestions(context) {
+    const suggestions = [];
+    if (context.serverOffline) {
+      suggestions.push("Server unreachable: exam operations temporarily hold karo.");
+    }
+    if (context.criticalAlerts > 0) {
+      suggestions.push("Critical alerts detected: targeted broadcast + candidate review karo.");
+    }
+    if (context.unresolvedAlerts > 20) {
+      suggestions.push("High unresolved alert load: proctor team ko split assignment do.");
+    }
+    if (context.expiredActiveAttempts > 0) {
+      suggestions.push("Expired active attempts present: force-submit-expired run karo.");
+    }
+    if (context.activeAttempts === 0) {
+      suggestions.push("No active attempts: exam scope and publish status verify karo.");
+    }
+    if (!suggestions.length) {
+      suggestions.push("System stable. Continue monitoring cadence every 30-60 seconds.");
+    }
+    return suggestions;
+  }
+
+  async function runPreflightReport() {
+    try {
+      const examId = currentExamId();
+      const [liveStatus, activeAttempts, alertsData, metricsData] = await Promise.all([
+        api(`/admin/exams/${encodeURIComponent(examId)}/live-status`, { headers: adminHeaders() }),
+        api(`/admin/exams/${encodeURIComponent(examId)}/active-attempts`, { headers: adminHeaders() }),
+        api(`/admin/proctor/alerts?exam_id=${encodeURIComponent(examId)}&limit=300`, { headers: adminHeaders() }),
+        api("/admin/system/metrics", { headers: adminHeaders() }),
+      ]);
+      const alerts = alertsData.alerts || [];
+      const unresolved = alerts.filter((alert) => String(alert.status || "").toUpperCase() !== "RESOLVED");
+      const criticalAlerts = unresolved.filter((alert) => {
+        const indicator = String(alert.indicator_code || "").toLowerCase();
+        return indicator.includes("critical") || indicator.includes("switch");
+      });
+      const nowMs = Date.now();
+      const unresolvedAges = unresolved
+        .map((alert) => new Date(alert.created_at || alert.last_detected_at || "").valueOf())
+        .filter((value) => Number.isFinite(value))
+        .map((value) => Math.max(0, Math.floor((nowMs - value) / 1000)));
+      const maxAgeSeconds = unresolvedAges.length ? Math.max(...unresolvedAges) : 0;
+
+      const report = {
+        generated_at: new Date().toISOString(),
+        exam_id: examId,
+        active_attempts: Number(liveStatus.active_attempt_count || activeAttempts.length || 0),
+        suspicious_indicators: (liveStatus.suspicious_indicators || []).length,
+        unresolved_alerts: unresolved.length,
+        critical_alerts: criticalAlerts.length,
+        incident_sla: {
+          max_unresolved_age_seconds: maxAgeSeconds,
+          max_unresolved_age_minutes: Number((maxAgeSeconds / 60).toFixed(1)),
+        },
+        expired_active_attempts: Number(metricsData.auto_expire_count || 0),
+      };
+      report.recommendations = buildPreflightSuggestions({
+        activeAttempts: report.active_attempts,
+        criticalAlerts: report.critical_alerts,
+        unresolvedAlerts: report.unresolved_alerts,
+        expiredActiveAttempts: report.expired_active_attempts,
+        serverOffline: false,
+      });
+      if (el.preflightResult) {
+        el.preflightResult.textContent = JSON.stringify(report, null, 2);
+      }
+      setStatus("Preflight report generated.");
+    } catch (error) {
+      if (el.preflightResult) {
+        el.preflightResult.textContent = `ERROR: ${error.message}`;
+      }
+      setStatus(error.message);
+    }
+  }
+
+  async function autoForceExpiredTick() {
+    try {
+      if (!el.autoForceExpiredToggle?.checked) {
+        return;
+      }
+      const examId = currentExamId(true);
+      const query = new URLSearchParams({ limit: "500" });
+      if (examId) {
+        query.set("exam_id", examId);
+      }
+      const data = await api(
+        `/admin/attempts/force-submit-expired?${query.toString()}`,
+        {
+          method: "POST",
+          headers: adminHeaders(),
+        }
+      );
+      if (Number(data.finalized_count || 0) > 0 && el.forceSubmitResult) {
+        el.forceSubmitResult.textContent = JSON.stringify(data, null, 2);
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function toggleAutoForceExpiredPolicy() {
+    if (!el.autoForceExpiredToggle?.checked) {
+      if (st.autoForceExpiredTimerId) {
+        clearInterval(st.autoForceExpiredTimerId);
+        st.autoForceExpiredTimerId = null;
+      }
+      setStatus("Auto force-submit expired policy disabled.");
+      return;
+    }
+    if (st.autoForceExpiredTimerId) {
+      clearInterval(st.autoForceExpiredTimerId);
+    }
+    st.autoForceExpiredTimerId = window.setInterval(() => {
+      autoForceExpiredTick();
+    }, 30000);
+    autoForceExpiredTick();
+    setStatus("Auto force-submit expired policy enabled (30s interval).");
   }
 
   async function loadAuditEvents() {
@@ -1273,6 +1488,11 @@
     bindClick(el.resumeExam, resumeExam);
     bindClick(el.applyBroadcastTemplate, applyBroadcastTemplate);
     bindClick(el.sendBroadcast, sendBroadcast);
+    bindClick(el.refreshBroadcastReceipts, refreshBroadcastReceipts);
+    bindClick(el.runPreflight, runPreflightReport);
+    if (el.autoForceExpiredToggle) {
+      el.autoForceExpiredToggle.addEventListener("change", toggleAutoForceExpiredPolicy);
+    }
     bindClick(el.pullEvents, pullEvents);
     bindClick(el.toggleAuto, toggleAutoPolling);
     bindClick(el.loadAuditEvents, loadAuditEvents);
@@ -1348,6 +1568,9 @@
       if (st.idleTimerId) {
         clearTimeout(st.idleTimerId);
       }
+      if (st.autoForceExpiredTimerId) {
+        clearInterval(st.autoForceExpiredTimerId);
+      }
     });
   }
 
@@ -1368,6 +1591,12 @@
     }
     if (el.broadcastResult) {
       el.broadcastResult.textContent = "Broadcast output will appear here.";
+    }
+    if (el.preflightResult) {
+      el.preflightResult.textContent = "Preflight report will appear here.";
+    }
+    if (el.autoForceExpiredToggle) {
+      el.autoForceExpiredToggle.checked = false;
     }
     if (el.studentPreviewBox) {
       el.studentPreviewBox.innerHTML = '<p class="small">No preview selected.</p>';

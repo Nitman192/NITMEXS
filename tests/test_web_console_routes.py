@@ -69,6 +69,9 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("Submit Exam", student_response.text)
         self.assertIn("High Contrast", student_response.text)
         self.assertIn("Jump to First Unanswered", student_response.text)
+        self.assertIn("Mini Progress", student_response.text)
+        self.assertIn("Answer Timeline", student_response.text)
+        self.assertIn("Shortcuts", student_response.text)
         self.assertNotIn("Student Cockpit", student_response.text)
         self.assertNotIn("Question Deck", student_response.text)
 
@@ -78,16 +81,22 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("createAnswerState", student_js_response.text)
         self.assertIn("STUDENT_ONBOARDING_KEY", student_js_response.text)
         self.assertIn("jumpToFirstUnanswered", student_js_response.text)
+        self.assertIn("acknowledgeBroadcastReceipts", student_js_response.text)
+        self.assertIn("setPausedState", student_js_response.text)
 
         self.assertEqual(admin_response.status_code, 200)
         self.assertIn("Admin Command Center", admin_response.text)
         self.assertIn("Idle lock timeout", admin_response.text)
         self.assertIn("Import Student CSV", admin_response.text)
+        self.assertIn("Read Receipts", admin_response.text)
+        self.assertIn("Run Preflight Report", admin_response.text)
 
         self.assertEqual(admin_js_response.status_code, 200)
         self.assertIn("toggleAutoPolling", admin_js_response.text)
         self.assertIn("IDLE_TIMEOUT_POLICY_KEY", admin_js_response.text)
         self.assertIn("/admin/students/import-csv", admin_js_response.text)
+        self.assertIn("refreshBroadcastReceipts", admin_js_response.text)
+        self.assertIn("toggleAutoForceExpiredPolicy", admin_js_response.text)
 
         self.assertEqual(demo_question_csv_response.status_code, 200)
         self.assertTrue(
