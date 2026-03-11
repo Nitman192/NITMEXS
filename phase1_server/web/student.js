@@ -92,6 +92,8 @@
     questionZoomReset: $("question-zoom-reset"),
     questionZoomLabel: $("question-zoom-label"),
     jumpUnanswered: $("jump-unanswered"),
+    jumpSequence: $("jump-sequence"),
+    jumpSequenceBtn: $("jump-sequence-btn"),
     filterAll: $("filter-all"),
     filterAnswered: $("filter-answered"),
     filterUnanswered: $("filter-unanswered"),
@@ -1753,6 +1755,24 @@
     setStatus("Great work. No unanswered questions found.");
   }
 
+  async function jumpToSequence() {
+    if (!st.attemptId || st.finalized) {
+      setStatus("Active exam attempt required.");
+      return;
+    }
+    const sequence = Number(el.jumpSequence?.value || 0);
+    if (!Number.isInteger(sequence) || sequence <= 0) {
+      setStatus("Valid question number enter karo.");
+      return;
+    }
+    if (st.totalQuestions > 0 && sequence > st.totalQuestions) {
+      setStatus(`Question range 1-${st.totalQuestions} ke beech hona chahiye.`);
+      return;
+    }
+    await fetchQuestion(sequence);
+    setStatus(`Jumped to question #${sequence}.`);
+  }
+
   function openSubmitModal() {
     if (!st.attemptId || st.finalized) {
       setStatus("No active exam to submit.");
@@ -2070,6 +2090,12 @@
     el.reportQuestionIssue.addEventListener("click", reportQuestionIssue);
     el.reportTechnicalIssue.addEventListener("click", reportTechnicalIssue);
     el.jumpUnanswered.addEventListener("click", jumpToFirstUnanswered);
+    el.jumpSequenceBtn.addEventListener("click", jumpToSequence);
+    el.jumpSequence.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        jumpToSequence();
+      }
+    });
     el.filterAll.addEventListener("click", () => setPaletteFilter("all"));
     el.filterAnswered.addEventListener("click", () => setPaletteFilter("answered"));
     el.filterUnanswered.addEventListener("click", () => setPaletteFilter("unanswered"));

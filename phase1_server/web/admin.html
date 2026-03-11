@@ -104,6 +104,14 @@
               <button id="resume-exam">Resume Paused Attempts</button>
             </div>
             <div class="row" style="margin-top:8px">
+              <select id="broadcast-template" style="width:240px">
+                <option value="">Select template...</option>
+                <option value="Please remain calm and continue answering.">Calm Continue</option>
+                <option value="Network fluctuation detected. Your answers are safe. Continue normally.">Network Reassurance</option>
+                <option value="Final 5 minutes left. Review marked questions first.">Final 5-Min Alert</option>
+                <option value="Technical team is active. Follow on-screen instructions and stay on exam tab.">Technical Advisory</option>
+              </select>
+              <button id="apply-broadcast-template" class="alt">Apply Template</button>
               <input id="broadcast-message" placeholder="Broadcast message to all active candidates..." style="flex:1 1 320px">
               <select id="broadcast-severity" style="width:120px">
                 <option value="info">Info</option>

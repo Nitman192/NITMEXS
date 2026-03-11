@@ -45,6 +45,8 @@
     examControlReason: $("exam-control-reason"),
     pauseExam: $("pause-exam"),
     resumeExam: $("resume-exam"),
+    broadcastTemplate: $("broadcast-template"),
+    applyBroadcastTemplate: $("apply-broadcast-template"),
     broadcastMessage: $("broadcast-message"),
     broadcastSeverity: $("broadcast-severity"),
     sendBroadcast: $("send-broadcast"),
@@ -622,6 +624,16 @@
     } catch (error) {
       setStatus(error.message);
     }
+  }
+
+  function applyBroadcastTemplate() {
+    const template = (el.broadcastTemplate?.value || "").trim();
+    if (!template) {
+      setStatus("Template select karo.");
+      return;
+    }
+    el.broadcastMessage.value = template;
+    setStatus("Broadcast template applied.");
   }
 
   async function loadAuditEvents() {
@@ -1259,6 +1271,7 @@
     bindClick(el.pauseExam, pauseExam);
     bindClick(el.emergencyStop, pauseExam);
     bindClick(el.resumeExam, resumeExam);
+    bindClick(el.applyBroadcastTemplate, applyBroadcastTemplate);
     bindClick(el.sendBroadcast, sendBroadcast);
     bindClick(el.pullEvents, pullEvents);
     bindClick(el.toggleAuto, toggleAutoPolling);
