@@ -25,9 +25,14 @@ class ExamValidationError(ValueError):
     pass
 
 
+class ExamDeleteBlockedError(ValueError):
+    pass
+
+
 class ExamEventType:
     EXAM_CLOSED = "EXAM_CLOSED"
     EXAM_PUBLISHED = "EXAM_PUBLISHED"
+    EXAM_DELETED = "EXAM_DELETED"
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,39 @@ class ExamService:
 
     def list_exams(self) -> list[Exam]:
         return self._exam_repo.list_exams()
+
+    def delete_exam(self, exam_id: str, actor_id: str, actor_role: str = "admin") -> dict:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+        if exam.status is ExamStatus.ACTIVE:
+            raise ExamDeleteBlockedError("Active exams cannot be deleted. Close the exam first.")
+
+        attempt_count = self._exam_repo.count_attempts(exam_id)
+        if attempt_count > 0:
+            raise ExamDeleteBlockedError(
+                "Exam has attempt history and cannot be deleted safely."
+            )
+
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type=actor_role,
+            actor_id=actor_id,
+            event_type=ExamEventType.EXAM_DELETED,
+            payload={
+                "name": exam.name,
+                "status": exam.status.value,
+                "attempt_count": attempt_count,
+            },
+        )
+        self._exam_repo.delete_exam(exam_id)
+        return {
+            "exam_id": exam_id,
+            "name": exam.name,
+            "deleted": True,
+            "attempt_count": attempt_count,
+        }
 
     def add_questions(self, exam_id: str, question_ids: list[str]) -> None:
         exam = self._exam_repo.get_exam(exam_id)

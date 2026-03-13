@@ -5,7 +5,7 @@ from pathlib import Path
 
 from phase1_server.db import Database, SQLiteConfig
 from phase1_server.services.audit_service import AuditService
-from phase1_server.services.delivery_service import DeliveryService
+from phase1_server.services.delivery_service import AnswerSubmissionPayload, DeliveryService
 from phase1_server.services.exam_service import ExamCreatePayload, ExamService
 from phase1_server.services.question_service import QuestionCreatePayload, QuestionService
 from phase1_server.uow import UnitOfWork
@@ -173,6 +173,60 @@ class StudentSupportFeatureTests(unittest.TestCase):
         self.assertEqual(second_ack["already_acknowledged_count"], 1)
         self.assertEqual(len(receipt_events), 1)
 
+    def test_service_result_analysis_and_ai_explanation(self):
+        exam_id = self._seed_exam()
+        attempt_id = self._start_attempt(exam_id, "analysis-student")
+
+        with UnitOfWork(self.db) as uow:
+            delivery = DeliveryService(
+                uow.attempts,
+                uow.exams,
+                uow.questions,
+                audit_service=AuditService(uow.audit_events),
+                analytics_repo=uow.analytics,
+            )
+            question_payload = delivery.fetch_question(attempt_id, 1, "analysis-student")
+            wrong_option = next(
+                option
+                for option in question_payload["options"]
+                if option["option_text"] != "A"
+            )
+            delivery.submit_answer(
+                AnswerSubmissionPayload(
+                    attempt_id=attempt_id,
+                    question_id=question_payload["question"]["id"],
+                    selected_option_id=wrong_option["id"],
+                ),
+                "analysis-student",
+            )
+            delivery.finalize_attempt(attempt_id, "analysis-student")
+            result = delivery.get_result(attempt_id, "analysis-student")
+            analysis = delivery.get_attempt_analysis(attempt_id, "analysis-student")
+            explanation = delivery.explain_attempt_question(
+                attempt_id,
+                question_payload["question"]["id"],
+                "analysis-student",
+            )
+            audit_events = uow.attempts.list_audit_events(attempt_id)
+
+        self.assertEqual(result["exam_id"], exam_id)
+        self.assertEqual(result["question_results"][0]["status"], "incorrect")
+        self.assertEqual(result["question_results"][0]["question_text"], "Support feature question")
+        self.assertEqual(analysis["question_count"], 1)
+        self.assertEqual(
+            analysis["incorrect_or_skipped_questions"][0]["question_id"],
+            question_payload["question"]["id"],
+        )
+        self.assertIn("provider_status", analysis)
+        self.assertIn("reason", analysis["provider_status"])
+        self.assertIn("study_tip", explanation["analysis"])
+        self.assertIn(explanation["provider"], {"heuristic", "openai", "gemini"})
+        self.assertIn("provider_status", explanation)
+        self.assertIn("reason", explanation["provider_status"])
+        event_types = [event["event_type"] for event in audit_events]
+        self.assertIn("RESULT_ANALYSIS_VIEWED", event_types)
+        self.assertIn("AI_EXPLANATION_GENERATED", event_types)
+
     @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI test client unavailable")
     def test_student_support_endpoints(self):
         exam_id = self._seed_exam()
@@ -247,6 +301,45 @@ class StudentSupportFeatureTests(unittest.TestCase):
                 headers=student_headers,
             )
 
+            analysis_exam_id = self._seed_exam()
+            analysis_started = client.post(
+                f"/student/exams/{analysis_exam_id}/start",
+                headers=student_headers,
+            )
+            self.assertEqual(analysis_started.status_code, 200)
+            analysis_attempt_id = analysis_started.json()["data"]["attempt_id"]
+            analysis_question = analysis_started.json()["data"]["first_question"]
+            wrong_option = next(
+                option
+                for option in analysis_question["options"]
+                if option["option_text"] != "A"
+            )
+            answer_resp = client.post(
+                f"/student/attempts/{analysis_attempt_id}/answers",
+                headers=student_headers,
+                json={
+                    "question_id": analysis_question["question"]["id"],
+                    "selected_option_id": wrong_option["id"],
+                },
+            )
+            finalize_resp = client.post(
+                f"/student/attempts/{analysis_attempt_id}/finalize",
+                headers=student_headers,
+            )
+            result_resp = client.get(
+                f"/student/attempts/{analysis_attempt_id}/result",
+                headers=student_headers,
+            )
+            analysis_resp = client.get(
+                f"/student/attempts/{analysis_attempt_id}/analysis",
+                headers=student_headers,
+            )
+            explain_resp = client.post(
+                f"/student/attempts/{analysis_attempt_id}/analysis/explain",
+                headers=student_headers,
+                json={"question_id": analysis_question["question"]["id"]},
+            )
+
         self.assertEqual(question_issue.status_code, 200)
         self.assertEqual(technical_issue.status_code, 200)
         self.assertEqual(rules_resp.status_code, 200)
@@ -260,6 +353,22 @@ class StudentSupportFeatureTests(unittest.TestCase):
         self.assertGreaterEqual(ack_broadcasts.json()["data"]["acknowledged_count"], 1)
         self.assertGreaterEqual(broadcast_receipts.json()["data"]["count"], 1)
         self.assertTrue(auto_submit_resp.json()["data"]["auto_submitted"])
+        self.assertEqual(answer_resp.status_code, 200)
+        self.assertEqual(finalize_resp.status_code, 200)
+        self.assertEqual(result_resp.status_code, 200)
+        self.assertEqual(analysis_resp.status_code, 200)
+        self.assertEqual(explain_resp.status_code, 200)
+        self.assertEqual(
+            result_resp.json()["data"]["question_results"][0]["status"],
+            "incorrect",
+        )
+        self.assertEqual(analysis_resp.json()["data"]["question_count"], 1)
+        self.assertIn("provider_status", analysis_resp.json()["data"])
+        self.assertIn(
+            explain_resp.json()["data"]["analysis"]["provider"],
+            {"heuristic", "openai", "gemini"},
+        )
+        self.assertIn("provider_status", explain_resp.json()["data"])
 
 
 if __name__ == "__main__":

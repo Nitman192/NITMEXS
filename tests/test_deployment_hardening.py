@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from phase1_server.logging_config import configure_logging
-from phase1_server.settings import AppSettings, load_settings
+from phase1_server.settings import AppSettings, apply_runtime_environment, load_settings
 
 try:
     from fastapi.testclient import TestClient
@@ -29,16 +29,32 @@ class DeploymentHardeningTests(unittest.TestCase):
                         "db_path: ./tmp/test.db",
                         "log_level: DEBUG",
                         "version: 2.0.0",
+                        "ai_provider: gemini",
+                        "gemini_api_key: test-gemini-key",
+                        "gemini_model: gemini-2.5-flash",
                     ]
                 )
             )
             config_path = fh.name
 
         try:
+            original_ai_env = {
+                "NITMEXS_AI_PROVIDER": os.environ.get("NITMEXS_AI_PROVIDER"),
+                "NITMEXS_GEMINI_API_KEY": os.environ.get("NITMEXS_GEMINI_API_KEY"),
+                "NITMEXS_GEMINI_MODEL": os.environ.get("NITMEXS_GEMINI_MODEL"),
+                "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
+            }
+            for key in original_ai_env:
+                os.environ.pop(key, None)
             os.environ["NITMEXS_PORT"] = "9100"
             settings = load_settings(config_path)
         finally:
             os.environ.pop("NITMEXS_PORT", None)
+            for key, value in original_ai_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
             Path(config_path).unlink(missing_ok=True)
 
         self.assertEqual(settings.host, "0.0.0.0")
@@ -46,6 +62,44 @@ class DeploymentHardeningTests(unittest.TestCase):
         self.assertEqual(settings.db_path, "./tmp/test.db")
         self.assertEqual(settings.log_level, "DEBUG")
         self.assertEqual(settings.version, "2.0.0")
+        self.assertEqual(settings.ai_provider, "gemini")
+        self.assertEqual(settings.gemini_api_key, "test-gemini-key")
+        self.assertEqual(settings.gemini_model, "gemini-2.5-flash")
+
+    def test_apply_runtime_environment_sets_ai_variables(self):
+        tracked_keys = [
+            "NITMEXS_AI_PROVIDER",
+            "NITMEXS_AI_MODEL",
+            "NITMEXS_OPENAI_API_KEY",
+            "NITMEXS_GEMINI_API_KEY",
+            "NITMEXS_OPENAI_MODEL",
+            "NITMEXS_GEMINI_MODEL",
+        ]
+        original = {key: os.environ.get(key) for key in tracked_keys}
+        try:
+            for key in tracked_keys:
+                os.environ.pop(key, None)
+            settings = AppSettings(
+                ai_provider="openai",
+                ai_model="gpt-4.1-mini",
+                openai_api_key="test-openai-key",
+                gemini_api_key="test-gemini-key",
+                openai_model="gpt-4.1-mini",
+                gemini_model="gemini-2.5-flash",
+            )
+            apply_runtime_environment(settings)
+            self.assertEqual(os.environ.get("NITMEXS_AI_PROVIDER"), "openai")
+            self.assertEqual(os.environ.get("NITMEXS_AI_MODEL"), "gpt-4.1-mini")
+            self.assertEqual(os.environ.get("NITMEXS_OPENAI_API_KEY"), "test-openai-key")
+            self.assertEqual(os.environ.get("NITMEXS_GEMINI_API_KEY"), "test-gemini-key")
+            self.assertEqual(os.environ.get("NITMEXS_OPENAI_MODEL"), "gpt-4.1-mini")
+            self.assertEqual(os.environ.get("NITMEXS_GEMINI_MODEL"), "gemini-2.5-flash")
+        finally:
+            for key, value in original.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
     def test_logging_initialization_creates_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

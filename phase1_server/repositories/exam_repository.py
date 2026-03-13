@@ -15,6 +15,10 @@ class ExamRepository(Protocol):
 
     def list_exams(self) -> list[Exam]: ...
 
+    def delete_exam(self, exam_id: str) -> None: ...
+
+    def count_attempts(self, exam_id: str) -> int: ...
+
     def add_questions(self, exam_id: str, question_ids: list[str]) -> None: ...
 
     def list_question_ids(self, exam_id: str) -> list[str]: ...
@@ -105,6 +109,16 @@ class SQLiteExamRepository:
             )
             for row in rows
         ]
+
+    def delete_exam(self, exam_id: str) -> None:
+        self._conn.execute("DELETE FROM exams WHERE id = ?", (exam_id,))
+
+    def count_attempts(self, exam_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS total FROM attempts WHERE exam_id = ?",
+            (exam_id,),
+        ).fetchone()
+        return 0 if row is None else int(row["total"] or 0)
 
     def add_questions(self, exam_id: str, question_ids: list[str]) -> None:
         self._conn.executemany(

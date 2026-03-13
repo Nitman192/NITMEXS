@@ -65,6 +65,13 @@
     stressLevel: "normal",
     diagramStrokeActive: false,
     captionSize: 16,
+    uiStage: "lobby",
+    analysisTab: "summary",
+    latestResult: null,
+    latestAnalysis: null,
+    analysisExplanationByQuestion: {},
+    availableExams: [],
+    utilityTab: "palette",
     diagnostics: {
       keyboardSeen: false,
       mouseSeen: false,
@@ -210,6 +217,30 @@
     receiptQrBox: $("receipt-qr-box"),
     topicStrengthBox: $("topic-strength-box"),
     weakTopicPlanBox: $("weak-topic-plan-box"),
+    previewRules: $("preview-rules"),
+    preExamRulesBox: $("pre-exam-rules-box"),
+    stageLobby: $("student-stage-lobby"),
+    stageExam: $("student-stage-exam"),
+    stageAnalysis: $("student-stage-analysis"),
+    stagePillLobby: $("stage-pill-lobby"),
+    stagePillExam: $("stage-pill-exam"),
+    stagePillAnalysis: $("stage-pill-analysis"),
+    resultTabSummary: $("result-tab-summary"),
+    resultTabAi: $("result-tab-ai"),
+    resultSummaryPanel: $("result-summary-panel"),
+    resultAnalysisPanel: $("result-analysis-panel"),
+    analysisOverviewBox: $("analysis-overview-box"),
+    analysisLearningPathBox: $("analysis-learning-path-box"),
+    analysisListBox: $("analysis-list-box"),
+    examUtilityHub: $("exam-utility-hub"),
+    utilityTabPalette: $("utility-tab-palette"),
+    utilityTabWorkspace: $("utility-tab-workspace"),
+    utilityTabMonitor: $("utility-tab-monitor"),
+    utilityTabSupport: $("utility-tab-support"),
+    utilityPanelPalette: $("utility-panel-palette"),
+    utilityPanelWorkspace: $("utility-panel-workspace"),
+    utilityPanelMonitor: $("utility-panel-monitor"),
+    utilityPanelSupport: $("utility-panel-support"),
   };
 
   const uiPrefs = {
@@ -223,6 +254,353 @@
     soundAlerts: true,
     soundVolume: 60,
   };
+
+  function setStage(nextStage) {
+    st.uiStage = nextStage;
+    if (el.stageLobby) {
+      el.stageLobby.hidden = nextStage !== "lobby";
+    }
+    if (el.stageExam) {
+      el.stageExam.hidden = nextStage !== "exam";
+    }
+    if (el.stageAnalysis) {
+      el.stageAnalysis.hidden = nextStage !== "analysis";
+    }
+
+    const examReady = Boolean(st.attemptId);
+    const analysisReady = Boolean(st.finalized || st.latestResult);
+    const stageMap = {
+      lobby: el.stagePillLobby,
+      exam: el.stagePillExam,
+      analysis: el.stagePillAnalysis,
+    };
+
+    Object.entries(stageMap).forEach(([name, node]) => {
+      if (!(node instanceof HTMLButtonElement)) {
+        return;
+      }
+      node.classList.toggle("active", name === nextStage);
+      node.setAttribute("aria-current", name === nextStage ? "step" : "false");
+      if (name === "exam") {
+        node.disabled = !examReady;
+      } else if (name === "analysis") {
+        node.disabled = !analysisReady;
+      } else {
+        node.disabled = false;
+      }
+    });
+  }
+
+  function setResultTab(nextTab) {
+    st.analysisTab = nextTab === "ai" ? "ai" : "summary";
+    if (el.resultSummaryPanel) {
+      el.resultSummaryPanel.hidden = st.analysisTab !== "summary";
+    }
+    if (el.resultAnalysisPanel) {
+      el.resultAnalysisPanel.hidden = st.analysisTab !== "ai";
+    }
+    if (el.resultTabSummary) {
+      el.resultTabSummary.classList.toggle("active", st.analysisTab === "summary");
+      el.resultTabSummary.setAttribute(
+        "aria-selected",
+        st.analysisTab === "summary" ? "true" : "false"
+      );
+    }
+    if (el.resultTabAi) {
+      el.resultTabAi.classList.toggle("active", st.analysisTab === "ai");
+      el.resultTabAi.setAttribute(
+        "aria-selected",
+        st.analysisTab === "ai" ? "true" : "false"
+      );
+    }
+  }
+
+  function setUtilityTab(nextTab) {
+    st.utilityTab = ["palette", "workspace", "monitor", "support"].includes(nextTab)
+      ? nextTab
+      : "palette";
+    const tabMap = {
+      palette: el.utilityTabPalette,
+      workspace: el.utilityTabWorkspace,
+      monitor: el.utilityTabMonitor,
+      support: el.utilityTabSupport,
+    };
+    const panelMap = {
+      palette: el.utilityPanelPalette,
+      workspace: el.utilityPanelWorkspace,
+      monitor: el.utilityPanelMonitor,
+      support: el.utilityPanelSupport,
+    };
+
+    Object.entries(tabMap).forEach(([name, node]) => {
+      if (!(node instanceof HTMLButtonElement)) {
+        return;
+      }
+      node.classList.toggle("active", name === st.utilityTab);
+      node.setAttribute("aria-selected", name === st.utilityTab ? "true" : "false");
+    });
+    Object.entries(panelMap).forEach(([name, node]) => {
+      if (!node) {
+        return;
+      }
+      node.hidden = name !== st.utilityTab;
+    });
+  }
+
+  function initializeExamUtilityHub() {
+    if (!el.examUtilityHub) {
+      return;
+    }
+    const groupMap = {
+      palette: [
+        ".palette-card",
+      ],
+      workspace: [
+        ".roughpad-card",
+        ".diagram-card",
+        ".advanced-card",
+      ],
+      monitor: [
+        ".tools-card",
+        ".strategy-card",
+        ".timeline-card",
+        ".clipboard-card",
+      ],
+      support: [
+        ".morale-card",
+        ".rules-card",
+        ".broadcast-card",
+        ".faq-card",
+        ".tips-card",
+        ".stress-card",
+      ],
+    };
+    const panelByGroup = {
+      palette: el.utilityPanelPalette,
+      workspace: el.utilityPanelWorkspace,
+      monitor: el.utilityPanelMonitor,
+      support: el.utilityPanelSupport,
+    };
+
+    Object.entries(groupMap).forEach(([group, selectors]) => {
+      const panel = panelByGroup[group];
+      if (!panel) {
+        return;
+      }
+      selectors.forEach((selector) => {
+        const node = document.querySelector(selector);
+        if (!(node instanceof HTMLElement)) {
+          return;
+        }
+        panel.appendChild(node);
+      });
+    });
+
+    setUtilityTab(st.utilityTab || "palette");
+  }
+
+  function getSelectedExamMeta() {
+    const examId = el.examSelect?.value || "";
+    const selectedOption = el.examSelect?.options?.[el.examSelect.selectedIndex];
+    const fromState = st.availableExams.find((exam) => String(exam.id) === String(examId));
+    return {
+      exam_id: examId || "",
+      exam_name:
+        fromState?.name ||
+        selectedOption?.dataset?.examName ||
+        selectedOption?.textContent ||
+        "Selected exam",
+      duration_minutes:
+        Number(fromState?.duration_minutes) ||
+        Number(selectedOption?.dataset?.durationMinutes) ||
+        null,
+    };
+  }
+
+  function renderPreExamRulesPreview(data = null) {
+    if (!el.preExamRulesBox) {
+      return;
+    }
+    const examMeta = data || getSelectedExamMeta();
+    const rules = Array.isArray(examMeta?.rules) && examMeta.rules.length
+      ? examMeta.rules
+      : [
+          "Read each question carefully before selecting an option.",
+          "Run device diagnostics before entering the exam.",
+          "Keep LAN connection stable and avoid tab/app switching.",
+          "Review unanswered or marked questions before final submit.",
+        ];
+    const durationText = examMeta?.duration_minutes
+      ? `${Number(examMeta.duration_minutes)} min`
+      : "Duration visible after exam selection";
+    el.preExamRulesBox.innerHTML = `
+      <p><strong>${esc(examMeta?.exam_name || "Selected exam")}</strong></p>
+      <p>Duration: ${esc(durationText)}</p>
+      <ol>${rules.map((rule) => `<li>${esc(rule)}</li>`).join("")}</ol>
+    `;
+  }
+
+  function renderAnalysisExplanation(explanation) {
+    if (!explanation || typeof explanation !== "object") {
+      return '<div class="small">AI explanation unavailable.</div>';
+    }
+    const providerStatus =
+      explanation.provider_status && typeof explanation.provider_status === "object"
+        ? explanation.provider_status
+        : {};
+    return `
+      <div class="analysis-response">
+        <div class="summary-row"><span>Why it was wrong</span><strong>${esc(explanation.why_wrong || "-")}</strong></div>
+        <div class="summary-row"><span>Core concept</span><strong>${esc(explanation.core_concept || "-")}</strong></div>
+        <div class="summary-row"><span>Study tip</span><strong>${esc(explanation.study_tip || "-")}</strong></div>
+        <div class="summary-row"><span>Weak topic</span><strong>${esc(explanation.weak_topic || "-")}</strong></div>
+        <div class="summary-row"><span>AI Source</span><strong>${esc(formatAiProviderLabel(explanation.provider || providerStatus.resolved_provider || "heuristic"))}</strong></div>
+        <div class="small">${esc(formatAiReason(providerStatus.reason))}</div>
+      </div>
+    `;
+  }
+
+  function formatAiProviderLabel(provider) {
+    const normalized = String(provider || "heuristic").trim().toLowerCase();
+    if (normalized === "openai") {
+      return "OpenAI";
+    }
+    if (normalized === "gemini") {
+      return "Gemini";
+    }
+    return "Heuristic";
+  }
+
+  function formatAiReason(reason) {
+    const normalized = String(reason || "").trim();
+    if (!normalized) {
+      return "AI provider status will appear here.";
+    }
+    const labelMap = {
+      no_api_key_configured: "No OpenAI or Gemini API key configured on the server.",
+      openai_api_key_missing: "OpenAI provider selected, but the API key is missing.",
+      gemini_api_key_missing: "Gemini provider selected, but the API key is missing.",
+      openai_request_failed_or_invalid_json: "OpenAI request failed or returned a non-JSON reply, so heuristic fallback was used.",
+      gemini_request_failed_or_invalid_json: "Gemini request failed or returned a non-JSON reply, so heuristic fallback was used.",
+      live_openai_http_ready: "OpenAI live mode is active through the HTTP integration.",
+      live_openai_sdk_ready: "OpenAI live mode is active through the SDK integration.",
+      live_gemini_http_ready: "Gemini live mode is active through the HTTP integration.",
+      live_gemini_sdk_ready: "Gemini live mode is active through the SDK integration.",
+    };
+    return labelMap[normalized] || normalized.replace(/_/g, " ");
+  }
+
+  function renderAiAnalysis(payload) {
+    st.latestAnalysis = payload || null;
+    const rows = Array.isArray(payload?.incorrect_or_skipped_questions)
+      ? payload.incorrect_or_skipped_questions
+      : [];
+    const weakTopics = Array.isArray(payload?.weak_topics) ? payload.weak_topics : [];
+    const learningPath = Array.isArray(payload?.learning_path) ? payload.learning_path : [];
+    const topTopic = weakTopics.length ? weakTopics[0].topic : "No weak topic";
+    const providerStatus =
+      payload?.provider_status && typeof payload.provider_status === "object"
+        ? payload.provider_status
+        : {};
+    const requestedProvider = formatAiProviderLabel(
+      providerStatus.requested_provider || payload?.provider || "heuristic"
+    );
+    const resolvedProvider = formatAiProviderLabel(
+      providerStatus.resolved_provider || payload?.provider || "heuristic"
+    );
+    const modeLabel = String(providerStatus.mode || "fallback");
+    const providerReason = formatAiReason(providerStatus.reason);
+
+    if (el.analysisOverviewBox) {
+      el.analysisOverviewBox.innerHTML = `
+        <div class="result-grid compact">
+          <div class="result-kpi small">
+            <p>Weak Questions</p>
+            <h5>${esc(String(rows.length))}</h5>
+          </div>
+          <div class="result-kpi small">
+            <p>Top Weak Topic</p>
+            <h5>${esc(String(topTopic))}</h5>
+          </div>
+          <div class="result-kpi small">
+            <p>AI Requested</p>
+            <h5>${esc(requestedProvider)}</h5>
+          </div>
+          <div class="result-kpi small">
+            <p>AI Active</p>
+            <h5>${esc(resolvedProvider)}</h5>
+          </div>
+          <div class="result-kpi small">
+            <p>Mode</p>
+            <h5>${esc(modeLabel)}</h5>
+          </div>
+        </div>
+        <p class="result-note">${esc(providerReason)}</p>
+        <p class="result-note">${esc(payload?.summary || "Analysis summary will appear here.")}</p>
+      `;
+    }
+
+    if (el.analysisLearningPathBox) {
+      el.analysisLearningPathBox.innerHTML = `
+        <div><strong>Weak Topics</strong></div>
+        <div class="analysis-chip-grid">
+          ${weakTopics.length
+            ? weakTopics
+                .map(
+                  (topic) => `
+                    <div class="analysis-chip">
+                      <strong>${esc(String(topic.topic || "untagged"))}</strong>
+                      <span>${esc(String(topic.count || 0))} weak response(s)</span>
+                      <p>${esc(String(topic.recommended_focus || ""))}</p>
+                    </div>
+                  `
+                )
+                .join("")
+            : '<div class="small">No weak topic cluster detected. Strong attempt.</div>'}
+        </div>
+        <div style="margin-top:12px"><strong>Personalized Learning Path</strong></div>
+        <ol class="guide-list">${learningPath.length ? learningPath.map((item) => `<li>${esc(item)}</li>`).join("") : "<li>No additional learning path needed.</li>"}</ol>
+      `;
+    }
+
+    if (el.analysisListBox) {
+      if (!rows.length) {
+        el.analysisListBox.innerHTML = `
+          <div class="analysis-empty">
+            <strong>All clear</strong>
+            <p>No incorrect or skipped questions found for this attempt.</p>
+          </div>
+        `;
+        return;
+      }
+
+      el.analysisListBox.innerHTML = rows
+        .map((row) => {
+          const questionId = String(row.question_id || "");
+          const explanation = st.analysisExplanationByQuestion[questionId];
+          return `
+            <article class="analysis-question-card" data-question-id="${esc(questionId)}">
+              <div class="row">
+                <div>
+                  <p class="section-label">Q${esc(String(row.sequence_number || "-"))} • ${esc(String(row.status || "incorrect").toUpperCase())}</p>
+                  <h4>${esc(String(row.topic || "untagged"))}</h4>
+                </div>
+                <button class="btn-outline analysis-explain-btn" type="button" data-question-id="${esc(questionId)}">
+                  Explain with AI
+                </button>
+              </div>
+              <p>${esc(String(row.question_text || "Question unavailable."))}</p>
+              <div class="summary-row"><span>Your Answer</span><strong>${esc(String(row.selected_option_text || "Skipped"))}</strong></div>
+              <div class="summary-row"><span>Correct Answer</span><strong>${esc(String(row.correct_option_text || "Unavailable"))}</strong></div>
+              <div class="analysis-output" data-analysis-output="${esc(questionId)}">
+                ${explanation ? renderAnalysisExplanation(explanation.analysis || explanation) : '<div class="small">Click "Explain with AI" to generate contextual feedback.</div>'}
+              </div>
+            </article>
+          `;
+        })
+        .join("");
+    }
+  }
 
   function createTimerState(onTick) {
     let timerId = null;
@@ -1851,6 +2229,7 @@
 
   async function loadExamRules() {
     if (!st.attemptId) {
+      renderPreExamRulesPreview();
       return;
     }
     try {
@@ -1867,8 +2246,10 @@
         <p>Negative Marking: ${esc(String(data.negative_marking ?? 0))}</p>
         <ol>${list || "<li>No explicit rules configured.</li>"}</ol>
       `;
+      renderPreExamRulesPreview(data);
     } catch (error) {
       el.rulesContent.innerHTML = `<p>${esc(error.message || "Unable to load rules.")}</p>`;
+      renderPreExamRulesPreview();
     }
   }
 
@@ -2380,12 +2761,78 @@
         <div class="summary-row"><span>Attempt Rate</span><strong>${(attemptedRatio * 100).toFixed(1)}%</strong></div>
         <div class="summary-row"><span>Accuracy</span><strong>${(accuracyRatio * 100).toFixed(1)}%</strong></div>
         <div class="summary-row"><span>Confidence Tags Used</span><strong>${answerState.getConfidenceTaggedCount(totalQuestions)}</strong></div>
-        <div style="margin-top:8px"><strong>AI Coaching Plan (heuristic)</strong></div>
+        <div style="margin-top:8px"><strong>Adaptive Coaching Plan</strong></div>
         <ul class="guide-list">${coachingPlan.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
       `;
     }
 
     renderTopicStrengthAndWeakPlan(questionResults);
+  }
+
+  async function explainQuestionWithAi(questionId, triggerButton = null) {
+    if (!st.attemptId || !questionId) {
+      return;
+    }
+    if (triggerButton instanceof HTMLButtonElement) {
+      triggerButton.disabled = true;
+      triggerButton.textContent = "Explaining...";
+    }
+    try {
+      const payload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/analysis/explain`,
+        {
+          method: "POST",
+          headers: studentHeaders(),
+          body: { question_id: questionId },
+        }
+      );
+      st.analysisExplanationByQuestion[String(questionId)] = payload;
+      renderAiAnalysis(st.latestAnalysis);
+      setResultTab("ai");
+      setStatus(
+        `AI explanation generated (${formatAiProviderLabel(
+          payload.provider || payload.analysis?.provider || "heuristic"
+        )}).`
+      );
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      if (triggerButton instanceof HTMLButtonElement) {
+        triggerButton.disabled = false;
+        triggerButton.textContent = "Explain with AI";
+      }
+    }
+  }
+
+  async function loadPostExamInsights(statusMessage = "Result loaded.", preferredTab = "summary") {
+    if (!st.attemptId) {
+      return;
+    }
+    try {
+      const resultPayload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/result`,
+        { headers: studentHeaders() }
+      );
+      st.latestResult = resultPayload;
+      renderResultSummary(resultPayload);
+      if (!st.receipt) {
+        st.receipt = buildAcknowledgementReceipt(resultPayload);
+      }
+      renderReceipt(st.receipt);
+
+      const analysisPayload = await api(
+        `/student/attempts/${encodeURIComponent(st.attemptId)}/analysis`,
+        { headers: studentHeaders() }
+      );
+      renderAiAnalysis(analysisPayload);
+      setStage("analysis");
+      setResultTab(preferredTab);
+      setStatus(statusMessage);
+    } catch (error) {
+      setStage("analysis");
+      setResultTab("summary");
+      setStatus(error.message);
+    }
   }
 
   function showAntiCheatWarning(message) {
@@ -2713,6 +3160,7 @@
   }
 
   function renderExamOptions(exams) {
+    st.availableExams = Array.isArray(exams) ? exams.slice() : [];
     const previousValue = el.examSelect.value;
     el.examSelect.innerHTML = '<option value="">Choose an available exam...</option>';
 
@@ -2720,6 +3168,7 @@
       const option = document.createElement("option");
       option.value = exam.id;
       option.dataset.examName = exam.name;
+      option.dataset.durationMinutes = String(exam.duration_minutes || "");
       option.textContent = `${exam.name} (${exam.duration_minutes} min)`;
       el.examSelect.appendChild(option);
     }
@@ -2727,6 +3176,7 @@
     if (previousValue && exams.some((exam) => exam.id === previousValue)) {
       el.examSelect.value = previousValue;
     }
+    renderPreExamRulesPreview();
   }
 
   function renderAttemptMeta(statusPayload = null) {
@@ -3133,14 +3583,22 @@
       if (!st.finalized) {
         setAttemptControlsEnabled(true);
       }
+      setStage("exam");
     } else if (status === "PAUSED") {
       setPausedState(true);
+      setStage("exam");
     } else if (status === "FINALIZED" || status === "GRADED" || status === "ARCHIVED") {
       st.finalized = true;
       st.paused = false;
       setAttemptControlsEnabled(false);
       timerState.stop();
       setStatus("Attempt finalized by admin/system. View result.");
+      setStage("analysis");
+      if (!st.latestResult) {
+        loadPostExamInsights("Attempt finalized by admin/system. Result loaded.", "summary").catch(() => {
+          return;
+        });
+      }
     } else {
       setAttemptControlsEnabled(false);
     }
@@ -3245,6 +3703,10 @@
       st.inputLatencySamples = [];
       st.stressLevel = "normal";
       st.captionSize = 16;
+      st.latestResult = null;
+      st.latestAnalysis = null;
+      st.analysisExplanationByQuestion = {};
+      st.utilityTab = "palette";
       answerState.clear();
       setAutosaveIndicator("local", "Local Draft");
       updateSyncHealthIndicator();
@@ -3263,6 +3725,15 @@
       }
       if (el.weakTopicPlanBox) {
         el.weakTopicPlanBox.textContent = "Weak-topic action plan will appear here after submission.";
+      }
+      if (el.analysisOverviewBox) {
+        el.analysisOverviewBox.textContent = "AI exam analysis will appear here after submission.";
+      }
+      if (el.analysisLearningPathBox) {
+        el.analysisLearningPathBox.textContent = "Personalized learning path will appear here after submission.";
+      }
+      if (el.analysisListBox) {
+        el.analysisListBox.textContent = "Incorrect and skipped questions will appear here after submission.";
       }
       if (el.broadcastFeed) {
         el.broadcastFeed.textContent = "Waiting for admin broadcast messages...";
@@ -3330,6 +3801,9 @@
       await flushPendingQueue();
       await loadMoraleCoach();
       startExamTipsFeed();
+      setStage("exam");
+      setResultTab("summary");
+      setUtilityTab("palette");
       setStatus("Exam started successfully. Read each question carefully.");
     } catch (error) {
       setStatus(error.message);
@@ -3661,6 +4135,9 @@
     renderResultSummary(finalizePayload.result || finalizePayload);
     st.receipt = buildAcknowledgementReceipt(finalizePayload.result || finalizePayload);
     renderReceipt(st.receipt);
+    st.latestResult = finalizePayload.result || finalizePayload;
+    setStage("analysis");
+    setResultTab("summary");
     setStatus(statusMessage);
     renderAttemptMeta({
       started_at: null,
@@ -3669,6 +4146,9 @@
     });
     closeSubmitModal();
     updateOptionModeButtons();
+    loadPostExamInsights(statusMessage, "summary").catch(() => {
+      return;
+    });
   }
 
   async function autoSubmitExpiredAttempt() {
@@ -3740,20 +4220,7 @@
       setStatus("No attempt found.");
       return;
     }
-    try {
-      const resultPayload = await api(
-        `/student/attempts/${encodeURIComponent(st.attemptId)}/result`,
-        { headers: studentHeaders() }
-      );
-      renderResultSummary(resultPayload);
-      if (!st.receipt) {
-        st.receipt = buildAcknowledgementReceipt(resultPayload);
-      }
-      renderReceipt(st.receipt);
-      setStatus("Result loaded.");
-    } catch (error) {
-      setStatus(error.message);
-    }
+    await loadPostExamInsights("Result loaded.", "summary");
   }
 
   function logoutStudent() {
@@ -3855,6 +4322,9 @@
     st.dragDropMode = Boolean(cached.drag_drop_mode);
     st.translateMode = Boolean(cached.translate_mode);
     st.predownloadedCount = Number(cached.predownloaded_count || 0);
+    st.latestResult = null;
+    st.latestAnalysis = null;
+    st.analysisExplanationByQuestion = {};
     st.questionTopicById =
       cached.question_topic_by_id && typeof cached.question_topic_by_id === "object"
         ? { ...cached.question_topic_by_id }
@@ -3898,6 +4368,7 @@
       el.toggleTranslate.textContent = st.translateMode ? "Inline Translate: On" : "Inline Translate: Off";
     }
     updateMiniProgressWidget();
+    setUtilityTab("palette");
 
     try {
       const statusPayload = await refreshAttemptStatus();
@@ -3933,6 +4404,47 @@
     el.logoutStudent.addEventListener("click", logoutStudent);
     el.loadExams.addEventListener("click", loadExams);
     el.startAttempt.addEventListener("click", startAttempt);
+    if (el.examSelect) {
+      el.examSelect.addEventListener("change", () => {
+        renderPreExamRulesPreview();
+      });
+    }
+    if (el.previewRules) {
+      el.previewRules.addEventListener("click", () => {
+        renderPreExamRulesPreview();
+        setStatus("Pre-exam rules preview refreshed.");
+      });
+    }
+    if (el.resultTabSummary) {
+      el.resultTabSummary.addEventListener("click", () => {
+        setResultTab("summary");
+      });
+    }
+    if (el.resultTabAi) {
+      el.resultTabAi.addEventListener("click", () => {
+        setResultTab("ai");
+      });
+    }
+    if (el.utilityTabWorkspace) {
+      el.utilityTabWorkspace.addEventListener("click", () => {
+        setUtilityTab("workspace");
+      });
+    }
+    if (el.utilityTabPalette) {
+      el.utilityTabPalette.addEventListener("click", () => {
+        setUtilityTab("palette");
+      });
+    }
+    if (el.utilityTabMonitor) {
+      el.utilityTabMonitor.addEventListener("click", () => {
+        setUtilityTab("monitor");
+      });
+    }
+    if (el.utilityTabSupport) {
+      el.utilityTabSupport.addEventListener("click", () => {
+        setUtilityTab("support");
+      });
+    }
     el.openOnboarding.addEventListener("click", () => {
       openOnboardingModal();
     });
@@ -4139,6 +4651,19 @@
     el.filterReview.addEventListener("click", () => setPaletteFilter("review"));
     el.toggleFaq.addEventListener("click", toggleFaq);
     el.toggleRules.addEventListener("click", toggleRules);
+    if (el.analysisListBox) {
+      el.analysisListBox.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const button = target.closest("button[data-question-id]");
+        if (!(button instanceof HTMLButtonElement)) {
+          return;
+        }
+        explainQuestionWithAi(button.dataset.questionId || "", button);
+      });
+    }
     el.startBreathing.addEventListener("click", startBreathingPrompt);
     el.runDiagnostics.addEventListener("click", runDeviceDiagnostics);
     el.enterRevision.addEventListener("click", enterRevisionMode);
@@ -4513,6 +5038,15 @@
     if (el.weakTopicPlanBox) {
       el.weakTopicPlanBox.textContent = "Weak-topic action plan will appear here after submission.";
     }
+    if (el.analysisOverviewBox) {
+      el.analysisOverviewBox.textContent = "AI exam analysis will appear here after submission.";
+    }
+    if (el.analysisLearningPathBox) {
+      el.analysisLearningPathBox.textContent = "Personalized learning path will appear here after submission.";
+    }
+    if (el.analysisListBox) {
+      el.analysisListBox.textContent = "Incorrect and skipped questions will appear here after submission.";
+    }
     if (el.networkQuality) {
       el.networkQuality.textContent = "Network quality: waiting...";
     }
@@ -4584,6 +5118,12 @@
     st.inputLatencySamples = [];
     st.stressLevel = "normal";
     st.captionSize = 16;
+    st.uiStage = "lobby";
+    st.analysisTab = "summary";
+    st.latestResult = null;
+    st.latestAnalysis = null;
+    st.analysisExplanationByQuestion = {};
+    st.availableExams = [];
     renderAnswerTimeline();
     renderClipboardLogs();
     updateBucketSummary();
@@ -4596,6 +5136,11 @@
     clearDiagramCanvas();
     renderExamTips();
     startExamTipsFeed();
+    initializeExamUtilityHub();
+    setStage("lobby");
+    setResultTab("summary");
+    setUtilityTab("palette");
+    renderPreExamRulesPreview();
     setAutosaveIndicator("synced", "Waiting");
     updateSyncHealthIndicator();
     updateHeartbeatIndicator("degraded", "Server: Checking...");

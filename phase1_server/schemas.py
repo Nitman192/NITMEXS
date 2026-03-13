@@ -98,3 +98,7 @@ class BroadcastReceiptSchema(BaseModel):
 
 class ExamControlSchema(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
+
+
+class AIExplainRequestSchema(BaseModel):
+    question_id: str = Field(min_length=1)

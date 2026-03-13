@@ -1,0 +1,50 @@
+Server Run
+
+Server ka main entrypoint phase1_server/server_entry.py hai. Repo root X:\NITMEXS se PowerShell me ye chalao:
+
+cd X:\NITMEXS
+python -m phase1_server.server_entry --mode foreground
+Default config phase1_server/settings.py ke hisab se server 127.0.0.1:8000 par chalega. Browser me:
+
+http://127.0.0.1:8000/web
+http://127.0.0.1:8000/web/student.html
+http://127.0.0.1:8000/web/admin.html
+Agar uvicorn se directly chalana ho to:
+
+cd X:\NITMEXS
+python -m uvicorn phase1_server.app:app --host 127.0.0.1 --port 8000
+Agar custom config use karni ho to packaging/nitmexs.example.yaml ko copy karke nitmexs.yaml banao, phir:
+
+$env:NITMEXS_CONFIG="X:\NITMEXS\nitmexs.yaml"
+python -m phase1_server.server_entry --mode foreground
+EXE Build
+
+EXE build ke spec files ye hain:
+
+Server: packaging/server.spec
+Client: packaging/client.spec
+Build commands:
+
+cd X:\NITMEXS
+pyinstaller packaging/server.spec
+pyinstaller packaging/client.spec
+Expected output:
+
+X:\NITMEXS\dist\NITMEXS-Server.exe
+X:\NITMEXS\dist\NITMEXS-Client.exe
+Agar pyinstaller installed nahi hai:
+
+pip install pyinstaller
+Installer Build
+
+Windows installer banane ke liye Inno Setup files:
+
+packaging/inno/server_installer.iss
+packaging/inno/client_installer.iss
+Flow:
+
+Pehle pyinstaller se EXE build karo.
+Inno Setup Compiler me .iss file kholo.
+Compile karo.
+Installer output mil jayega.
+Aapne pehle bola tha EXE tabhi build karni hai jab aap explicitly bolo, isliye maine abhi build run nahi ki. Agar chaho to next message me sirf BUILD EXE NOW likh do, main yahin repo me server/client EXE build karke exact output path bata dunga.

@@ -47,6 +47,7 @@
     logoutAdmin: $("logout-admin"),
     loadExams: $("load-exams"),
     examSelect: $("exam-select"),
+    deleteExam: $("delete-exam"),
     status: $("admin-status"),
     navButtons: Array.from(document.querySelectorAll(".nav-btn")),
     pages: Array.from(document.querySelectorAll(".page-panel")),
@@ -417,6 +418,37 @@
       if (el.forceSubmitResult) {
         el.forceSubmitResult.textContent = `ERROR: ${error.message}`;
       }
+      setStatus(error.message);
+    }
+  }
+
+  async function deleteSelectedExam() {
+    try {
+      const examId = currentExamId();
+      const selectedOption = el.examSelect?.selectedOptions?.[0];
+      const label = selectedOption?.textContent?.trim() || examId;
+      const confirmed = window.confirm(
+        `Delete selected exam?\n\n${label}\n\nThis works only if the exam has no attempt history.`
+      );
+      if (!confirmed) {
+        setStatus("Exam delete cancelled.");
+        return;
+      }
+
+      const data = await api(`/admin/exams/${encodeURIComponent(examId)}`, {
+        method: "DELETE",
+        headers: adminHeaders(),
+      });
+      st.examId = "";
+      if (el.examSelect) {
+        el.examSelect.value = "";
+      }
+      setStatus(`Exam '${data.name}' deleted successfully.`);
+      await loadExams();
+      if (el.liveSummary) {
+        el.liveSummary.textContent = "Live summary will appear here.";
+      }
+    } catch (error) {
       setStatus(error.message);
     }
   }
@@ -2684,6 +2716,7 @@
       });
     });
     bindClick(el.loadExams, loadExams);
+    bindClick(el.deleteExam, deleteSelectedExam);
     if (el.examSelect) {
       el.examSelect.addEventListener("change", () => {
         st.cursor = null;

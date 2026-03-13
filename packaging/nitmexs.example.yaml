@@ -6,3 +6,9 @@ log_level: INFO
 app_log_path: ./logs/app.log
 audit_log_path: ./logs/audit.log
 version: 1.0.0
+# ai_provider: openai
+# ai_model:
+# openai_api_key: sk-...
+# gemini_api_key: AIza...
+# openai_model: gpt-4.1-mini
+# gemini_model: gemini-2.5-flash

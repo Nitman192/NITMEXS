@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from phase1_server.api.deps import student_identity
 from phase1_server.schemas import (
+    AIExplainRequestSchema,
     AnswerSubmitSchema,
     BroadcastReceiptSchema,
     StudentIssueReportSchema,
@@ -14,6 +15,7 @@ from phase1_server.schemas import (
 from phase1_server.services.audit_service import AuditService
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
+    AnalysisQuestionNotFoundError,
     AttemptStateError,
     DeliveryError,
     DeliveryService,
@@ -451,6 +453,69 @@ def get_attempt_result(
         except GradingNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except GradingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.get("/attempts/{attempt_id}/analysis")
+def get_attempt_analysis(
+    attempt_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_attempt_analysis(attempt_id=attempt_id, student_id=student_id)
+        except GradingOwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ResultNotReadyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except GradingNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GradingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/{attempt_id}/analysis/explain")
+def explain_attempt_question(
+    attempt_id: str,
+    payload: AIExplainRequestSchema,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.explain_attempt_question(
+                attempt_id=attempt_id,
+                question_id=payload.question_id,
+                student_id=student_id,
+            )
+        except AnalysisQuestionNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GradingOwnershipError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (ResultNotReadyError, DeliveryError, GradingError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "success", "data": data}

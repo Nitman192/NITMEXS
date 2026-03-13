@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from phase1_server.models import AttemptStatus
 from phase1_server.repositories.analytics_repository import AnalyticsRepository
@@ -161,5 +162,41 @@ class GradingEngine:
 
         return {
             **summary,
-            "question_results": self._attempt_repo.get_question_results(attempt_id),
+            "exam_id": attempt.exam_id,
+            "question_results": self._build_enriched_question_results(attempt_id),
         }
+
+    def _build_enriched_question_results(self, attempt_id: str) -> list[dict[str, Any]]:
+        snapshot_question_ids = self._attempt_repo.list_snapshot_question_ids(attempt_id)
+        sequence_map = {
+            question_id: index for index, question_id in enumerate(snapshot_question_ids, start=1)
+        }
+        rows = self._attempt_repo.get_question_results(attempt_id)
+        enriched: list[dict[str, Any]] = []
+        for row in rows:
+            record = dict(row)
+            record["sequence_number"] = sequence_map.get(row["question_id"])
+            record["status"] = self._result_status(row)
+
+            question_bundle = self._question_repo.get_question_with_options(row["question_id"])
+            if question_bundle is not None:
+                question, options = question_bundle
+                option_text_by_id = {option.id: option.option_text for option in options}
+                record.update(
+                    {
+                        "question_text": question.text,
+                        "topic": question.topic,
+                        "difficulty": question.difficulty,
+                        "selected_option_text": option_text_by_id.get(row["selected_option_id"]),
+                        "correct_option_text": option_text_by_id.get(row["correct_option_id"]),
+                    }
+                )
+            enriched.append(record)
+        return enriched
+
+    def _result_status(self, row: dict[str, Any]) -> str:
+        if not row.get("selected_option_id"):
+            return "skipped"
+        if row.get("is_correct"):
+            return "correct"
+        return "incorrect"

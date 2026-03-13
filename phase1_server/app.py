@@ -16,7 +16,7 @@ from phase1_server.db import Database, SQLiteConfig
 from phase1_server.logging_config import configure_logging
 from phase1_server.schema_version import EXPECTED_SCHEMA_VERSION
 from phase1_server.services.metrics_service import MetricsService
-from phase1_server.settings import AppSettings, load_settings
+from phase1_server.settings import AppSettings, apply_runtime_environment, load_settings
 from phase1_server.uow import UnitOfWork
 
 
@@ -34,8 +34,15 @@ def create_app(
             app_log_path=active_settings.app_log_path,
             audit_log_path=active_settings.audit_log_path,
             version=active_settings.version,
+            ai_provider=active_settings.ai_provider,
+            ai_model=active_settings.ai_model,
+            openai_api_key=active_settings.openai_api_key,
+            gemini_api_key=active_settings.gemini_api_key,
+            openai_model=active_settings.openai_model,
+            gemini_model=active_settings.gemini_model,
         )
 
+    apply_runtime_environment(active_settings)
     configure_logging(active_settings)
     logger = logging.getLogger("phase1_server")
 

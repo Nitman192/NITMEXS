@@ -28,6 +28,14 @@
       </div>
     </header>
 
+    <section class="card stage-rail" aria-label="Exam stage progress">
+      <button id="stage-pill-lobby" class="stage-pill active" type="button">1. Pre-Exam Lobby</button>
+      <button id="stage-pill-exam" class="stage-pill" type="button" disabled>2. Active Exam</button>
+      <button id="stage-pill-analysis" class="stage-pill" type="button" disabled>3. Post-Exam Analysis</button>
+    </section>
+
+    <section id="student-stage-lobby" class="student-stage">
+
     <section class="student-launch card">
       <div class="launch-grid">
         <div class="launch-field">
@@ -88,6 +96,21 @@
       </section>
     </section>
 
+    <section class="card pre-exam-rules-card">
+      <div class="row">
+        <div>
+          <p class="section-label">Stage 1</p>
+          <h3 style="margin:0">Exam Rules</h3>
+        </div>
+        <button id="preview-rules" class="btn-outline" type="button">Preview Rules</button>
+      </div>
+      <div id="pre-exam-rules-box" class="small">
+        <p>Select an exam to preview rules, readiness guidance, and device expectations.</p>
+      </div>
+    </section>
+    </section>
+
+    <section id="student-stage-exam" class="student-stage" hidden>
     <section class="exam-layout">
       <section class="exam-main card">
         <div class="exam-main-top">
@@ -337,19 +360,58 @@
             <button id="view-result" class="btn-outline" type="button">View Result</button>
             <button id="print-result" class="btn-outline" type="button">Print Result Slip</button>
           </section>
+
+          <section id="exam-utility-hub" class="card exam-utility-hub">
+            <div class="row utility-hub-head">
+              <div>
+                <p class="section-label">Compact Utility Hub</p>
+                <h3 style="margin:0">Exam Support Panels</h3>
+              </div>
+              <span class="small">Switch tabs instead of scrolling long cards</span>
+            </div>
+            <div class="utility-tab-strip" role="tablist" aria-label="Exam utility panels">
+              <button id="utility-tab-palette" class="utility-tab active" type="button" role="tab" aria-selected="true">Palette</button>
+              <button id="utility-tab-workspace" class="utility-tab" type="button" role="tab" aria-selected="false">Workspace</button>
+              <button id="utility-tab-monitor" class="utility-tab" type="button" role="tab" aria-selected="false">Monitor</button>
+              <button id="utility-tab-support" class="utility-tab" type="button" role="tab" aria-selected="false">Support</button>
+            </div>
+            <section id="utility-panel-palette" class="utility-panel"></section>
+            <section id="utility-panel-workspace" class="utility-panel" hidden></section>
+            <section id="utility-panel-monitor" class="utility-panel" hidden></section>
+            <section id="utility-panel-support" class="utility-panel" hidden></section>
+          </section>
         </div>
       </aside>
     </section>
+    </section>
 
-    <section class="card result-card">
-      <h3>Result Summary</h3>
-      <div id="result-box" class="result-placeholder">Result summary will appear here after submission.</div>
-      <div id="receipt-box" class="result-placeholder">Acknowledgement receipt will appear here after submission.</div>
-      <div id="receipt-qr-box" class="result-placeholder">Signed QR receipt will appear here after submission.</div>
-      <div id="result-explain-box" class="result-placeholder">Result explanation cards will appear here after submission.</div>
-      <div id="attempt-compare-box" class="result-placeholder">Attempt comparison insights will appear here after at least 2 attempts.</div>
-      <div id="topic-strength-box" class="result-placeholder">Topic strength map will appear here after submission.</div>
-      <div id="weak-topic-plan-box" class="result-placeholder">Weak-topic action plan will appear here after submission.</div>
+    <section id="student-stage-analysis" class="student-stage" hidden>
+      <section class="card result-card">
+        <div class="row result-stage-head">
+          <div>
+            <p class="section-label">Stage 3</p>
+            <h3>Post-Exam Analysis</h3>
+          </div>
+          <div class="result-tab-strip" role="tablist" aria-label="Result views">
+            <button id="result-tab-summary" class="result-tab active" type="button" role="tab" aria-selected="true">Result Summary</button>
+            <button id="result-tab-ai" class="result-tab" type="button" role="tab" aria-selected="false">Analyze Exam</button>
+          </div>
+        </div>
+        <section id="result-summary-panel" class="result-tab-panel">
+          <div id="result-box" class="result-placeholder">Result summary will appear here after submission.</div>
+          <div id="receipt-box" class="result-placeholder">Acknowledgement receipt will appear here after submission.</div>
+          <div id="receipt-qr-box" class="result-placeholder">Signed QR receipt will appear here after submission.</div>
+          <div id="result-explain-box" class="result-placeholder">Result explanation cards will appear here after submission.</div>
+          <div id="attempt-compare-box" class="result-placeholder">Attempt comparison insights will appear here after at least 2 attempts.</div>
+          <div id="topic-strength-box" class="result-placeholder">Topic strength map will appear here after submission.</div>
+          <div id="weak-topic-plan-box" class="result-placeholder">Weak-topic action plan will appear here after submission.</div>
+        </section>
+        <section id="result-analysis-panel" class="result-tab-panel" hidden>
+          <div id="analysis-overview-box" class="result-placeholder">AI exam analysis will appear here after submission.</div>
+          <div id="analysis-learning-path-box" class="result-placeholder">Personalized learning path will appear here after submission.</div>
+          <div id="analysis-list-box" class="result-placeholder">Incorrect and skipped questions will appear here after submission.</div>
+        </section>
+      </section>
     </section>
   </main>
 

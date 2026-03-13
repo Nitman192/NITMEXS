@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 189, in _run_module_as_main
+  File "<frozen runpy>", line 148, in _get_module_details
+  File "<frozen runpy>", line 112, in _get_module_details
+  File "C:\Users\DSM\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\__init__.py", line 1, in <module>
+    from uvicorn.config import Config
+  File "C:\Users\DSM\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\config.py", line 3, in <module>
+    import asyncio
+  File "C:\Users\DSM\AppData\Local\Programs\Python\Python313\Lib\asyncio\__init__.py", line 8, in <module>
+    from .base_events import *
+  File "C:\Users\DSM\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 45, in <module>
+    from . import staggered
+  File "C:\Users\DSM\AppData\Local\Programs\Python\Python313\Lib\asyncio\staggered.py", line 10, in <module>
+    from . import tasks
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1115, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1214, in get_data
+KeyboardInterrupt

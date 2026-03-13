@@ -12,6 +12,7 @@ from phase1_server.models import Attempt, AttemptResponse, AttemptStatus, ExamSt
 from phase1_server.repositories.attempt_repository import AttemptRepository
 from phase1_server.repositories.exam_repository import ExamRepository
 from phase1_server.repositories.question_repository import QuestionRepository
+from phase1_server.services.ai_analysis_service import AIAnalysisService
 from phase1_server.services.attempt_state_service import (
     AttemptStateService,
     AttemptConcurrencyError,
@@ -39,6 +40,10 @@ class SnapshotQuestionNotFoundError(DeliveryError):
     pass
 
 
+class AnalysisQuestionNotFoundError(DeliveryError):
+    pass
+
+
 class AuditEventType:
     ATTEMPT_STARTED = "ATTEMPT_STARTED"
     ANSWER_SUBMITTED = "ANSWER_SUBMITTED"
@@ -56,6 +61,8 @@ class AuditEventType:
     BROADCAST_RECEIVED = "BROADCAST_RECEIVED"
     QUESTION_ISSUE_REPORTED = "QUESTION_ISSUE_REPORTED"
     TECHNICAL_ISSUE_REPORTED = "TECHNICAL_ISSUE_REPORTED"
+    RESULT_ANALYSIS_VIEWED = "RESULT_ANALYSIS_VIEWED"
+    AI_EXPLANATION_GENERATED = "AI_EXPLANATION_GENERATED"
 
 
 @dataclass(frozen=True)
@@ -878,10 +885,7 @@ class DeliveryService:
         }
 
     def get_result(self, attempt_id: str, student_id: str) -> dict:
-        engine = GradingEngine(
-            self._attempt_repo, self._exam_repo, self._question_repo, self._analytics_repo
-        )
-        result = engine.get_result(attempt_id, student_id)
+        result = self._load_result_payload(attempt_id, student_id)
         self._attempt_repo.log_audit_event(
             attempt_id=attempt_id,
             event_type=AuditEventType.RESULT_VIEWED,
@@ -890,6 +894,116 @@ class DeliveryService:
             actor_role="student",
         )
         return result
+
+    def get_attempt_analysis(self, attempt_id: str, student_id: str) -> dict:
+        result = self._load_result_payload(attempt_id, student_id)
+        question_results = [
+            row
+            for row in result.get("question_results", [])
+            if str(row.get("status")) in {"incorrect", "skipped"}
+        ]
+        ai_service = AIAnalysisService()
+        summary = ai_service.summarize_attempt(question_results)
+        self._attempt_repo.log_audit_event(
+            attempt_id=attempt_id,
+            event_type=AuditEventType.RESULT_ANALYSIS_VIEWED,
+            timestamp=self._now_iso(),
+            actor_id=student_id,
+            actor_role="student",
+        )
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt_id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.RESULT_ANALYSIS_VIEWED,
+            payload={
+                "question_count": len(question_results),
+                "provider": summary.get("provider", "heuristic"),
+            },
+        )
+        return {
+            "attempt_id": attempt_id,
+            "exam_id": result.get("exam_id"),
+            "question_count": len(question_results),
+            "incorrect_or_skipped_questions": question_results,
+            "summary": summary.get("summary"),
+            "weak_topics": summary.get("weak_topics", []),
+            "learning_path": summary.get("learning_path", []),
+            "provider": summary.get("provider", "heuristic"),
+            "provider_status": summary.get("provider_status", {}),
+        }
+
+    def explain_attempt_question(
+        self,
+        attempt_id: str,
+        question_id: str,
+        student_id: str,
+    ) -> dict:
+        result = self._load_result_payload(attempt_id, student_id)
+        target = next(
+            (
+                row
+                for row in result.get("question_results", [])
+                if str(row.get("question_id")) == str(question_id)
+            ),
+            None,
+        )
+        if target is None:
+            raise AnalysisQuestionNotFoundError(
+                f"Question '{question_id}' not found in attempt result"
+            )
+        if str(target.get("status")) == "correct":
+            raise DeliveryError("AI explanation is available only for incorrect or skipped questions")
+
+        ai_service = AIAnalysisService()
+        explanation = ai_service.explain_question(
+            question_text=str(target.get("question_text") or "Question unavailable"),
+            user_answer=target.get("selected_option_text"),
+            correct_answer=target.get("correct_option_text"),
+            topic=target.get("topic"),
+            difficulty=target.get("difficulty"),
+            status=str(target.get("status") or "incorrect"),
+        )
+        created_at = self._now_iso()
+        self._attempt_repo.log_audit_event(
+            attempt_id=attempt_id,
+            event_type=AuditEventType.AI_EXPLANATION_GENERATED,
+            timestamp=created_at,
+            actor_id=student_id,
+            actor_role="student",
+        )
+        self._log_event_safely(
+            entity_type="attempt",
+            entity_id=attempt_id,
+            actor_type="student",
+            actor_id=student_id,
+            event_type=AuditEventType.AI_EXPLANATION_GENERATED,
+            created_at=created_at,
+            payload={
+                "question_id": question_id,
+                "provider": explanation.get("provider", "heuristic"),
+                "status": target.get("status"),
+            },
+        )
+        return {
+            "attempt_id": attempt_id,
+            "question_id": question_id,
+            "status": target.get("status"),
+            "topic": target.get("topic"),
+            "question_text": target.get("question_text"),
+            "selected_option_text": target.get("selected_option_text"),
+            "correct_option_text": target.get("correct_option_text"),
+            "provider": explanation.get("provider", "heuristic"),
+            "provider_status": explanation.get("provider_status", {}),
+            "analysis": explanation,
+        }
+
+    def _load_result_payload(self, attempt_id: str, student_id: str) -> dict:
+        engine = GradingEngine(
+            self._attempt_repo, self._exam_repo, self._question_repo, self._analytics_repo
+        )
+        return engine.get_result(attempt_id, student_id)
 
     def get_attempt_status(self, attempt_id: str, student_id: str) -> dict:
         attempt = self._attempt_repo.get(attempt_id)

@@ -39,6 +39,7 @@ from phase1_server.services.delivery_service import (
 )
 from phase1_server.services.exam_service import (
     ExamAlreadyPublishedError,
+    ExamDeleteBlockedError,
     ExamNotFoundError,
     ExamService,
     ExamCreatePayload,
@@ -619,6 +620,25 @@ def list_exams(request: Request):
             for exam in exams
         ],
     }
+
+
+@router.delete("/exams/{exam_id}")
+def delete_exam(
+    exam_id: str,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
+        try:
+            data = service.delete_exam(exam_id, actor_id=x_admin_id, actor_role="admin")
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExamDeleteBlockedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {"status": "success", "data": data}
 
 
 @router.get("/exams/{exam_id}/analytics")
