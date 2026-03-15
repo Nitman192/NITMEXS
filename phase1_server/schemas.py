@@ -150,3 +150,28 @@ class SubjectiveReviewSchema(BaseModel):
     question_id: str = Field(min_length=1)
     marks_awarded: confloat(ge=0)
     review_note: str | None = Field(default=None, max_length=1000)
+
+
+class AIQuestionRefineSchema(BaseModel):
+    question_text: str = Field(min_length=5, max_length=4000)
+    question_type: Literal["mcq_single", "true_false", "fib_text", "short_answer", "long_answer"] = "mcq_single"
+    topic: str = Field(default="General", min_length=1, max_length=120)
+    marks: confloat(gt=0, le=100) = 1
+
+
+class AIRubricSuggestSchema(BaseModel):
+    question_text: str = Field(min_length=5, max_length=4000)
+    question_type: Literal["short_answer", "long_answer"] = "short_answer"
+    max_marks: confloat(gt=0, le=100)
+
+
+class AIFibClusterSchema(BaseModel):
+    question_text: str = Field(min_length=5, max_length=4000)
+    answers: list[str] = Field(min_length=1, max_length=200)
+
+
+class AISubjectiveSuggestSchema(BaseModel):
+    question_text: str = Field(min_length=5, max_length=4000)
+    question_type: Literal["short_answer", "long_answer"] = "short_answer"
+    answer_text: str = Field(min_length=1, max_length=20000)
+    max_marks: confloat(gt=0, le=100)

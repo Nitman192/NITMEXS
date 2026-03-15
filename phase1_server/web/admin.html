@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,231 +8,467 @@
 </head>
 <body class="admin-shell" data-default-theme="dark">
   <div class="nebula"></div>
-  <header class="topbar">
+  <header class="topbar admin-topbar">
     <div class="brand">NITMEXS EXAM CONTROLLER</div>
     <div class="chips">
       <a class="portal-btn" href="/web">Gateway</a>
+      <button id="open-downloads-top" class="portal-btn" type="button">Downloads</button>
       <div class="identity-chip"><span class="identity-label">Admin</span><span id="session-admin" class="identity-value">...</span></div>
       <div class="identity-chip"><span class="identity-label">Server</span><span id="version" class="identity-value">...</span></div>
+      <div class="identity-chip"><span class="identity-label">Selected Exam</span><span id="selected-exam-chip" class="identity-value">No exam selected</span></div>
+      <label class="theme-switch">
+        <input data-theme-toggle type="checkbox">
+        <span data-theme-label>Dark</span>
+      </label>
       <button id="logout-admin" class="danger" type="button">Logout</button>
     </div>
   </header>
 
-  <main class="page">
-    <section class="panel wide">
+  <main class="page admin-page">
+    <section class="panel wide admin-context-bar">
       <div class="row space-between">
         <div>
-          <h2>Exam Scope</h2>
+          <h2>Exam Context</h2>
           <p class="small">Trusted host machine control room for NITMEXS Basic deployment.</p>
         </div>
         <button id="load-exams" type="button">Load Exams</button>
       </div>
       <div class="row">
-        <input id="new-exam-name" placeholder="New exam name" style="flex:1 1 240px">
-        <input id="new-exam-duration" type="number" min="1" max="480" value="60" placeholder="Duration minutes" style="width:140px">
-        <input id="new-exam-negative-marking" type="number" min="0" step="0.01" value="0" placeholder="Negative marking" style="width:140px">
-        <button id="create-exam" type="button">Create Exam</button>
-      </div>
-      <div class="row">
-        <select id="exam-select" style="flex:1 1 280px"><option value="">Select exam...</option></select>
-        <select id="reference-exam-select" style="flex:1 1 280px"><option value="">Reference exam (optional)</option></select>
+        <select id="exam-select" style="flex:1 1 320px"><option value="">Select exam...</option></select>
+        <select id="reference-exam-select" style="flex:1 1 260px"><option value="">Reference exam (optional)</option></select>
         <button id="save-reference-exam" class="alt" type="button">Save Reference Exam</button>
-        <button id="publish-exam" type="button">Activate / Publish</button>
-        <button id="close-exam" class="warn" type="button">Close Exam</button>
-        <button id="delete-exam" class="danger" type="button">Delete Selected Exam</button>
-      </div>
-      <div class="stack" style="margin-top:8px">
-        <label for="custom-rules-text"><strong>Custom Exam Rules</strong></label>
-        <textarea id="custom-rules-text" rows="4" placeholder="One custom rule per line. Default rules always remain active."></textarea>
-        <div class="row">
-          <button id="save-custom-rules" class="alt" type="button">Save Custom Rules</button>
-        </div>
       </div>
       <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
     </section>
 
-    <section class="grid">
-      <article class="panel wide">
-        <h2>Exam Control</h2>
-        <div class="row">
-          <button id="refresh-live" type="button">Refresh Live Status</button>
-          <button id="pause-exam" class="warn" type="button">Emergency STOP (Pause All)</button>
-          <button id="resume-exam" type="button">Resume Paused Attempts</button>
-          <input id="exam-control-reason" placeholder="Control reason (optional)" style="flex:1 1 220px">
-        </div>
-        <div class="row" style="margin-top:8px">
-          <label class="small"><input id="freeze-timer-toggle" type="checkbox"> Pause ke waqt exam timer bhi freeze karo</label>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <input id="force-attempt-id" placeholder="Attempt ID" style="flex:1 1 220px">
-          <button id="force-submit-attempt" class="warn" type="button">Force Submit Attempt</button>
-          <button id="force-submit-expired" class="warn" type="button">Force Submit Expired</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <input id="broadcast-message" placeholder="Broadcast message to active candidates..." style="flex:1 1 340px">
-          <select id="broadcast-severity" style="width:120px"><option value="info">Info</option><option value="warn">Warn</option><option value="critical">Critical</option></select>
-          <button id="send-broadcast" class="alt" type="button">Send Broadcast</button>
-        </div>
-        <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
-        <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
-        <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
-      </article>
+    <nav class="admin-tab-strip" aria-label="Admin sections">
+      <button class="admin-tab active" data-admin-tab="dashboard" type="button">Dashboard</button>
+      <button class="admin-tab" data-admin-tab="exams" type="button">Exams</button>
+      <button class="admin-tab" data-admin-tab="questions" type="button">Questions</button>
+      <button class="admin-tab" data-admin-tab="cadets" type="button">Cadets</button>
+      <button class="admin-tab" data-admin-tab="live" type="button">Live Control</button>
+      <button class="admin-tab" data-admin-tab="review" type="button">Review</button>
+      <button class="admin-tab" data-admin-tab="results" type="button">Results</button>
+      <button class="admin-tab" data-admin-tab="downloads" type="button">Downloads</button>
+      <button class="admin-tab" data-admin-tab="audit" type="button">Audit</button>
+      <button class="admin-tab" data-admin-tab="security" type="button">Security</button>
+    </nav>
 
-      <article class="panel wide">
-        <h2>Active Attempts</h2>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Attempt</th><th>Cadet</th><th>Answered</th><th>Total</th><th>Expires</th></tr></thead>
-            <tbody id="active-body"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel">
-        <h2>Question and Reference Setup</h2>
-        <div class="stack">
-          <label>Upload Question CSV <input id="question-csv-file" type="file" accept=".csv"></label>
-          <button id="upload-question-csv" type="button">Upload Questions</button>
-          <pre id="question-upload-result" class="box mono">Question upload result will appear here.</pre>
-          <label>Upload Exam Package CSV <input id="exam-pack-file" type="file" accept=".csv"></label>
-          <button id="upload-exam-pack" type="button">Upload Exam Package</button>
-          <pre id="exam-pack-result" class="box mono">Exam package upload result will appear here.</pre>
-          <button id="load-questions" type="button">Refresh Question List</button>
-        </div>
-      </article>
-
-      <article class="panel wide">
-        <h2>Question Authoring</h2>
-        <div class="stack">
-          <div class="row">
-            <select id="question-type" style="width:190px">
-              <option value="mcq_single">MCQ</option>
-              <option value="true_false">True / False</option>
-              <option value="fib_text">Fill in the Blanks</option>
-              <option value="short_answer">Short Answer</option>
-              <option value="long_answer">Long Answer</option>
-            </select>
-            <input id="question-topic" placeholder="Topic" style="flex:1 1 180px">
-            <input id="question-difficulty" placeholder="Difficulty" value="medium" style="width:140px">
-            <input id="question-marks" type="number" min="0.5" step="0.5" value="1" placeholder="Marks" style="width:120px">
+    <section class="admin-tab-panel active" data-admin-panel="dashboard">
+      <div class="grid admin-tab-grid">
+        <article class="panel">
+          <h2>Mission Overview</h2>
+          <div class="stack">
+            <div class="box">
+              <p class="small">NITMEXS</p>
+              <strong>Networked Integrated Training, Monitoring, Evaluation and eXamination Suite</strong>
+            </div>
+            <div class="box">
+              <p class="small">Current Focus</p>
+              <p>Use tabs to move directly to the current task instead of scrolling through the whole console.</p>
+            </div>
+            <div class="box">
+              <p class="small">Interface Design</p>
+              <p>Complex security telemetry, audit timelines, and raw JSON outputs are now isolated under the Audit tab so instructors can focus on operational tasks here.</p>
+            </div>
           </div>
-          <textarea id="question-text" rows="4" placeholder="Question text"></textarea>
-          <textarea id="question-options" rows="4" placeholder="MCQ format: Option text :: true/false&#10;FIB format: one accepted answer per line&#10;True/False: write True or False on one line"></textarea>
-          <div class="row">
-            <input id="word-target-min" type="number" min="1" placeholder="Word target min" style="width:160px">
-            <input id="word-target-max" type="number" min="1" placeholder="Word target max" style="width:160px">
-            <input id="word-hard-max" type="number" min="1" placeholder="Word hard max" style="width:160px">
-            <button id="create-question" type="button">Create Question</button>
+        </article>
+
+        <article class="panel wide">
+          <h2>Quick Dashboard</h2>
+          <div id="dashboard-overview" class="box">
+            <p class="small">Select an exam and open the relevant tab for live control, review, results publication, or downloads. Use Audit only when you need system verification or troubleshooting.</p>
           </div>
-          <pre id="question-create-result" class="box mono">Question authoring output will appear here.</pre>
-        </div>
-      </article>
+        </article>
+      </div>
+    </section>
 
-      <article class="panel wide">
-        <h2>Question Bank</h2>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>ID</th><th>Type</th><th>Topic</th><th>Marks</th><th>Question</th><th>Preview</th><th>Exam Link</th></tr></thead>
-            <tbody id="questions-body"></tbody>
-          </table>
-        </div>
-        <div id="student-preview-box" class="box" style="margin-top:8px"><p class="small">No preview selected.</p></div>
-      </article>
-
-      <article class="panel">
-        <h2>Cadet Registry</h2>
-        <div class="stack">
-          <div class="row"><input id="student-id-input" placeholder="Student ID"><input id="student-name-input" placeholder="Display name"><input id="student-password-input" type="password" placeholder="Password"><button id="create-student-id" type="button">Create</button></div>
-          <div class="row"><input id="student-prefix" placeholder="Prefix" value="cadet"><input id="student-count" type="number" min="1" max="200" value="10"><button id="generate-student-ids" type="button">Generate</button></div>
-          <div class="row"><input id="student-csv-file" type="file" accept=".csv"><button id="upload-student-csv" type="button">Import CSV</button><button id="export-student-csv" type="button">Export CSV</button><button id="refresh-student-ids" type="button">Refresh</button></div>
-          <pre id="student-id-result" class="box mono">Registry output will appear here. CSV may include password column.</pre>
-          <pre id="student-csv-result" class="box mono">CSV output will appear here.</pre>
-        </div>
-        <div class="table-wrap" style="margin-top:8px">
-          <table>
-            <thead><tr><th>Student ID</th><th>Name</th><th>Status</th><th>Created</th></tr></thead>
-            <tbody id="students-body"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel wide">
-        <h2>FIB Review Queue</h2>
-        <button id="load-fib-review" type="button">Load FIB Queue</button>
-        <div class="table-wrap" style="margin-top:8px">
-          <table>
-            <thead><tr><th>Question</th><th>Normalized Answer</th><th>Sample</th><th>Count</th><th>Decision</th><th>Canonical Text</th><th>Apply</th></tr></thead>
-            <tbody id="fib-review-body"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel wide">
-        <h2>Subjective Review Queue</h2>
-        <button id="load-subjective-review" type="button">Load Subjective Queue</button>
-        <div class="table-wrap" style="margin-top:8px">
-          <table>
-            <thead><tr><th>Cadet</th><th>Question</th><th>Type</th><th>Words</th><th>Answer</th><th>Marks</th><th>Note</th><th>Save</th></tr></thead>
-            <tbody id="subjective-review-body"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel">
-        <h2>Deep Audit Explorer</h2>
-        <div class="stack">
-          <div class="row"><input id="audit-entity-type" placeholder="entity_type"><input id="audit-entity-id" placeholder="entity_id"><input id="audit-event-type" placeholder="event_type"><button id="load-audit-events" class="alt" type="button">Load Audit</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Created</th><th>Entity</th><th>Event</th><th>Actor</th></tr></thead><tbody id="audit-events-body"></tbody></table></div>
-        </div>
-      </article>
-
-      <article class="panel">
-        <h2>System Security</h2>
-        <div class="row">
-          <button id="load-access-profile" type="button">Load Access Profile</button>
-          <button id="load-metrics" type="button">Load Metrics</button>
-        </div>
-        <pre id="access-profile-box" class="box mono">Access profile will appear here.</pre>
-        <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
-      </article>
-
-      <article id="admin-accounts-panel" class="panel">
-        <h2>Admin Accounts</h2>
-        <div class="stack">
+    <section class="admin-tab-panel" data-admin-panel="exams" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel wide">
+          <h2>Exam Scope</h2>
           <div class="row">
-            <input id="new-admin-id" placeholder="Admin ID">
-            <input id="new-admin-name" placeholder="Display name">
-            <select id="new-admin-role" style="width:140px">
-              <option value="examiner">Examiner</option>
-              <option value="superadmin">Superadmin</option>
-            </select>
+            <input id="new-exam-name" placeholder="New exam name" style="flex:1 1 240px">
+            <input id="new-exam-duration" type="number" min="1" max="480" value="60" placeholder="Duration minutes" style="width:140px">
+            <input id="new-exam-negative-marking" type="number" min="0" step="0.01" value="0" placeholder="Negative marking" style="width:140px">
+            <button id="create-exam" type="button">Create Exam</button>
           </div>
-          <div class="row">
-            <input id="new-admin-key" type="password" placeholder="Access key">
-            <button id="create-admin-account" type="button">Create Admin Account</button>
-            <button id="load-admin-accounts" type="button">Refresh Accounts</button>
+          <div class="row" style="margin-top:8px">
+            <button id="publish-exam" type="button">Activate / Publish</button>
+            <button id="close-exam" class="warn" type="button">Close Exam</button>
+            <button id="delete-exam" class="danger" type="button">Delete Selected Exam</button>
           </div>
-          <pre id="admin-account-result" class="box mono">Only superadmin can create and view admin accounts.</pre>
+          <div class="stack" style="margin-top:10px">
+            <label for="custom-rules-text"><strong>Custom Exam Rules</strong></label>
+            <textarea id="custom-rules-text" rows="4" placeholder="One custom rule per line. Default rules always remain active."></textarea>
+            <div class="row">
+              <button id="save-custom-rules" class="alt" type="button">Save Custom Rules</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="questions" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel">
+          <h2>Question and Reference Setup</h2>
+          <div class="stack">
+            <label>Upload Question CSV <input id="question-csv-file" type="file" accept=".csv"></label>
+            <button id="upload-question-csv" type="button">Upload Questions</button>
+            <pre id="question-upload-result" class="box mono">Question upload result will appear here.</pre>
+            <label>Upload Exam Package CSV <input id="exam-pack-file" type="file" accept=".csv"></label>
+            <button id="upload-exam-pack" type="button">Upload Exam Package</button>
+            <pre id="exam-pack-result" class="box mono">Exam package upload result will appear here.</pre>
+            <button id="load-questions" type="button">Refresh Question List</button>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Question Authoring</h2>
+          <div class="stack">
+            <div class="row">
+              <select id="question-type" style="width:190px">
+                <option value="mcq_single">MCQ</option>
+                <option value="true_false">True / False</option>
+                <option value="fib_text">Fill in the Blanks</option>
+                <option value="short_answer">Short Answer</option>
+                <option value="long_answer">Long Answer</option>
+              </select>
+              <input id="question-topic" placeholder="Topic" style="flex:1 1 180px">
+              <input id="question-difficulty" placeholder="Difficulty" value="medium" style="width:140px">
+              <input id="question-marks" type="number" min="0.5" step="0.5" value="1" placeholder="Marks" style="width:120px">
+            </div>
+            <textarea id="question-text" rows="4" placeholder="Question text"></textarea>
+            <textarea id="question-options" rows="4" placeholder="MCQ format: Option text :: true/false&#10;FIB format: one accepted answer per line&#10;True/False: write True or False on one line"></textarea>
+            <div class="row">
+              <input id="word-target-min" type="number" min="1" placeholder="Word target min" style="width:160px">
+              <input id="word-target-max" type="number" min="1" placeholder="Word target max" style="width:160px">
+              <input id="word-hard-max" type="number" min="1" placeholder="Word hard max" style="width:160px">
+              <button id="create-question" type="button">Create Question</button>
+            </div>
+            <pre id="question-create-result" class="box mono">Question authoring output will appear here.</pre>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Question Bank</h2>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Admin ID</th><th>Name</th><th>Role</th><th>Status</th><th>Created By</th></tr></thead>
-              <tbody id="admin-accounts-body"></tbody>
+              <thead><tr><th>ID</th><th>Type</th><th>Topic</th><th>Marks</th><th>Question</th><th>Preview</th><th>Exam Link</th></tr></thead>
+              <tbody id="questions-body"></tbody>
             </table>
           </div>
-        </div>
-      </article>
+          <div id="student-preview-box" class="box" style="margin-top:8px"><p class="small">No preview selected.</p></div>
+        </article>
+      </div>
+    </section>
 
-      <article class="panel wide">
-        <h2>Results and Reports</h2>
-        <div class="row">
-          <button id="load-exam-analytics" type="button">Load Exam Analytics</button>
-        </div>
-        <div id="analytics-box" class="box analytics-shell">
-          <p class="small">Exam analytics dashboard will appear here.</p>
-        </div>
-      </article>
+    <section class="admin-tab-panel" data-admin-panel="cadets" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel wide">
+          <h2>Cadet Registry</h2>
+          <div class="stack">
+            <div class="row"><input id="student-id-input" placeholder="Student ID"><input id="student-name-input" placeholder="Display name"><input id="student-password-input" type="password" placeholder="Password"><button id="create-student-id" type="button">Create</button></div>
+            <div class="row"><input id="student-prefix" placeholder="Prefix" value="cadet"><input id="student-count" type="number" min="1" max="200" value="10"><button id="generate-student-ids" type="button">Generate</button></div>
+            <div class="row"><input id="student-csv-file" type="file" accept=".csv"><button id="upload-student-csv" type="button">Import CSV</button><button id="export-student-csv" type="button">Export CSV</button><button id="refresh-student-ids" type="button">Refresh</button></div>
+            <pre id="student-id-result" class="box mono">Registry output will appear here. CSV may include password column.</pre>
+            <pre id="student-csv-result" class="box mono">CSV output will appear here.</pre>
+          </div>
+          <div class="table-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th>Student ID</th><th>Name</th><th>Status</th><th>Created</th></tr></thead>
+              <tbody id="students-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="live" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel wide">
+          <h2>Exam Control</h2>
+          <div class="row">
+            <button id="refresh-live" type="button">Refresh Live Status</button>
+            <button id="pause-exam" class="warn" type="button">Emergency STOP (Pause All)</button>
+            <button id="resume-exam" type="button">Resume Paused Attempts</button>
+            <input id="exam-control-reason" placeholder="Control reason (optional)" style="flex:1 1 220px">
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label class="small"><input id="freeze-timer-toggle" type="checkbox"> Pause ke waqt exam timer bhi freeze karo</label>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="force-attempt-id" placeholder="Attempt ID" style="flex:1 1 220px">
+            <button id="force-submit-attempt" class="warn" type="button">Force Submit Attempt</button>
+            <button id="force-submit-expired" class="warn" type="button">Force Submit Expired</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="broadcast-message" placeholder="Broadcast message to active candidates..." style="flex:1 1 340px">
+            <select id="broadcast-severity" style="width:120px"><option value="info">Info</option><option value="warn">Warn</option><option value="critical">Critical</option></select>
+            <button id="send-broadcast" class="alt" type="button">Send Broadcast</button>
+          </div>
+          <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
+          <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
+          <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
+        </article>
+
+        <article class="panel wide">
+          <h2>Active Attempts</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Attempt</th><th>Cadet</th><th>Answered</th><th>Total</th><th>Expires</th></tr></thead>
+              <tbody id="active-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="review" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel wide">
+          <h2>FIB Review Queue</h2>
+          <button id="load-fib-review" type="button">Load FIB Queue</button>
+          <div class="table-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th>Question</th><th>Normalized Answer</th><th>Sample</th><th>Count</th><th>Decision</th><th>Canonical Text</th><th>Apply</th></tr></thead>
+              <tbody id="fib-review-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Subjective Review Queue</h2>
+          <button id="load-subjective-review" type="button">Load Subjective Queue</button>
+          <div class="table-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th>Cadet</th><th>Question</th><th>Type</th><th>Words</th><th>Answer</th><th>Marks</th><th>Note</th><th>Save</th></tr></thead>
+              <tbody id="subjective-review-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Offline AI Assist</h2>
+          <div class="row">
+            <button id="load-ai-status" type="button">Load AI Status</button>
+            <button id="ai-summarize-analytics" class="alt" type="button">Generate Exam Summary</button>
+          </div>
+          <pre id="ai-status-box" class="box mono">AI status will appear here.</pre>
+          <pre id="ai-analytics-box" class="box mono">Exam AI summary will appear here.</pre>
+          <div class="admin-ai-grid">
+            <article class="box">
+              <h3>Question Refine</h3>
+              <input id="ai-question-topic" placeholder="Topic">
+              <div class="row">
+                <select id="ai-question-type" style="width:170px">
+                  <option value="mcq_single">MCQ</option>
+                  <option value="true_false">True / False</option>
+                  <option value="fib_text">Fill in the Blanks</option>
+                  <option value="short_answer">Short Answer</option>
+                  <option value="long_answer">Long Answer</option>
+                </select>
+                <input id="ai-question-marks" type="number" step="0.5" min="0.5" value="1" style="width:120px">
+              </div>
+              <textarea id="ai-question-text" rows="5" placeholder="Paste question text"></textarea>
+              <button id="ai-refine-question" type="button">Refine Question</button>
+              <pre id="ai-question-result" class="box mono">Question refinement output will appear here.</pre>
+            </article>
+            <article class="box">
+              <h3>Rubric Suggest</h3>
+              <div class="row">
+                <select id="ai-rubric-type" style="width:170px">
+                  <option value="short_answer">Short Answer</option>
+                  <option value="long_answer">Long Answer</option>
+                </select>
+                <input id="ai-rubric-marks" type="number" step="0.5" min="0.5" value="4" style="width:120px">
+              </div>
+              <textarea id="ai-rubric-question" rows="5" placeholder="Paste subjective question text"></textarea>
+              <button id="ai-rubric-suggest" type="button">Suggest Rubric</button>
+              <pre id="ai-rubric-result" class="box mono">Rubric suggestion will appear here.</pre>
+            </article>
+            <article class="box">
+              <h3>FIB Cluster</h3>
+              <textarea id="ai-fib-question" rows="3" placeholder="Paste the FIB question text"></textarea>
+              <textarea id="ai-fib-answers" rows="6" placeholder="One submitted answer per line"></textarea>
+              <button id="ai-fib-cluster" type="button">Cluster FIB Answers</button>
+              <pre id="ai-fib-result" class="box mono">FIB clustering output will appear here.</pre>
+            </article>
+            <article class="box">
+              <h3>Subjective Suggest</h3>
+              <div class="row">
+                <select id="ai-subjective-type" style="width:170px">
+                  <option value="short_answer">Short Answer</option>
+                  <option value="long_answer">Long Answer</option>
+                </select>
+                <input id="ai-subjective-marks" type="number" step="0.5" min="0.5" value="4" style="width:120px">
+              </div>
+              <textarea id="ai-subjective-question" rows="3" placeholder="Paste the question text"></textarea>
+              <textarea id="ai-subjective-answer" rows="6" placeholder="Paste the cadet answer"></textarea>
+              <button id="ai-subjective-suggest" type="button">Suggest Marks</button>
+              <pre id="ai-subjective-result" class="box mono">Subjective suggestion will appear here.</pre>
+            </article>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="results" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel wide">
+          <h2>Result Publication &amp; Export</h2>
+          <div class="row">
+            <button id="refresh-results" type="button">Refresh Result List</button>
+            <button id="publish-results" type="button">Publish Results</button>
+            <button id="unpublish-results" class="warn" type="button">Unpublish Results</button>
+            <button id="download-results-csv" class="alt" type="button">Download CSV</button>
+            <button id="download-pending-csv" class="alt" type="button">Pending Review CSV</button>
+          </div>
+          <pre id="results-publication-box" class="box mono">Result publication state will appear here.</pre>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cadet</th><th>Attempt</th><th>Score</th><th>Percent</th><th>Pending</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="results-candidates-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Results and Reports</h2>
+          <div class="row">
+            <button id="load-exam-analytics" type="button">Load Exam Analytics</button>
+          </div>
+          <div id="analytics-box" class="box analytics-shell">
+            <p class="small">Exam analytics dashboard will appear here.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="downloads" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel">
+          <h2>Templates</h2>
+          <div class="download-list">
+            <a class="portal-btn" href="/web/demo_question_bank.csv" download>Demo Question CSV</a>
+            <a class="portal-btn" href="/web/demo_exam_package.csv" download>Demo Exam Package CSV</a>
+            <a class="portal-btn" href="/web/demo_student_ids.csv" download>Demo Student CSV</a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Manuals</h2>
+          <div class="download-list">
+            <a class="portal-btn" href="/web/manual_admin.html" target="_blank">Admin Manual</a>
+            <a class="portal-btn" href="/web/manual_student.html" target="_blank">Student Instructions</a>
+            <a class="portal-btn" href="/web/manual_examiner.html" target="_blank">Examiner Review Guide</a>
+            <a class="portal-btn" href="/web/manual_backup_restore.html" target="_blank">Backup / Restore Guide</a>
+            <a class="portal-btn" href="/web/manual_offline_ai.html" target="_blank">Offline AI Setup Guide</a>
+            <a class="portal-btn" href="/web/manual_troubleshooting.html" target="_blank">Troubleshooting Checklist</a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>System</h2>
+          <div class="download-list">
+            <a class="portal-btn" href="/web/nitmexs_config_sample.yaml" download>Config Sample</a>
+            <a class="portal-btn" href="/web/release_notes.html" target="_blank">Release Notes</a>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Generated Artifacts</h2>
+          <div class="row">
+            <button id="load-artifacts" type="button">Refresh Artifacts</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Created</th><th>Type</th><th>File</th><th>Ref</th><th>Created By</th></tr></thead>
+              <tbody id="artifacts-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="audit" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel">
+          <h2>Access and Health Audit</h2>
+          <p class="small">Use this area only for deployment checks, host-access verification, and performance troubleshooting.</p>
+          <div class="row">
+            <button id="load-access-profile" type="button">Load Access Profile</button>
+            <button id="load-metrics" type="button">Load Metrics</button>
+          </div>
+          <pre id="access-profile-box" class="box mono">Access profile will appear here.</pre>
+          <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
+        </article>
+
+        <article class="panel wide">
+          <h2>Deep Audit Explorer</h2>
+          <div class="stack">
+            <div class="row"><input id="audit-entity-type" placeholder="entity_type"><input id="audit-entity-id" placeholder="entity_id"><input id="audit-event-type" placeholder="event_type"><button id="load-audit-events" class="alt" type="button">Load Audit</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Created</th><th>Entity</th><th>Event</th><th>Actor</th></tr></thead><tbody id="audit-events-body"></tbody></table></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="security" hidden>
+      <div class="grid admin-tab-grid">
+        <article class="panel">
+          <h2>System Security</h2>
+          <div class="stack">
+            <div class="box">
+              <p class="small">Why this tab is simple</p>
+              <p>Security settings should stay easy for instructors. Raw telemetry, raw metrics, and audit logs have been shifted to the Audit tab to reduce confusion.</p>
+            </div>
+            <div class="box">
+              <p class="small">Use this tab for</p>
+              <p>Admin account control, role management, and day-to-day access management. For manuals and technical documents, use Downloads.</p>
+            </div>
+          </div>
+        </article>
+
+        <article id="admin-accounts-panel" class="panel">
+          <h2>Admin Accounts</h2>
+          <div class="stack">
+            <div class="row">
+              <input id="new-admin-id" placeholder="Admin ID">
+              <input id="new-admin-name" placeholder="Display name">
+              <select id="new-admin-role" style="width:140px">
+                <option value="examiner">Examiner</option>
+                <option value="superadmin">Superadmin</option>
+              </select>
+            </div>
+            <div class="row">
+              <input id="new-admin-key" type="password" placeholder="Access key">
+              <button id="create-admin-account" type="button">Create Admin Account</button>
+              <button id="load-admin-accounts" type="button">Refresh Accounts</button>
+            </div>
+            <pre id="admin-account-result" class="box mono">Only superadmin can create and view admin accounts.</pre>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Admin ID</th><th>Name</th><th>Role</th><th>Status</th><th>Created By</th></tr></thead>
+                <tbody id="admin-accounts-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </div>
     </section>
   </main>
+
+  <dialog id="admin-error-dialog" class="modal">
+    <article class="modal-card">
+      <h2>Action Error</h2>
+      <p id="admin-error-text">Something went wrong.</p>
+      <div class="row end">
+        <button id="admin-error-close" type="button">OK</button>
+      </div>
+    </article>
+  </dialog>
 
   <script src="/web/theme_toggle.js"></script>
   <script src="/web/admin.js"></script>

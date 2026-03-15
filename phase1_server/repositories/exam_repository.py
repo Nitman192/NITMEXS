@@ -34,6 +34,15 @@ class ExamRepository(Protocol):
 
     def set_custom_rules(self, exam_id: str, custom_rules: list[str]) -> None: ...
 
+    def set_result_publication(
+        self,
+        exam_id: str,
+        *,
+        published: bool,
+        published_at: str | None,
+        published_by: str | None,
+    ) -> None: ...
+
     def clear_snapshot(self, attempt_id: str) -> None: ...
 
     def store_snapshot(self, items: list[AttemptQuestionSnapshot]) -> None: ...
@@ -57,9 +66,10 @@ class SQLiteExamRepository:
             """
             INSERT INTO exams(
                 id, name, duration_minutes, negative_marking,
-                status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id, custom_rules_json
+                status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id,
+                custom_rules_json, results_published, results_published_at, results_published_by
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 exam.id,
@@ -73,6 +83,9 @@ class SQLiteExamRepository:
                 exam.passing_percentage,
                 exam.reference_exam_id,
                 json.dumps(exam.custom_rules or []),
+                1 if exam.results_published else 0,
+                exam.results_published_at,
+                exam.results_published_by,
             ),
         )
 
@@ -80,7 +93,8 @@ class SQLiteExamRepository:
         row = self._conn.execute(
             """
             SELECT id, name, duration_minutes, negative_marking,
-                   status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id, custom_rules_json
+                   status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id,
+                   custom_rules_json, results_published, results_published_at, results_published_by
             FROM exams
             WHERE id = ?
             """,
@@ -100,6 +114,9 @@ class SQLiteExamRepository:
             passing_percentage=row["passing_percentage"],
             reference_exam_id=row["reference_exam_id"],
             custom_rules=self._parse_rules(row["custom_rules_json"]),
+            results_published=bool(row["results_published"]),
+            results_published_at=row["results_published_at"],
+            results_published_by=row["results_published_by"],
         )
 
     def list_exams(
@@ -111,7 +128,8 @@ class SQLiteExamRepository:
             rows = self._conn.execute(
                 """
                 SELECT id, name, duration_minutes, negative_marking,
-                       status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id, custom_rules_json
+                       status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id,
+                       custom_rules_json, results_published, results_published_at, results_published_by
                 FROM exams
                 ORDER BY created_at DESC
                 """
@@ -120,7 +138,8 @@ class SQLiteExamRepository:
             rows = self._conn.execute(
                 """
                 SELECT id, name, duration_minutes, negative_marking,
-                       status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id, custom_rules_json
+                       status, published, created_at, owner_admin_id, passing_percentage, reference_exam_id,
+                       custom_rules_json, results_published, results_published_at, results_published_by
                 FROM exams
                 WHERE owner_admin_id = ?
                 ORDER BY created_at DESC
@@ -140,6 +159,9 @@ class SQLiteExamRepository:
                 passing_percentage=row["passing_percentage"],
                 reference_exam_id=row["reference_exam_id"],
                 custom_rules=self._parse_rules(row["custom_rules_json"]),
+                results_published=bool(row["results_published"]),
+                results_published_at=row["results_published_at"],
+                results_published_by=row["results_published_by"],
             )
             for row in rows
         ]
@@ -185,6 +207,23 @@ class SQLiteExamRepository:
         self._conn.execute(
             "UPDATE exams SET custom_rules_json = ? WHERE id = ?",
             (json.dumps(custom_rules or []), exam_id),
+        )
+
+    def set_result_publication(
+        self,
+        exam_id: str,
+        *,
+        published: bool,
+        published_at: str | None,
+        published_by: str | None,
+    ) -> None:
+        self._conn.execute(
+            """
+            UPDATE exams
+            SET results_published = ?, results_published_at = ?, results_published_by = ?
+            WHERE id = ?
+            """,
+            (1 if published else 0, published_at, published_by, exam_id),
         )
 
     def clear_snapshot(self, attempt_id: str) -> None:

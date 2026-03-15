@@ -103,6 +103,9 @@ class Exam:
     passing_percentage: float = 40.0
     reference_exam_id: str | None = None
     custom_rules: list[str] | None = None
+    results_published: bool = False
+    results_published_at: str | None = None
+    results_published_by: str | None = None
 
 
 @dataclass
@@ -161,6 +164,20 @@ class AdminAccount:
     access_key_hash: str
     status: str
     created_by: str
+    created_at: str
+
+
+@dataclass
+class ResultArtifact:
+    id: str
+    artifact_type: str
+    entity_type: str
+    entity_id: str
+    created_by: str
+    file_name: str
+    content_type: str
+    checksum: str
+    reference_code: str
     created_at: str
 
 

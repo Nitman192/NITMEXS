@@ -168,6 +168,25 @@ class GradingEngine:
             "question_results": self._build_enriched_question_results(attempt_id),
         }
 
+    def get_admin_result(self, attempt_id: str) -> dict:
+        attempt = self._attempt_repo.get(attempt_id)
+        if attempt is None:
+            raise GradingNotFoundError(f"Attempt '{attempt_id}' not found")
+        if attempt.status != AttemptStatus.FINALIZED:
+            raise ResultNotReadyError("Result available only after attempt finalization")
+
+        summary = self._attempt_repo.get_attempt_result(attempt_id)
+        if summary is None:
+            raise ResultNotReadyError("Result not available yet")
+
+        return {
+            **summary,
+            "attempt_id": attempt_id,
+            "student_id": attempt.candidate_id,
+            "exam_id": attempt.exam_id,
+            "question_results": self._build_enriched_question_results(attempt_id),
+        }
+
     def _save_initial_question_result(
         self,
         exam_negative_marking: float,

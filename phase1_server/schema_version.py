@@ -1,3 +1,3 @@
 """Schema version constants for migration safety."""
 
-EXPECTED_SCHEMA_VERSION = 7
+EXPECTED_SCHEMA_VERSION = 8

@@ -20,6 +20,10 @@ from phase1_server.schemas import (
     AddQuestionsSchema,
     AdminAccountCreateSchema,
     AdminBroadcastSchema,
+    AIFibClusterSchema,
+    AIQuestionRefineSchema,
+    AIRubricSuggestSchema,
+    AISubjectiveSuggestSchema,
     ExamCreateSchema,
     ExamControlSchema,
     ExamReferenceUpdateSchema,
@@ -62,10 +66,12 @@ from phase1_server.services.proctor_alert_service import (
     ProctorAlertService,
     ProctorAlertValidationError,
 )
+from phase1_server.services.local_ai_service import LocalAISidecarService
 from phase1_server.services.proctoring_service import (
     ProctoringService,
     ProctoringValidationError,
 )
+from phase1_server.services.grading_service import ResultNotReadyError
 from phase1_server.services.question_calibration_service import (
     QuestionCalibrationError,
     QuestionCalibrationService,
@@ -91,6 +97,12 @@ from phase1_server.services.review_service import (
     ReviewNotFoundError,
     ReviewService,
     ReviewValidationError,
+)
+from phase1_server.services.result_export_service import (
+    ResultArtifactNotReadyError,
+    ResultExportError,
+    ResultExportService,
+    ResultPublicationError,
 )
 from phase1_server.services.student_registry_service import (
     StudentAlreadyExistsError,
@@ -142,6 +154,18 @@ def _ensure_attempt_access(uow: UnitOfWork, request: Request, attempt_id: str):
         raise HTTPException(status_code=404, detail=f"Attempt '{attempt_id}' not found")
     admin, _ = _ensure_exam_access(uow, request, attempt.exam_id)
     return admin, attempt
+
+
+def _result_service(uow: UnitOfWork) -> ResultExportService:
+    return ResultExportService(
+        uow.attempts,
+        uow.exams,
+        uow.questions,
+        uow.student_accounts,
+        uow.result_artifacts,
+        audit_service=AuditService(uow.audit_events),
+        analytics_service=AnalyticsService(uow.analytics, uow.exams),
+    )
 
 
 @router.post("/questions", status_code=status.HTTP_201_CREATED)
@@ -521,6 +545,9 @@ def create_exam(payload: ExamCreateSchema, request: Request):
             "owner_admin_id": exam.owner_admin_id,
             "reference_exam_id": exam.reference_exam_id,
             "custom_rules": exam.custom_rules or [],
+            "results_published": exam.results_published,
+            "results_published_at": exam.results_published_at,
+            "results_published_by": exam.results_published_by,
         },
     }
 
@@ -792,6 +819,9 @@ def list_exams(request: Request):
                 "owner_admin_id": exam.owner_admin_id,
                 "reference_exam_id": exam.reference_exam_id,
                 "custom_rules": exam.custom_rules or [],
+                "results_published": exam.results_published,
+                "results_published_at": exam.results_published_at,
+                "results_published_by": exam.results_published_by,
             }
             for exam in exams
         ],
@@ -1011,6 +1041,229 @@ def get_score_distribution(exam_id: str, request: Request):
         except ExamNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    return {"status": "success", "data": data}
+
+
+@router.get("/ai/status")
+def get_local_ai_status(request: Request):
+    service = LocalAISidecarService(request.app.state.settings)
+    return {"status": "success", "data": service.status()}
+
+
+@router.post("/ai/question-refine")
+def refine_question_with_ai(payload: AIQuestionRefineSchema, request: Request):
+    admin = _admin_identity(request)
+    service = LocalAISidecarService(request.app.state.settings)
+    data = service.refine_question(
+        question_text=payload.question_text,
+        question_type=payload.question_type,
+        topic=payload.topic,
+        marks=float(payload.marks),
+    )
+    with UnitOfWork(request.app.state.db) as uow:
+        AuditService(uow.audit_events).log_event(
+            entity_type="ai",
+            entity_id="question_refine",
+            actor_type="admin",
+            actor_id=admin.admin_id,
+            event_type="AI_QUESTION_REFINED",
+            payload={"provider": data.get("provider", "heuristic")},
+        )
+    return {"status": "success", "data": data}
+
+
+@router.post("/ai/rubric-suggest")
+def suggest_rubric_with_ai(payload: AIRubricSuggestSchema, request: Request):
+    admin = _admin_identity(request)
+    service = LocalAISidecarService(request.app.state.settings)
+    data = service.suggest_rubric(
+        question_text=payload.question_text,
+        question_type=payload.question_type,
+        max_marks=float(payload.max_marks),
+    )
+    with UnitOfWork(request.app.state.db) as uow:
+        AuditService(uow.audit_events).log_event(
+            entity_type="ai",
+            entity_id="rubric_suggest",
+            actor_type="admin",
+            actor_id=admin.admin_id,
+            event_type="AI_RUBRIC_SUGGESTED",
+            payload={"provider": data.get("provider", "heuristic")},
+        )
+    return {"status": "success", "data": data}
+
+
+@router.post("/ai/fib-cluster")
+def cluster_fib_with_ai(payload: AIFibClusterSchema, request: Request):
+    admin = _admin_identity(request)
+    service = LocalAISidecarService(request.app.state.settings)
+    data = service.cluster_fib_answers(
+        question_text=payload.question_text,
+        answers=payload.answers,
+    )
+    with UnitOfWork(request.app.state.db) as uow:
+        AuditService(uow.audit_events).log_event(
+            entity_type="ai",
+            entity_id="fib_cluster",
+            actor_type="admin",
+            actor_id=admin.admin_id,
+            event_type="AI_FIB_CLUSTERED",
+            payload={"provider": data.get("provider", "heuristic"), "answer_count": len(payload.answers)},
+        )
+    return {"status": "success", "data": data}
+
+
+@router.post("/ai/subjective-suggest")
+def suggest_subjective_with_ai(payload: AISubjectiveSuggestSchema, request: Request):
+    admin = _admin_identity(request)
+    service = LocalAISidecarService(request.app.state.settings)
+    data = service.suggest_subjective_score(
+        question_text=payload.question_text,
+        question_type=payload.question_type,
+        answer_text=payload.answer_text,
+        max_marks=float(payload.max_marks),
+    )
+    with UnitOfWork(request.app.state.db) as uow:
+        AuditService(uow.audit_events).log_event(
+            entity_type="ai",
+            entity_id="subjective_suggest",
+            actor_type="admin",
+            actor_id=admin.admin_id,
+            event_type="AI_SUBJECTIVE_SUGGESTED",
+            payload={"provider": data.get("provider", "heuristic")},
+        )
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/ai/analytics-summary")
+def summarize_exam_analytics_with_ai(exam_id: str, request: Request):
+    db = request.app.state.db
+    admin = _admin_identity(request)
+    with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
+        analytics = AnalyticsService(uow.analytics, uow.exams).get_exam_analytics(exam_id)
+        exam = uow.exams.get_exam(exam_id)
+        if exam is None:
+            raise HTTPException(status_code=404, detail=f"Exam '{exam_id}' not found")
+        data = LocalAISidecarService(request.app.state.settings).summarize_exam_analytics(
+            exam_name=exam.name,
+            analytics_payload=analytics,
+        )
+        AuditService(uow.audit_events).log_event(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type="admin",
+            actor_id=admin.admin_id,
+            event_type="AI_ANALYTICS_SUMMARY_GENERATED",
+            payload={"provider": data.get("provider", "heuristic")},
+        )
+    return {"status": "success", "data": data}
+
+
+@router.get("/exams/{exam_id}/results")
+def list_exam_results(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
+        data = _result_service(uow).list_exam_results(exam_id)
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/results/publish")
+def publish_exam_results(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        try:
+            data = _result_service(uow).publish_exam_results(exam_id, admin.admin_id, admin.role.value)
+        except (ExamNotFoundError, ResultPublicationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/results/unpublish")
+def unpublish_exam_results(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        try:
+            data = _result_service(uow).unpublish_exam_results(exam_id, admin.admin_id, admin.role.value)
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.get("/exams/{exam_id}/results/export.csv")
+def export_exam_results_csv(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        try:
+            content = _result_service(uow).export_exam_results_csv(exam_id, admin.admin_id)
+        except (ExamNotFoundError, ResultArtifactNotReadyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="exam_results_{exam_id}.csv"'},
+    )
+
+
+@router.get("/exams/{exam_id}/results/pending-review.csv")
+def export_pending_review_csv(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        try:
+            content = _result_service(uow).export_pending_review_csv(exam_id, admin.admin_id)
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="pending_review_{exam_id}.csv"'},
+    )
+
+
+@router.get("/attempts/{attempt_id}/result-preview")
+def preview_candidate_result(attempt_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_attempt_access(uow, request, attempt_id)
+        try:
+            html = _result_service(uow).render_result_preview_html(attempt_id, admin.admin_id)
+        except (ResultExportError, ResultNotReadyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/attempts/{attempt_id}/result-sheet.pdf")
+def download_candidate_result_pdf(attempt_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_attempt_access(uow, request, attempt_id)
+        try:
+            pdf = _result_service(uow).export_result_pdf(attempt_id, admin.admin_id)
+        except (ResultExportError, ResultArtifactNotReadyError, ResultNotReadyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="result_sheet_{attempt_id}.pdf"'},
+    )
+
+
+@router.get("/artifacts")
+def list_result_artifacts(
+    request: Request,
+    exam_id: str | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=200),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        if exam_id:
+            _ensure_exam_access(uow, request, exam_id)
+        data = _result_service(uow).list_artifacts(exam_id=exam_id, limit=limit)
     return {"status": "success", "data": data}
 
 

@@ -125,7 +125,10 @@ class Database:
                     owner_admin_id TEXT NOT NULL DEFAULT 'superadmin',
                     passing_percentage REAL NOT NULL DEFAULT 40,
                     reference_exam_id TEXT,
-                    custom_rules_json TEXT
+                    custom_rules_json TEXT,
+                    results_published INTEGER NOT NULL DEFAULT 0,
+                    results_published_at TEXT,
+                    results_published_by TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS admin_accounts (
@@ -147,6 +150,22 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS result_artifacts (
+                    id TEXT PRIMARY KEY,
+                    artifact_type TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    checksum TEXT NOT NULL,
+                    reference_code TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_result_artifacts_entity
+                ON result_artifacts(entity_type, entity_id, created_at DESC);
 
                 CREATE TABLE IF NOT EXISTS question_text_variants (
                     id TEXT PRIMARY KEY,
@@ -510,12 +529,57 @@ class Database:
                 )
             if "custom_rules_json" not in exam_columns:
                 conn.execute("ALTER TABLE exams ADD COLUMN custom_rules_json TEXT")
+            if "results_published" not in exam_columns:
+                conn.execute(
+                    "ALTER TABLE exams ADD COLUMN results_published INTEGER NOT NULL DEFAULT 0"
+                )
+            if "results_published_at" not in exam_columns:
+                conn.execute("ALTER TABLE exams ADD COLUMN results_published_at TEXT")
+            if "results_published_by" not in exam_columns:
+                conn.execute("ALTER TABLE exams ADD COLUMN results_published_by TEXT")
 
             conn.execute(
                 """
                 INSERT OR IGNORE INTO deployment_settings(
                     id, deployment_profile, branding_profile, student_result_policy, trusted_host_fingerprint, created_at, updated_at
-                ) VALUES(1, 'army_basic', 'indian_army_education', 'no_student_result', NULL, datetime('now'), datetime('now'))
+                ) VALUES(1, 'nitmexs_basic', 'nitmexs_education', 'no_student_result', NULL, datetime('now'), datetime('now'))
+                """
+            )
+            conn.execute(
+                """
+                UPDATE deployment_settings
+                SET deployment_profile = 'nitmexs_basic'
+                WHERE deployment_profile = 'army_basic'
+                """
+            )
+            conn.execute(
+                """
+                UPDATE deployment_settings
+                SET branding_profile = 'nitmexs_education'
+                WHERE branding_profile = 'indian_army_education'
+                """
+            )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS result_artifacts (
+                    id TEXT PRIMARY KEY,
+                    artifact_type TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    checksum TEXT NOT NULL,
+                    reference_code TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_result_artifacts_entity
+                ON result_artifacts(entity_type, entity_id, created_at DESC)
                 """
             )
 

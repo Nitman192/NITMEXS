@@ -8,6 +8,25 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  const explainApiError = (detail) => {
+    if (detail == null || detail === "") return "";
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => explainApiError(item)).filter(Boolean).join("; ");
+    }
+    if (typeof detail === "object") {
+      if (typeof detail.msg === "string") {
+        const where = Array.isArray(detail.loc) ? detail.loc.join(" > ") : "";
+        return where ? `${where}: ${detail.msg}` : detail.msg;
+      }
+      if (typeof detail.detail === "string") return detail.detail;
+      return Object.entries(detail)
+        .map(([key, value]) => `${key}: ${explainApiError(value)}`)
+        .filter((item) => item && !item.endsWith(": "))
+        .join(", ");
+    }
+    return String(detail);
+  };
 
   const st = {
     adminId: "",
@@ -16,11 +35,15 @@
     questions: [],
     selectedExamId: "",
     selectedQuestion: null,
+    activeTab: "dashboard",
+    examResults: [],
   };
 
   const el = {
     sessionAdmin: $("session-admin"),
     version: $("version"),
+    selectedExamChip: $("selected-exam-chip"),
+    openDownloadsTop: $("open-downloads-top"),
     logoutAdmin: $("logout-admin"),
     status: $("admin-status"),
     loadExams: $("load-exams"),
@@ -100,6 +123,41 @@
     metricsBox: $("metrics-box"),
     loadExamAnalytics: $("load-exam-analytics"),
     analyticsBox: $("analytics-box"),
+    dashboardOverview: $("dashboard-overview"),
+    loadAiStatus: $("load-ai-status"),
+    aiStatusBox: $("ai-status-box"),
+    aiQuestionText: $("ai-question-text"),
+    aiQuestionType: $("ai-question-type"),
+    aiQuestionTopic: $("ai-question-topic"),
+    aiQuestionMarks: $("ai-question-marks"),
+    aiRefineQuestion: $("ai-refine-question"),
+    aiQuestionResult: $("ai-question-result"),
+    aiRubricQuestion: $("ai-rubric-question"),
+    aiRubricType: $("ai-rubric-type"),
+    aiRubricMarks: $("ai-rubric-marks"),
+    aiRubricSuggest: $("ai-rubric-suggest"),
+    aiRubricResult: $("ai-rubric-result"),
+    aiFibQuestion: $("ai-fib-question"),
+    aiFibAnswers: $("ai-fib-answers"),
+    aiFibCluster: $("ai-fib-cluster"),
+    aiFibResult: $("ai-fib-result"),
+    aiSubjectiveQuestion: $("ai-subjective-question"),
+    aiSubjectiveType: $("ai-subjective-type"),
+    aiSubjectiveMarks: $("ai-subjective-marks"),
+    aiSubjectiveAnswer: $("ai-subjective-answer"),
+    aiSubjectiveSuggest: $("ai-subjective-suggest"),
+    aiSubjectiveResult: $("ai-subjective-result"),
+    aiSummarizeAnalytics: $("ai-summarize-analytics"),
+    aiAnalyticsBox: $("ai-analytics-box"),
+    refreshResults: $("refresh-results"),
+    publishResults: $("publish-results"),
+    unpublishResults: $("unpublish-results"),
+    downloadResultsCsv: $("download-results-csv"),
+    downloadPendingCsv: $("download-pending-csv"),
+    resultsPublicationBox: $("results-publication-box"),
+    resultsCandidatesBody: $("results-candidates-body"),
+    loadArtifacts: $("load-artifacts"),
+    artifactsBody: $("artifacts-body"),
     adminAccountsPanel: $("admin-accounts-panel"),
     newAdminId: $("new-admin-id"),
     newAdminName: $("new-admin-name"),
@@ -109,12 +167,68 @@
     loadAdminAccounts: $("load-admin-accounts"),
     adminAccountResult: $("admin-account-result"),
     adminAccountsBody: $("admin-accounts-body"),
+    errorDialog: $("admin-error-dialog"),
+    errorText: $("admin-error-text"),
+    errorClose: $("admin-error-close"),
   };
+
+  const adminTabButtons = () => Array.from(document.querySelectorAll("[data-admin-tab]"));
+  const adminTabPanels = () => Array.from(document.querySelectorAll("[data-admin-panel]"));
+
+  function openDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "open");
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+
+  function showErrorDialog(message) {
+    if (!el.errorDialog || !el.errorText) return;
+    el.errorText.textContent = String(message ?? "Something went wrong.");
+    openDialog(el.errorDialog);
+  }
 
   function setStatus(message, isError = false) {
     if (!el.status) return;
-    el.status.textContent = message;
+    el.status.textContent = String(message ?? "");
     el.status.classList.toggle("error", isError);
+    if (isError && message) {
+      showErrorDialog(message);
+    }
+  }
+
+  function setAdminTab(tabName) {
+    st.activeTab = tabName || "dashboard";
+    adminTabButtons().forEach((button) => {
+      button.classList.toggle("active", button.dataset.adminTab === st.activeTab);
+    });
+    adminTabPanels().forEach((panel) => {
+      const isActive = panel.dataset.adminPanel === st.activeTab;
+      panel.hidden = !isActive;
+      panel.classList.toggle("active", isActive);
+    });
+  }
+
+  function updateSelectedExamChip() {
+    if (!el.selectedExamChip) return;
+    const current = st.exams.find((item) => item.id === selectedExamId());
+    el.selectedExamChip.textContent = current ? current.name : "No exam selected";
+    if (el.dashboardOverview) {
+      el.dashboardOverview.innerHTML = current
+        ? `
+          <div class="admin-mini-grid">
+            <article class="box"><span class="small">Exam</span><strong>${esc(current.name)}</strong></article>
+            <article class="box"><span class="small">Status</span><strong>${esc(current.status)}</strong></article>
+            <article class="box"><span class="small">Results</span><strong>${current.results_published ? "Published" : "Draft / Private"}</strong></article>
+          </div>
+        `
+        : '<p class="small">Select an exam to load live control, review, and result workflows.</p>';
+    }
   }
 
   function readSession() {
@@ -158,7 +272,13 @@
     }
     const res = await fetch(path, req);
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.detail || payload.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      throw new Error(
+        explainApiError(payload.detail) ||
+          explainApiError(payload.error) ||
+          `HTTP ${res.status}`,
+      );
+    }
     return payload.data ?? payload;
   }
 
@@ -166,9 +286,53 @@
     const res = await fetch(path, { headers: headers() });
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}));
-      throw new Error(payload.detail || payload.error || `HTTP ${res.status}`);
+      throw new Error(
+        explainApiError(payload.detail) ||
+          explainApiError(payload.error) ||
+          `HTTP ${res.status}`,
+      );
     }
     return res.text();
+  }
+
+  async function downloadBlob(path) {
+    const res = await fetch(path, { headers: headers() });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(
+        explainApiError(payload.detail) ||
+          explainApiError(payload.error) ||
+          `HTTP ${res.status}`,
+      );
+    }
+    return {
+      blob: await res.blob(),
+      fileName:
+        String(res.headers.get("content-disposition") || "")
+          .match(/filename=\"?([^\";]+)\"?/)?.[1] || "download.bin",
+    };
+  }
+
+  function triggerBlobDownload(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName || "download.bin";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  async function openBlobPage(path) {
+    const { blob } = await downloadBlob(path);
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank", "noopener");
+    if (!win) {
+      throw new Error("Preview popup blocked by browser.");
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return win;
   }
 
   function selectedExamId() {
@@ -429,7 +593,9 @@
       st.selectedExamId = selected;
     } else if (el.customRulesText) {
       el.customRulesText.value = "";
+      st.selectedExamId = "";
     }
+    updateSelectedExamChip();
   }
 
   async function loadVersion() {
@@ -950,6 +1116,208 @@
     setStatus("Analytics dashboard loaded.");
   }
 
+  async function loadAiStatus() {
+    const data = await api("/admin/ai/status");
+    el.aiStatusBox.textContent = prettyJson(data);
+    setStatus(data.reachable ? "Offline AI sidecar reachable." : "Offline AI sidecar unavailable; heuristic mode active.");
+  }
+
+  async function refineQuestionWithAi() {
+    const data = await api("/admin/ai/question-refine", {
+      method: "POST",
+      body: {
+        question_text: (el.aiQuestionText.value || "").trim(),
+        question_type: el.aiQuestionType.value || "mcq_single",
+        topic: (el.aiQuestionTopic.value || "General").trim() || "General",
+        marks: Number(el.aiQuestionMarks.value || 1),
+      },
+    });
+    el.aiQuestionResult.textContent = prettyJson(data);
+    setStatus("AI question refinement generated.");
+  }
+
+  async function suggestRubricWithAi() {
+    const data = await api("/admin/ai/rubric-suggest", {
+      method: "POST",
+      body: {
+        question_text: (el.aiRubricQuestion.value || "").trim(),
+        question_type: el.aiRubricType.value || "short_answer",
+        max_marks: Number(el.aiRubricMarks.value || 1),
+      },
+    });
+    el.aiRubricResult.textContent = prettyJson(data);
+    setStatus("AI rubric suggestion generated.");
+  }
+
+  async function clusterFibWithAi() {
+    const answers = parseLines(el.aiFibAnswers.value);
+    const data = await api("/admin/ai/fib-cluster", {
+      method: "POST",
+      body: {
+        question_text: (el.aiFibQuestion.value || "").trim(),
+        answers,
+      },
+    });
+    el.aiFibResult.textContent = prettyJson(data);
+    setStatus("AI FIB clustering generated.");
+  }
+
+  async function suggestSubjectiveWithAi() {
+    const data = await api("/admin/ai/subjective-suggest", {
+      method: "POST",
+      body: {
+        question_text: (el.aiSubjectiveQuestion.value || "").trim(),
+        question_type: el.aiSubjectiveType.value || "short_answer",
+        answer_text: (el.aiSubjectiveAnswer.value || "").trim(),
+        max_marks: Number(el.aiSubjectiveMarks.value || 1),
+      },
+    });
+    el.aiSubjectiveResult.textContent = prettyJson(data);
+    setStatus("AI subjective suggestion generated.");
+  }
+
+  async function summarizeAnalyticsWithAi() {
+    const examId = requireExam();
+    const data = await api(`/admin/exams/${examId}/ai/analytics-summary`, { method: "POST" });
+    el.aiAnalyticsBox.textContent = prettyJson(data);
+    setStatus("AI exam summary generated.");
+  }
+
+  function renderResultsTable(data) {
+    st.examResults = data.candidates || [];
+    el.resultsPublicationBox.textContent = prettyJson({
+      exam_id: data.exam_id,
+      exam_name: data.exam_name,
+      results_published: data.results_published,
+      results_published_at: data.results_published_at,
+      results_published_by: data.results_published_by,
+      pending_review_count: data.pending_review_count,
+      ready_result_count: data.ready_result_count,
+    });
+    el.resultsCandidatesBody.innerHTML = st.examResults.length
+      ? st.examResults
+          .map(
+            (item) => `
+              <tr>
+                <td>${esc(item.display_name || item.student_id)}<br><span class="small mono">${esc(item.student_id)}</span></td>
+                <td><span class="mono">${esc(item.attempt_id)}</span></td>
+                <td>${item.total_score == null ? "-" : esc(formatNumber(item.total_score, 2))} / ${item.total_possible_marks == null ? "-" : esc(formatNumber(item.total_possible_marks, 2))}</td>
+                <td>${item.percentage == null ? "-" : esc(formatPercent(item.percentage))}</td>
+                <td>${esc(item.pending_review_count)}</td>
+                <td>${item.pending_review_count > 0 ? "Pending Review" : item.passed == null ? "Awaiting Result" : item.passed ? "Pass" : "Fail"}</td>
+                <td class="result-action-cell">
+                  <button type="button" data-action="result-preview" data-attempt-id="${esc(item.attempt_id)}">Preview Result</button>
+                  <button type="button" data-action="result-print" data-attempt-id="${esc(item.attempt_id)}">Print Result</button>
+                  <button type="button" data-action="result-pdf" data-attempt-id="${esc(item.attempt_id)}">Download PDF</button>
+                  <button type="button" data-action="result-share" data-attempt-id="${esc(item.attempt_id)}">Share / Export</button>
+                </td>
+              </tr>
+            `,
+          )
+          .join("")
+      : '<tr><td colspan="7">No candidate results available yet.</td></tr>';
+  }
+
+  async function refreshResults() {
+    const examId = requireExam();
+    const data = await api(`/admin/exams/${examId}/results`);
+    renderResultsTable(data);
+    setStatus("Exam result list loaded.");
+  }
+
+  async function publishResults() {
+    const examId = requireExam();
+    const data = await api(`/admin/exams/${examId}/results/publish`, { method: "POST" });
+    await loadExams(examId);
+    await refreshResults();
+    setStatus(`Results published by ${data.results_published_by}.`);
+  }
+
+  async function unpublishResults() {
+    const examId = requireExam();
+    await api(`/admin/exams/${examId}/results/unpublish`, { method: "POST" });
+    await loadExams(examId);
+    await refreshResults();
+    setStatus("Results reverted to admin-only unpublished state.");
+  }
+
+  async function downloadResultsCsv() {
+    const examId = requireExam();
+    const { blob, fileName } = await downloadBlob(`/admin/exams/${examId}/results/export.csv`);
+    triggerBlobDownload(blob, fileName);
+    setStatus("Published result CSV downloaded.");
+    await loadArtifacts().catch(() => {});
+  }
+
+  async function downloadPendingReviewCsv() {
+    const examId = requireExam();
+    const { blob, fileName } = await downloadBlob(`/admin/exams/${examId}/results/pending-review.csv`);
+    triggerBlobDownload(blob, fileName);
+    setStatus("Pending review CSV downloaded.");
+    await loadArtifacts().catch(() => {});
+  }
+
+  async function handleResultAction(button) {
+    const attemptId = button.dataset.attemptId;
+    if (!attemptId) throw new Error("Attempt ID missing.");
+    if (button.dataset.action === "result-preview" || button.dataset.action === "result-print") {
+      const win = await openBlobPage(`/admin/attempts/${attemptId}/result-preview`);
+      if (button.dataset.action === "result-print") {
+        setTimeout(() => {
+          try {
+            win.print();
+          } catch {
+            // Browser handles print fallback through the preview page button.
+          }
+        }, 500);
+      }
+      setStatus(button.dataset.action === "result-print" ? "Printable result preview opened." : "Result preview opened.");
+      await loadArtifacts().catch(() => {});
+      return;
+    }
+    if (button.dataset.action === "result-pdf") {
+      const { blob, fileName } = await downloadBlob(`/admin/attempts/${attemptId}/result-sheet.pdf`);
+      triggerBlobDownload(blob, fileName);
+      setStatus("Result PDF downloaded.");
+      await loadArtifacts().catch(() => {});
+      return;
+    }
+    if (button.dataset.action === "result-share") {
+      const { blob } = await downloadBlob(`/admin/attempts/${attemptId}/result-preview`);
+      const htmlFile =
+        typeof File === "function"
+          ? new File([blob], `result_preview_${attemptId}.html`, { type: "text/html" })
+          : null;
+      if (htmlFile && navigator.share && navigator.canShare?.({ files: [htmlFile] })) {
+        await navigator.share({ title: "NITMEXS Result Preview", files: [htmlFile] });
+      } else {
+        triggerBlobDownload(blob, htmlFile?.name || `result_preview_${attemptId}.html`);
+      }
+      setStatus("Result preview prepared for local export/share.");
+    }
+  }
+
+  async function loadArtifacts() {
+    const examId = selectedExamId() || "";
+    const query = examId ? `?exam_id=${encodeURIComponent(examId)}` : "";
+    const data = await api(`/admin/artifacts${query}`);
+    el.artifactsBody.innerHTML = data.length
+      ? data
+          .map(
+            (item) => `
+              <tr>
+                <td>${esc(item.created_at)}</td>
+                <td>${esc(item.artifact_type)}</td>
+                <td>${esc(item.file_name)}</td>
+                <td>${esc(item.reference_code)}</td>
+                <td>${esc(item.created_by)}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : '<tr><td colspan="5">No generated artifacts yet.</td></tr>';
+  }
+
   function bindQuestionTable() {
     el.questionsBody.addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-action]");
@@ -993,10 +1361,30 @@
     });
   }
 
+  function bindResultTable() {
+    el.resultsCandidatesBody?.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      try {
+        await handleResultAction(button);
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+  }
+
   function bindEvents() {
     el.logoutAdmin.addEventListener("click", () => {
       localStorage.removeItem(SESSION_KEY);
       window.location.href = "/web";
+    });
+    el.openDownloadsTop?.addEventListener("click", () => setAdminTab("downloads"));
+    el.errorClose?.addEventListener("click", () => closeDialog(el.errorDialog));
+    el.errorDialog?.addEventListener("click", (event) => {
+      if (event.target === el.errorDialog) closeDialog(el.errorDialog);
+    });
+    adminTabButtons().forEach((button) => {
+      button.addEventListener("click", () => setAdminTab(button.dataset.adminTab));
     });
     el.loadExams.addEventListener("click", () => loadExams().catch((error) => setStatus(error.message, true)));
     el.createExam.addEventListener("click", () => createExam().catch((error) => setStatus(error.message, true)));
@@ -1005,6 +1393,8 @@
       const exam = st.exams.find((item) => item.id === st.selectedExamId);
       el.referenceExamSelect.value = exam?.reference_exam_id || "";
       el.customRulesText.value = (exam?.custom_rules || []).join("\n");
+      updateSelectedExamChip();
+      loadArtifacts().catch(() => {});
     });
     el.saveCustomRules.addEventListener("click", () => saveCustomRules().catch((error) => setStatus(error.message, true)));
     el.saveReferenceExam.addEventListener("click", () => saveReferenceExam().catch((error) => setStatus(error.message, true)));
@@ -1032,15 +1422,29 @@
     el.loadAccessProfile.addEventListener("click", () => loadAccessProfile().catch((error) => setStatus(error.message, true)));
     el.loadMetrics.addEventListener("click", () => loadMetrics().catch((error) => setStatus(error.message, true)));
     el.loadExamAnalytics.addEventListener("click", () => loadAnalytics().catch((error) => setStatus(error.message, true)));
+    el.loadAiStatus?.addEventListener("click", () => loadAiStatus().catch((error) => setStatus(error.message, true)));
+    el.aiRefineQuestion?.addEventListener("click", () => refineQuestionWithAi().catch((error) => setStatus(error.message, true)));
+    el.aiRubricSuggest?.addEventListener("click", () => suggestRubricWithAi().catch((error) => setStatus(error.message, true)));
+    el.aiFibCluster?.addEventListener("click", () => clusterFibWithAi().catch((error) => setStatus(error.message, true)));
+    el.aiSubjectiveSuggest?.addEventListener("click", () => suggestSubjectiveWithAi().catch((error) => setStatus(error.message, true)));
+    el.aiSummarizeAnalytics?.addEventListener("click", () => summarizeAnalyticsWithAi().catch((error) => setStatus(error.message, true)));
+    el.refreshResults?.addEventListener("click", () => refreshResults().catch((error) => setStatus(error.message, true)));
+    el.publishResults?.addEventListener("click", () => publishResults().catch((error) => setStatus(error.message, true)));
+    el.unpublishResults?.addEventListener("click", () => unpublishResults().catch((error) => setStatus(error.message, true)));
+    el.downloadResultsCsv?.addEventListener("click", () => downloadResultsCsv().catch((error) => setStatus(error.message, true)));
+    el.downloadPendingCsv?.addEventListener("click", () => downloadPendingReviewCsv().catch((error) => setStatus(error.message, true)));
+    el.loadArtifacts?.addEventListener("click", () => loadArtifacts().catch((error) => setStatus(error.message, true)));
     el.createAdminAccount?.addEventListener("click", () => createAdminAccount().catch((error) => setStatus(error.message, true)));
     el.loadAdminAccounts?.addEventListener("click", () => loadAdminAccounts().catch((error) => setStatus(error.message, true)));
     bindQuestionTable();
     bindReviewTables();
+    bindResultTable();
   }
 
   try {
     ensureSession();
     bindEvents();
+    setAdminTab("dashboard");
     loadVersion();
     loadExams().catch((error) => setStatus(error.message, true));
     loadQuestions().catch((error) => setStatus(error.message, true));
@@ -1049,6 +1453,8 @@
       loadAdminAccounts().catch((error) => setStatus(error.message, true));
     }
     loadAccessProfile().catch(() => {});
+    loadAiStatus().catch(() => {});
+    loadArtifacts().catch(() => {});
   } catch {
     // Redirect handled in ensureSession.
   }

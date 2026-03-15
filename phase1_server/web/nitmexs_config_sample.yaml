@@ -1,0 +1,14 @@
+# NITMEXS sample config for secure LAN deployment
+host: 127.0.0.1
+port: 8000
+db_path: ./data/exam_server.db
+log_level: INFO
+app_log_path: ./logs/app.log
+audit_log_path: ./logs/audit.log
+version: 1.0.0
+ai_mode: local_sidecar
+ai_provider: local_http
+ai_base_url: http://127.0.0.1:11434
+ai_timeout_seconds: 20
+ai_model_name: qwen2.5:7b-instruct
+ai_enabled_features: question_refine,rubric_suggest,fib_cluster,subjective_suggest,analytics_summary

@@ -19,6 +19,11 @@ class AppSettings:
     version: str = "1.0.0"
     ai_provider: str = "auto"
     ai_model: str = ""
+    ai_mode: str = "local_sidecar"
+    ai_base_url: str = "http://127.0.0.1:11434"
+    ai_timeout_seconds: int = 20
+    ai_model_name: str = "qwen2.5:7b-instruct"
+    ai_enabled_features: str = "question_refine,rubric_suggest,fib_cluster,subjective_suggest,analytics_summary"
     openai_api_key: str = ""
     gemini_api_key: str = ""
     openai_model: str = ""
@@ -62,6 +67,11 @@ def load_settings(config_path: str | None = None) -> AppSettings:
         "version": os.getenv("NITMEXS_VERSION"),
         "ai_provider": os.getenv("NITMEXS_AI_PROVIDER"),
         "ai_model": os.getenv("NITMEXS_AI_MODEL"),
+        "ai_mode": os.getenv("NITMEXS_AI_MODE"),
+        "ai_base_url": os.getenv("NITMEXS_AI_BASE_URL"),
+        "ai_timeout_seconds": os.getenv("NITMEXS_AI_TIMEOUT_SECONDS"),
+        "ai_model_name": os.getenv("NITMEXS_AI_MODEL_NAME"),
+        "ai_enabled_features": os.getenv("NITMEXS_AI_ENABLED_FEATURES"),
         "openai_api_key": os.getenv("NITMEXS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"),
         "gemini_api_key": os.getenv("NITMEXS_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"),
         "openai_model": os.getenv("NITMEXS_OPENAI_MODEL"),
@@ -81,6 +91,11 @@ def load_settings(config_path: str | None = None) -> AppSettings:
         version=str(values.get("version", AppSettings.version)),
         ai_provider=str(values.get("ai_provider", AppSettings.ai_provider)).strip() or AppSettings.ai_provider,
         ai_model=str(values.get("ai_model", AppSettings.ai_model)).strip(),
+        ai_mode=str(values.get("ai_mode", AppSettings.ai_mode)).strip() or AppSettings.ai_mode,
+        ai_base_url=str(values.get("ai_base_url", AppSettings.ai_base_url)).strip() or AppSettings.ai_base_url,
+        ai_timeout_seconds=int(values.get("ai_timeout_seconds", AppSettings.ai_timeout_seconds)),
+        ai_model_name=str(values.get("ai_model_name", AppSettings.ai_model_name)).strip() or AppSettings.ai_model_name,
+        ai_enabled_features=str(values.get("ai_enabled_features", AppSettings.ai_enabled_features)).strip() or AppSettings.ai_enabled_features,
         openai_api_key=str(values.get("openai_api_key", AppSettings.openai_api_key)).strip(),
         gemini_api_key=str(values.get("gemini_api_key", AppSettings.gemini_api_key)).strip(),
         openai_model=str(values.get("openai_model", AppSettings.openai_model)).strip(),
@@ -92,6 +107,11 @@ def apply_runtime_environment(settings: AppSettings) -> None:
     runtime_values = {
         "NITMEXS_AI_PROVIDER": settings.ai_provider,
         "NITMEXS_AI_MODEL": settings.ai_model,
+        "NITMEXS_AI_MODE": settings.ai_mode,
+        "NITMEXS_AI_BASE_URL": settings.ai_base_url,
+        "NITMEXS_AI_TIMEOUT_SECONDS": settings.ai_timeout_seconds,
+        "NITMEXS_AI_MODEL_NAME": settings.ai_model_name,
+        "NITMEXS_AI_ENABLED_FEATURES": settings.ai_enabled_features,
         "NITMEXS_OPENAI_API_KEY": settings.openai_api_key,
         "NITMEXS_GEMINI_API_KEY": settings.gemini_api_key,
         "NITMEXS_OPENAI_MODEL": settings.openai_model,

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NITMEXS Offline AI Setup</title>
+  <link rel="stylesheet" href="/web/theme.css">
+</head>
+<body class="portal-body theme-light">
+  <main class="portal-wrap">
+    <section class="portal-card">
+      <p class="card-kicker">NITMEXS</p>
+      <h1>Offline AI Setup Guide</h1>
+      <p>Recommended default: local sidecar using an Ollama-compatible HTTP service on <code>127.0.0.1</code>.</p>
+      <ol>
+        <li>Install the local model runtime on the trusted host machine.</li>
+        <li>Pull a supported model such as <code>qwen2.5:7b-instruct</code> or <code>llama3.1:8b</code>.</li>
+        <li>Set <code>ai_mode=local_sidecar</code> and <code>ai_base_url</code> in the NITMEXS config.</li>
+        <li>Use the Admin Review tab to verify AI health and suggestions.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

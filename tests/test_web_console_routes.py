@@ -44,6 +44,12 @@ class WebConsoleRouteTests(unittest.TestCase):
             demo_question_csv_response = client.get("/web/demo_question_bank.csv")
             demo_exam_pack_csv_response = client.get("/web/demo_exam_package.csv")
             demo_student_csv_response = client.get("/web/demo_student_ids.csv")
+            manual_admin_response = client.get("/web/manual_admin.html")
+            manual_student_response = client.get("/web/manual_student.html")
+            manual_examiner_response = client.get("/web/manual_examiner.html")
+            manual_offline_ai_response = client.get("/web/manual_offline_ai.html")
+            release_notes_response = client.get("/web/release_notes.html")
+            config_sample_response = client.get("/web/nitmexs_config_sample.yaml")
 
         self.assertEqual(index_response.status_code, 200)
         self.assertIn("text/html", index_response.headers.get("content-type", ""))
@@ -110,9 +116,16 @@ class WebConsoleRouteTests(unittest.TestCase):
 
         self.assertEqual(admin_response.status_code, 200)
         self.assertIn("NITMEXS Exam Controller Console", admin_response.text)
+        self.assertIn("Dashboard", admin_response.text)
+        self.assertIn("Audit", admin_response.text)
         self.assertIn("Exam Scope", admin_response.text)
         self.assertIn("Question Authoring", admin_response.text)
         self.assertIn("Cadet Registry", admin_response.text)
+        self.assertIn("Downloads", admin_response.text)
+        self.assertIn("Offline AI Assist", admin_response.text)
+        self.assertIn("Generated Artifacts", admin_response.text)
+        self.assertIn("Result Publication &amp; Export", admin_response.text)
+        self.assertIn("Access and Health Audit", admin_response.text)
         self.assertIn("Custom Exam Rules", admin_response.text)
         self.assertIn("Admin Accounts", admin_response.text)
         self.assertIn("FIB Review Queue", admin_response.text)
@@ -144,6 +157,11 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("deleteExam", admin_js_response.text)
         self.assertIn("loadMetrics", admin_js_response.text)
         self.assertIn("renderAnalyticsDashboard", admin_js_response.text)
+        self.assertIn("setAdminTab", admin_js_response.text)
+        self.assertIn("loadAiStatus", admin_js_response.text)
+        self.assertIn("publishResults", admin_js_response.text)
+        self.assertIn("downloadResultsCsv", admin_js_response.text)
+        self.assertIn("loadArtifacts", admin_js_response.text)
         self.assertIn("score-distribution", admin_js_response.text)
         self.assertIn("topic-heatmap", admin_js_response.text)
         self.assertIn("saveCustomRules", admin_js_response.text)
@@ -178,6 +196,26 @@ class WebConsoleRouteTests(unittest.TestCase):
         )
         self.assertIn("student_id", demo_student_csv_response.text)
         self.assertIn("password", demo_student_csv_response.text)
+
+        self.assertEqual(manual_admin_response.status_code, 200)
+        self.assertIn("NITMEXS", manual_admin_response.text)
+        self.assertIn("Admin Manual", manual_admin_response.text)
+
+        self.assertEqual(manual_student_response.status_code, 200)
+        self.assertIn("Student Instructions", manual_student_response.text)
+
+        self.assertEqual(manual_examiner_response.status_code, 200)
+        self.assertIn("Examiner Review Guide", manual_examiner_response.text)
+
+        self.assertEqual(manual_offline_ai_response.status_code, 200)
+        self.assertIn("Offline AI", manual_offline_ai_response.text)
+
+        self.assertEqual(release_notes_response.status_code, 200)
+        self.assertIn("Release Notes", release_notes_response.text)
+
+        self.assertEqual(config_sample_response.status_code, 200)
+        self.assertIn("ai_mode", config_sample_response.text)
+        self.assertIn("ai_base_url", config_sample_response.text)
 
 
 if __name__ == "__main__":

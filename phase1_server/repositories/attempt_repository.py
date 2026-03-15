@@ -162,6 +162,12 @@ class AttemptRepository(Protocol):
 
     def get_exam_attempt_scores(self, exam_id: str) -> list[dict]: ...
 
+    def count_pending_reviews_by_exam(self, exam_id: str) -> int: ...
+
+    def count_ready_results_by_exam(self, exam_id: str) -> int: ...
+
+    def list_exam_results(self, exam_id: str) -> list[dict]: ...
+
 
 class SQLiteAttemptRepository:
     def __init__(self, conn: sqlite3.Connection):
@@ -914,6 +920,77 @@ class SQLiteAttemptRepository:
                 "attempt_id": row["attempt_id"],
                 "total_score": float(row["total_score"]),
                 "passed": bool(row["passed"]),
+            }
+            for row in rows
+        ]
+
+    def count_pending_reviews_by_exam(self, exam_id: str) -> int:
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM attempt_question_results aqr
+            INNER JOIN attempts a ON a.id = aqr.attempt_id
+            WHERE a.exam_id = ? AND aqr.grading_state = 'pending_review'
+            """,
+            (exam_id,),
+        ).fetchone()
+        return 0 if row is None else int(row["total"] or 0)
+
+    def count_ready_results_by_exam(self, exam_id: str) -> int:
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM attempt_results ar
+            INNER JOIN attempts a ON a.id = ar.attempt_id
+            WHERE a.exam_id = ?
+            """,
+            (exam_id,),
+        ).fetchone()
+        return 0 if row is None else int(row["total"] or 0)
+
+    def list_exam_results(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                a.id AS attempt_id,
+                a.candidate_id AS student_id,
+                COALESCE(sa.display_name, a.candidate_id) AS display_name,
+                a.status AS attempt_status,
+                a.submitted_at AS submitted_at,
+                ar.total_score AS total_score,
+                ar.total_possible_marks AS total_possible_marks,
+                ar.percentage AS percentage,
+                ar.passed AS passed,
+                ar.graded_at AS graded_at,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM attempt_question_results pending
+                    WHERE pending.attempt_id = a.id
+                      AND pending.grading_state = 'pending_review'
+                ), 0) AS pending_review_count
+            FROM attempts a
+            LEFT JOIN attempt_results ar
+                ON ar.attempt_id = a.id
+            LEFT JOIN student_accounts sa
+                ON sa.student_id = a.candidate_id
+            WHERE a.exam_id = ?
+            ORDER BY a.created_at DESC, a.candidate_id ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "display_name": row["display_name"],
+                "attempt_status": row["attempt_status"],
+                "submitted_at": row["submitted_at"],
+                "total_score": None if row["total_score"] is None else float(row["total_score"]),
+                "total_possible_marks": None if row["total_possible_marks"] is None else float(row["total_possible_marks"]),
+                "percentage": None if row["percentage"] is None else float(row["percentage"]),
+                "passed": None if row["passed"] is None else bool(row["passed"]),
+                "graded_at": row["graded_at"],
+                "pending_review_count": int(row["pending_review_count"] or 0),
             }
             for row in rows
         ]

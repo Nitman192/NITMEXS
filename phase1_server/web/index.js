@@ -2,6 +2,25 @@
   const STUDENT_SESSION_KEY = "nitmexs_student_session";
   const ADMIN_SESSION_KEY = "nitmexs_admin_session";
   const $ = (id) => document.getElementById(id);
+  const explainApiError = (detail) => {
+    if (detail == null || detail === "") return "";
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => explainApiError(item)).filter(Boolean).join("; ");
+    }
+    if (typeof detail === "object") {
+      if (typeof detail.msg === "string") {
+        const where = Array.isArray(detail.loc) ? detail.loc.join(" > ") : "";
+        return where ? `${where}: ${detail.msg}` : detail.msg;
+      }
+      if (typeof detail.detail === "string") return detail.detail;
+      return Object.entries(detail)
+        .map(([key, value]) => `${key}: ${explainApiError(value)}`)
+        .filter((item) => item && !item.endsWith(": "))
+        .join(", ");
+    }
+    return String(detail);
+  };
   const el = {
     version: $("version-badge"),
     accessProfile: $("access-profile-label"),
@@ -16,10 +35,32 @@
     continueAdmin: $("continue-admin"),
     logoutAll: $("logout-all"),
     status: $("portal-status"),
+    errorDialog: $("gateway-error-dialog"),
+    errorText: $("gateway-error-text"),
+    errorClose: $("gateway-error-close"),
   };
 
-  const setStatus = (message) => {
-    if (el.status) el.status.textContent = message;
+  const openDialog = (dialog) => {
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "open");
+  };
+
+  const closeDialog = (dialog) => {
+    if (!dialog) return;
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  };
+
+  const showErrorDialog = (message) => {
+    if (!el.errorDialog || !el.errorText) return;
+    el.errorText.textContent = String(message ?? "Something went wrong.");
+    openDialog(el.errorDialog);
+  };
+
+  const setStatus = (message, isError = false) => {
+    if (el.status) el.status.textContent = String(message ?? "");
+    if (isError && message) showErrorDialog(message);
   };
 
   const readSession = (key) => {
@@ -42,7 +83,13 @@
     }
     const res = await fetch(path, req);
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.detail || payload.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      throw new Error(
+        explainApiError(payload.detail) ||
+          explainApiError(payload.error) ||
+          `HTTP ${res.status}`,
+      );
+    }
     return payload.data ?? payload;
   }
 
@@ -71,7 +118,7 @@
     const studentId = (el.studentId.value || "").trim();
     const password = (el.studentPassword.value || "").trim();
     if (!studentId || !password) {
-      setStatus("Student login ke liye Student ID aur password dono required hain.");
+      setStatus("Student login ke liye Student ID aur password dono required hain.", true);
       return;
     }
     const session = await api("/student/login", {
@@ -90,7 +137,7 @@
     const adminId = (el.adminId.value || "").trim();
     const accessKey = (el.adminKey.value || "").trim();
     if (!adminId || !accessKey) {
-      setStatus("Admin login ke liye Admin ID aur access key required hai.");
+      setStatus("Admin login ke liye Admin ID aur access key required hai.", true);
       return;
     }
     const session = await api("/system/admin-login", {
@@ -123,16 +170,24 @@
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("reason") === "login_required") {
-    setStatus("Requested page open karne ke liye pehle login karo.");
+    setStatus("Requested page open karne ke liye pehle login karo.", true);
   }
   if (params.get("reason") === "host_only") {
-    setStatus("Admin panel sirf trusted host machine par available hai.");
+    setStatus("Admin panel sirf trusted host machine par available hai.", true);
   }
 
-  el.studentLogin.addEventListener("click", () => loginStudent().catch((error) => setStatus(error.message)));
-  el.adminLogin?.addEventListener("click", () => loginAdmin().catch((error) => setStatus(error.message)));
+  el.studentLogin.addEventListener("click", () =>
+    loginStudent().catch((error) => setStatus(error.message, true)),
+  );
+  el.adminLogin?.addEventListener("click", () =>
+    loginAdmin().catch((error) => setStatus(error.message, true)),
+  );
   el.continueStudent.addEventListener("click", () => continueSession(STUDENT_SESSION_KEY, "/web/student.html", "student"));
   el.continueAdmin.addEventListener("click", () => continueSession(ADMIN_SESSION_KEY, "/web/admin.html", "admin"));
   el.logoutAll.addEventListener("click", logoutAll);
+  el.errorClose?.addEventListener("click", () => closeDialog(el.errorDialog));
+  el.errorDialog?.addEventListener("click", (event) => {
+    if (event.target === el.errorDialog) closeDialog(el.errorDialog);
+  });
   loadPortalContext();
 })();
