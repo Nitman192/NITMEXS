@@ -175,3 +175,12 @@ class AISubjectiveSuggestSchema(BaseModel):
     question_type: Literal["short_answer", "long_answer"] = "short_answer"
     answer_text: str = Field(min_length=1, max_length=20000)
     max_marks: confloat(gt=0, le=100)
+
+
+class DownloadAssetUpdateSchema(BaseModel):
+    content: str = Field(default="", max_length=200000)
+
+
+class DownloadAssetCreateSchema(BaseModel):
+    file_name: str = Field(min_length=3, max_length=120)
+    content: str = Field(default="", max_length=200000)

@@ -100,6 +100,9 @@
       "admin.downloads_tab": "Downloads",
       "admin.audit_tab": "Audit",
       "admin.security_tab": "Security",
+      "admin.group_workspace": "Workspace",
+      "admin.group_operations": "Operations",
+      "admin.group_system": "System",
       "admin.exam_context": "Exam Context",
       "admin.load_exams": "Load Exams",
       "admin.reference_exam_placeholder": "Reference exam (optional)",
@@ -258,6 +261,9 @@
           "#save-reference-exam": "admin.save_reference_exam",
           ".admin-drawer-head .small": "admin.drawer_nav",
           ".admin-drawer-head strong": "admin.drawer_title",
+          ".admin-tab-group-label[data-admin-group='workspace']": "admin.group_workspace",
+          ".admin-tab-group-label[data-admin-group='operations']": "admin.group_operations",
+          ".admin-tab-group-label[data-admin-group='system']": "admin.group_system",
           "[data-admin-tab='dashboard']": "admin.dashboard_tab",
           "[data-admin-tab='exams']": "admin.exams_tab",
           "[data-admin-tab='questions']": "admin.questions_tab",
@@ -327,7 +333,14 @@
 
   function applyText(selector, value, root = document) {
     root.querySelectorAll(selector).forEach((node) => {
-      node.textContent = value;
+      const labelTarget =
+        node.querySelector?.("[data-ui-label-target='text']") ??
+        node.querySelector?.(".admin-tab-label");
+      if (labelTarget) labelTarget.textContent = value;
+      else node.textContent = value;
+      if (node.dataset?.syncTitle === "true") {
+        node.setAttribute("title", value);
+      }
     });
   }
 

@@ -24,6 +24,8 @@ from phase1_server.schemas import (
     AIQuestionRefineSchema,
     AIRubricSuggestSchema,
     AISubjectiveSuggestSchema,
+    DownloadAssetCreateSchema,
+    DownloadAssetUpdateSchema,
     ExamCreateSchema,
     ExamControlSchema,
     ExamReferenceUpdateSchema,
@@ -38,6 +40,12 @@ from phase1_server.schemas import (
     StudentGenerateSchema,
     StudentRegisterSchema,
     SubjectiveReviewSchema,
+)
+from phase1_server.services.download_asset_service import (
+    DownloadAssetConflictError,
+    DownloadAssetNotFoundError,
+    DownloadAssetService,
+    DownloadAssetValidationError,
 )
 from phase1_server.services.analytics_service import AnalyticsService
 from phase1_server.services.admin_account_service import (
@@ -1264,6 +1272,59 @@ def list_result_artifacts(
         if exam_id:
             _ensure_exam_access(uow, request, exam_id)
         data = _result_service(uow).list_artifacts(exam_id=exam_id, limit=limit)
+    return {"status": "success", "data": data}
+
+
+@router.get("/download-assets")
+def list_download_assets(request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DownloadAssetService(audit_service=AuditService(uow.audit_events))
+        data = service.list_assets()
+    return {"status": "success", "data": data}
+
+
+@router.get("/download-assets/{asset_path:path}")
+def get_download_asset(asset_path: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DownloadAssetService(audit_service=AuditService(uow.audit_events))
+        try:
+            data = service.get_asset(asset_path)
+        except DownloadAssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DownloadAssetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.put("/download-assets/{asset_path:path}")
+def update_download_asset(asset_path: str, payload: DownloadAssetUpdateSchema, request: Request):
+    db = request.app.state.db
+    admin = _admin_identity(request)
+    with UnitOfWork(db) as uow:
+        service = DownloadAssetService(audit_service=AuditService(uow.audit_events))
+        try:
+            data = service.update_asset(asset_path, payload.content, admin.admin_id)
+        except DownloadAssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DownloadAssetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.post("/download-assets", status_code=status.HTTP_201_CREATED)
+def create_download_asset(payload: DownloadAssetCreateSchema, request: Request):
+    db = request.app.state.db
+    admin = _admin_identity(request)
+    with UnitOfWork(db) as uow:
+        service = DownloadAssetService(audit_service=AuditService(uow.audit_events))
+        try:
+            data = service.create_asset(payload.file_name, payload.content, admin.admin_id)
+        except DownloadAssetConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except DownloadAssetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "success", "data": data}
 
 

@@ -31,23 +31,84 @@
     <div class="admin-workspace">
       <aside id="admin-drawer" class="admin-drawer">
         <div class="admin-drawer-head">
-          <div>
+          <div class="admin-drawer-copy">
             <p class="small">Navigation</p>
             <strong>Control Drawer</strong>
           </div>
           <button id="toggle-admin-drawer" class="alt" type="button" aria-controls="admin-drawer" aria-expanded="true">Collapse</button>
         </div>
         <nav class="admin-tab-strip" aria-label="Admin sections">
-          <button class="admin-tab active" data-admin-tab="dashboard" data-short="Dash" title="Dashboard" type="button">Dashboard</button>
-          <button class="admin-tab" data-admin-tab="exams" data-short="Exams" title="Exams" type="button">Exams</button>
-          <button class="admin-tab" data-admin-tab="questions" data-short="Ques" title="Questions" type="button">Questions</button>
-          <button class="admin-tab" data-admin-tab="cadets" data-short="Cadets" title="Cadets" type="button">Cadets</button>
-          <button class="admin-tab" data-admin-tab="live" data-short="Live" title="Live Control" type="button">Live Control</button>
-          <button class="admin-tab" data-admin-tab="review" data-short="Review" title="Review" type="button">Review</button>
-          <button class="admin-tab" data-admin-tab="results" data-short="Results" title="Results" type="button">Results</button>
-          <button class="admin-tab" data-admin-tab="downloads" data-short="Files" title="Downloads" type="button">Downloads</button>
-          <button class="admin-tab" data-admin-tab="audit" data-short="Audit" title="Audit" type="button">Audit</button>
-          <button class="admin-tab" data-admin-tab="security" data-short="Secure" title="Security" type="button">Security</button>
+          <section class="admin-tab-group" aria-labelledby="admin-nav-workspace">
+            <p id="admin-nav-workspace" class="admin-tab-group-label" data-admin-group="workspace">Workspace</p>
+            <button class="admin-tab active" data-admin-tab="dashboard" data-short="Dash" data-sync-title="true" title="Dashboard" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Dashboard</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="exams" data-short="Exams" data-sync-title="true" title="Exams" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M8 3v4M16 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Exams</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="questions" data-short="Ques" data-sync-title="true" title="Questions" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M8 7h9M8 12h9M8 17h6M6 3h12a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2z"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Questions</span>
+            </button>
+          </section>
+
+          <section class="admin-tab-group" aria-labelledby="admin-nav-operations">
+            <p id="admin-nav-operations" class="admin-tab-group-label" data-admin-group="operations">Operations</p>
+            <button class="admin-tab" data-admin-tab="cadets" data-short="Cadets" data-sync-title="true" title="Cadets" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M16 19a4 4 0 0 0-8 0M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 19a3 3 0 0 0-3-3M17 11a3 3 0 1 0 0-6"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Cadets</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="live" data-short="Live" data-sync-title="true" title="Live Control" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M12 6v6l4 2M12 2a10 10 0 1 1-7.07 2.93M5 5l2.5 2.5"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Live Control</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="review" data-short="Review" data-sync-title="true" title="Review" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M9 12l2 2 4-4M5 4h14a2 2 0 0 1 2 2v12l-4-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Review</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="results" data-short="Results" data-sync-title="true" title="Results" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M5 19V9M12 19V5M19 19v-8M3 19h18"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Results</span>
+            </button>
+          </section>
+
+          <section class="admin-tab-group" aria-labelledby="admin-nav-system">
+            <p id="admin-nav-system" class="admin-tab-group-label" data-admin-group="system">System</p>
+            <button class="admin-tab" data-admin-tab="downloads" data-short="Files" data-sync-title="true" title="Downloads" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v10M8 10l4 4 4-4M5 19h14"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Downloads</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="audit" data-short="Audit" data-sync-title="true" title="Audit" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M11 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M10 14l9-9M15 5h4v4"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Audit</span>
+            </button>
+            <button class="admin-tab" data-admin-tab="security" data-short="Secure" data-sync-title="true" title="Security" type="button">
+              <span class="admin-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3zM9.5 12.5l2 2 3.5-4"/></svg>
+              </span>
+              <span class="admin-tab-label" data-ui-label-target="text">Security</span>
+            </button>
+          </section>
         </nav>
       </aside>
 
@@ -219,7 +280,9 @@
             <select id="broadcast-severity" style="width:120px"><option value="info">Info</option><option value="warn">Warn</option><option value="critical">Critical</option></select>
             <button id="send-broadcast" class="alt" type="button">Send Broadcast</button>
           </div>
-          <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
+          <div id="live-summary" class="box analytics-shell">
+            <p class="small">Live control dashboard will appear here.</p>
+          </div>
           <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
           <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
         </article>
@@ -228,7 +291,7 @@
           <h2>Active Attempts</h2>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Attempt</th><th>Cadet</th><th>Answered</th><th>Total</th><th>Expires</th></tr></thead>
+              <thead><tr><th>Attempt</th><th>Cadet</th><th>Progress</th><th>Time Left</th><th>Status</th><th>Ends At</th></tr></thead>
               <tbody id="active-body"></tbody>
             </table>
           </div>
@@ -343,9 +406,32 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Created</th><th>Type</th><th>File</th><th>Ref</th><th>Created By</th></tr></thead>
+              <thead><tr><th>Created</th><th>Type</th><th>File</th><th>Ref</th><th>Created By</th><th>Action</th></tr></thead>
               <tbody id="artifacts-body"></tbody>
             </table>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Download File Editor</h2>
+          <div class="stack">
+            <div class="row">
+              <select id="download-asset-select" style="flex:1 1 320px">
+                <option value="">Select a download file...</option>
+              </select>
+              <button id="refresh-download-assets" type="button">Refresh Files</button>
+              <button id="load-download-asset" type="button">Load File</button>
+              <button id="open-download-asset" class="alt" type="button">Open / Download</button>
+            </div>
+            <textarea id="download-asset-content" rows="14" placeholder="Selected file content will appear here for editing."></textarea>
+            <div class="row">
+              <button id="save-download-asset" type="button">Save Changes</button>
+            </div>
+            <div class="row">
+              <input id="new-download-file-name" placeholder="New file name (example: exam_notice.html)" style="flex:1 1 260px">
+              <button id="create-download-asset" type="button">Create New File</button>
+            </div>
+            <pre id="download-asset-result" class="box mono">Editable downloads will appear here. You can update existing files or add a new custom file.</pre>
           </div>
         </article>
       </div>
@@ -353,7 +439,7 @@
 
     <section class="admin-tab-panel" data-admin-panel="audit" hidden>
       <div class="grid admin-tab-grid">
-        <article class="panel">
+        <article class="panel wide">
           <h2>Access and Health Audit</h2>
           <p class="small">Use this area only for deployment checks, host-access verification, and performance troubleshooting.</p>
           <div class="row">

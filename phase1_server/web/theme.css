@@ -2961,6 +2961,11 @@ body.admin-shell .admin-page {
   display: grid;
   gap: 14px;
   --admin-sticky-top: 86px;
+  --admin-drawer-width: 260px;
+}
+
+body.admin-shell.admin-drawer-collapsed .admin-page {
+  --admin-drawer-width: 96px;
 }
 
 body.admin-shell .admin-context-bar {
@@ -2971,9 +2976,10 @@ body.admin-shell .admin-context-bar {
 
 body.admin-shell .admin-workspace {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  grid-template-columns: var(--admin-drawer-width) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+  transition: grid-template-columns 0.28s ease;
 }
 
 body.admin-shell .admin-content-stack {
@@ -2990,12 +2996,19 @@ body.admin-shell .admin-drawer {
   max-height: calc(100vh - var(--admin-sticky-top) - 18px);
   overflow: hidden;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   padding: 10px;
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: rgba(8, 17, 37, 0.92);
   box-shadow: var(--glow);
+  transition:
+    padding 0.24s ease,
+    border-color 0.22s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
 body.admin-shell .admin-drawer-head {
@@ -3006,21 +3019,87 @@ body.admin-shell .admin-drawer-head {
   padding: 4px 4px 8px;
 }
 
+body.admin-shell .admin-drawer-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.18s ease,
+    transform 0.22s ease;
+}
+
 body.admin-shell .admin-drawer-head strong {
   color: #f2f7ff;
 }
 
 body.admin-shell .admin-tab-strip {
   display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+body.admin-shell .admin-tab-strip::-webkit-scrollbar {
+  width: 8px;
+}
+
+body.admin-shell .admin-tab-strip::-webkit-scrollbar-track {
+  background: rgba(82, 110, 162, 0.12);
+  border-radius: 999px;
+}
+
+body.admin-shell .admin-tab-strip::-webkit-scrollbar-thumb {
+  background: rgba(133, 176, 255, 0.34);
+  border-radius: 999px;
+}
+
+body.admin-shell .admin-tab-strip::-webkit-scrollbar-thumb:hover {
+  background: rgba(155, 196, 255, 0.48);
+}
+
+body.admin-shell .admin-tab-group {
+  display: grid;
   gap: 8px;
+}
+
+body.admin-shell .admin-tab-group + .admin-tab-group {
+  padding-top: 12px;
+  border-top: 1px solid rgba(118, 160, 255, 0.12);
+}
+
+body.admin-shell .admin-tab-group-label {
+  margin: 0;
+  padding: 0 6px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #8faece;
+  overflow: hidden;
+  max-height: 22px;
+  transition:
+    opacity 0.18s ease,
+    max-height 0.22s ease,
+    transform 0.22s ease,
+    padding 0.22s ease;
 }
 
 body.admin-shell .admin-tab {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   justify-content: flex-start;
   min-height: 54px;
   padding: 12px 14px;
+  overflow: hidden;
   color: #d8e8ff;
   background: linear-gradient(145deg, rgba(31, 53, 97, 0.94), rgba(37, 63, 117, 0.94));
   border: 1px solid rgba(118, 160, 255, 0.2);
@@ -3030,7 +3109,39 @@ body.admin-shell .admin-tab {
     transform 0.18s ease,
     border-color 0.18s ease,
     background 0.18s ease,
-    color 0.18s ease;
+    color 0.18s ease,
+    padding 0.22s ease;
+}
+
+body.admin-shell .admin-tab-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.admin-shell .admin-tab-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.admin-shell .admin-tab-label {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    opacity 0.18s ease,
+    max-width 0.22s ease,
+    transform 0.22s ease;
 }
 
 body.admin-shell .admin-tab:hover {
@@ -3066,12 +3177,13 @@ body.admin-shell .admin-tab[data-admin-tab="security"].active::after {
 }
 
 body.admin-shell .admin-drawer.collapsed {
-  width: 96px;
+  padding: 10px 8px;
 }
 
-body.admin-shell .admin-drawer.collapsed .admin-drawer-head strong,
-body.admin-shell .admin-drawer.collapsed .admin-drawer-head .small {
-  display: none;
+body.admin-shell .admin-drawer.collapsed .admin-drawer-copy {
+  opacity: 0;
+  max-width: 0;
+  transform: translateX(-6px);
 }
 
 body.admin-shell .admin-drawer.collapsed .admin-drawer-head {
@@ -3081,21 +3193,32 @@ body.admin-shell .admin-drawer.collapsed .admin-drawer-head {
 body.admin-shell .admin-drawer.collapsed .admin-tab {
   justify-content: center;
   padding: 12px 10px;
-  font-size: 0;
+}
+
+body.admin-shell .admin-drawer.collapsed .admin-tab-group + .admin-tab-group {
+  padding-top: 10px;
+}
+
+body.admin-shell .admin-drawer.collapsed .admin-tab-group-label {
+  opacity: 0;
+  max-height: 0;
+  transform: translateX(-6px);
+  padding: 0;
+}
+
+body.admin-shell .admin-drawer.collapsed .admin-tab-label {
+  opacity: 0;
+  max-width: 0;
+  transform: translateX(-6px);
 }
 
 body.admin-shell .admin-drawer.collapsed .admin-tab::before {
-  content: attr(data-short);
-  font-size: 0.83rem;
-  line-height: 1.2;
-  color: inherit;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  content: none;
 }
 
 body.admin-shell .admin-drawer.collapsed .admin-tab::after {
-  left: 10px;
-  right: 10px;
+  left: 12px;
+  right: 12px;
 }
 
 body.admin-shell .admin-tab-panel {
@@ -4284,15 +4407,28 @@ body.student-body.theme-light .caps-warning {
     width: 100%;
   }
 
-  body.admin-shell .admin-drawer.collapsed .admin-drawer-head strong,
-  body.admin-shell .admin-drawer.collapsed .admin-drawer-head .small {
-    display: block;
+  body.admin-shell .admin-drawer.collapsed .admin-drawer-copy {
+    opacity: 1;
+    max-width: 180px;
+    transform: none;
   }
 
   body.admin-shell .admin-drawer.collapsed .admin-tab {
-    font-size: 1rem;
     justify-content: flex-start;
     padding: 12px 14px;
+  }
+
+  body.admin-shell .admin-drawer.collapsed .admin-tab-group-label {
+    opacity: 1;
+    max-height: 22px;
+    transform: none;
+    padding: 0 6px;
+  }
+
+  body.admin-shell .admin-drawer.collapsed .admin-tab-label {
+    opacity: 1;
+    max-width: 180px;
+    transform: none;
   }
 
   body.admin-shell .admin-drawer.collapsed .admin-tab::before {

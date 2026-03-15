@@ -112,6 +112,8 @@
       difficultyFilter: "all",
       difficultySort: "difficulty_index_asc",
     },
+    downloadAssets: [],
+    selectedDownloadAsset: "",
     drawerCollapsed: false,
   };
 
@@ -241,6 +243,15 @@
     resultsCandidatesBody: $("results-candidates-body"),
     loadArtifacts: $("load-artifacts"),
     artifactsBody: $("artifacts-body"),
+    downloadAssetSelect: $("download-asset-select"),
+    refreshDownloadAssets: $("refresh-download-assets"),
+    loadDownloadAsset: $("load-download-asset"),
+    openDownloadAsset: $("open-download-asset"),
+    downloadAssetContent: $("download-asset-content"),
+    saveDownloadAsset: $("save-download-asset"),
+    newDownloadFileName: $("new-download-file-name"),
+    createDownloadAsset: $("create-download-asset"),
+    downloadAssetResult: $("download-asset-result"),
     adminAccountsPanel: $("admin-accounts-panel"),
     newAdminId: $("new-admin-id"),
     newAdminName: $("new-admin-name"),
@@ -508,6 +519,200 @@
     }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     return win;
+  }
+
+  function encodePathSegments(path) {
+    return String(path || "")
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+  }
+
+  function assetDownloadUrl(assetPath) {
+    return `/web/${encodePathSegments(assetPath)}`;
+  }
+
+  function formatDateTime(value) {
+    const stamp = Date.parse(String(value || ""));
+    if (Number.isNaN(stamp)) return value ? String(value) : "-";
+    return new Date(stamp).toLocaleString();
+  }
+
+  function summarizeDownloadAsset(asset) {
+    if (!asset) return "Download file details will appear here.";
+    return [
+      `Name: ${asset.display_name || asset.file_name || "-"}`,
+      `Category: ${asset.category || "-"}`,
+      `File: ${asset.file_name || "-"}`,
+      `Type: ${asset.content_type || "-"}`,
+      `Path: ${asset.asset_path || "-"}`,
+    ].join("\n");
+  }
+
+  function artifactAction(item) {
+    const fileName = String(item.file_name || "");
+    if (item.artifact_type === "exam_results_csv" && item.entity_id) {
+      return {
+        label: "Download CSV",
+        url: `/admin/exams/${encodeURIComponent(item.entity_id)}/results/export.csv`,
+        mode: "download",
+      };
+    }
+    if (item.artifact_type === "pending_review_csv" && item.entity_id) {
+      return {
+        label: "Download Pending CSV",
+        url: `/admin/exams/${encodeURIComponent(item.entity_id)}/results/pending-review.csv`,
+        mode: "download",
+      };
+    }
+    if (item.artifact_type === "result_preview_html") {
+      const attemptId = fileName.match(/^result_preview_(.+)\.html$/i)?.[1];
+      if (attemptId) {
+        return {
+          label: "Open Preview",
+          url: `/admin/attempts/${encodeURIComponent(attemptId)}/result-preview`,
+          mode: "preview",
+        };
+      }
+    }
+    if (item.artifact_type === "result_sheet_pdf") {
+      const attemptId = fileName.match(/^result_sheet_(.+)\.pdf$/i)?.[1];
+      if (attemptId) {
+        return {
+          label: "Download PDF",
+          url: `/admin/attempts/${encodeURIComponent(attemptId)}/result-sheet.pdf`,
+          mode: "download",
+        };
+      }
+    }
+    return null;
+  }
+
+  function renderArtifactAction(item) {
+    const action = artifactAction(item);
+    if (!action) {
+      return '<span class="small">Recreate from results</span>';
+    }
+    return `
+      <button
+        type="button"
+        data-action="artifact-open"
+        data-artifact-url="${esc(action.url)}"
+        data-artifact-mode="${esc(action.mode)}"
+      >${esc(action.label)}</button>
+    `;
+  }
+
+  async function openArtifact(button) {
+    const url = button.dataset.artifactUrl;
+    const mode = button.dataset.artifactMode || "download";
+    if (!url) throw new Error("Artifact download path is missing.");
+    if (mode === "preview") {
+      await openBlobPage(url);
+      setStatus("Artifact preview opened.");
+      return;
+    }
+    const { blob, fileName } = await downloadBlob(url);
+    triggerBlobDownload(blob, fileName);
+    setStatus("Artifact downloaded.");
+  }
+
+  async function loadDownloadAssets(preferredAssetPath = "") {
+    const assets = await api("/admin/download-assets");
+    st.downloadAssets = Array.isArray(assets) ? assets : [];
+    const grouped = st.downloadAssets.reduce((map, asset) => {
+      const category = asset.category || "Files";
+      if (!map.has(category)) map.set(category, []);
+      map.get(category).push(asset);
+      return map;
+    }, new Map());
+    const selectedAssetPath =
+      preferredAssetPath ||
+      st.selectedDownloadAsset ||
+      el.downloadAssetSelect?.value ||
+      "";
+    const parts = ['<option value="">Select a download file...</option>'];
+    grouped.forEach((items, category) => {
+      parts.push(`<optgroup label="${esc(category)}">`);
+      items.forEach((asset) => {
+        parts.push(
+          `<option value="${esc(asset.asset_path)}">${esc(asset.display_name || asset.file_name)}</option>`,
+        );
+      });
+      parts.push("</optgroup>");
+    });
+    if (el.downloadAssetSelect) {
+      el.downloadAssetSelect.innerHTML = parts.join("");
+      if (selectedAssetPath && st.downloadAssets.some((asset) => asset.asset_path === selectedAssetPath)) {
+        el.downloadAssetSelect.value = selectedAssetPath;
+        st.selectedDownloadAsset = selectedAssetPath;
+      } else {
+        st.selectedDownloadAsset = "";
+      }
+    }
+    return st.downloadAssets;
+  }
+
+  async function loadSelectedDownloadAsset() {
+    const assetPath = el.downloadAssetSelect?.value || st.selectedDownloadAsset || "";
+    if (!assetPath) throw new Error("Select a download file first.");
+    const data = await api(`/admin/download-assets/${encodePathSegments(assetPath)}`);
+    st.selectedDownloadAsset = data.asset_path;
+    if (el.downloadAssetSelect) el.downloadAssetSelect.value = data.asset_path;
+    if (el.downloadAssetContent) el.downloadAssetContent.value = data.content || "";
+    if (el.downloadAssetResult) el.downloadAssetResult.textContent = summarizeDownloadAsset(data);
+    setStatus("Download file loaded for editing.");
+  }
+
+  async function saveSelectedDownloadAsset() {
+    const assetPath = el.downloadAssetSelect?.value || st.selectedDownloadAsset || "";
+    if (!assetPath) throw new Error("Select a download file first.");
+    const data = await api(`/admin/download-assets/${encodePathSegments(assetPath)}`, {
+      method: "PUT",
+      body: { content: el.downloadAssetContent?.value || "" },
+    });
+    st.selectedDownloadAsset = data.asset_path;
+    if (el.downloadAssetResult) {
+      el.downloadAssetResult.textContent = `${summarizeDownloadAsset(data)}\nSaved successfully.`;
+    }
+    await loadDownloadAssets(data.asset_path);
+    setStatus("Download file updated.");
+  }
+
+  async function createDownloadAsset() {
+    const fileName = (el.newDownloadFileName?.value || "").trim();
+    if (!fileName) throw new Error("Enter a new file name first.");
+    const data = await api("/admin/download-assets", {
+      method: "POST",
+      body: {
+        file_name: fileName,
+        content: el.downloadAssetContent?.value || "",
+      },
+    });
+    if (el.newDownloadFileName) el.newDownloadFileName.value = "";
+    await loadDownloadAssets(data.asset_path);
+    if (el.downloadAssetSelect) el.downloadAssetSelect.value = data.asset_path;
+    st.selectedDownloadAsset = data.asset_path;
+    if (el.downloadAssetResult) {
+      el.downloadAssetResult.textContent = `${summarizeDownloadAsset(data)}\nCustom download file created.`;
+    }
+    setStatus("Custom download file created.");
+  }
+
+  async function openSelectedDownloadAsset() {
+    const assetPath = el.downloadAssetSelect?.value || st.selectedDownloadAsset || "";
+    if (!assetPath) throw new Error("Select a download file first.");
+    const asset = st.downloadAssets.find((item) => item.asset_path === assetPath);
+    const url = assetDownloadUrl(assetPath);
+    if ((asset?.file_name || "").toLowerCase().endsWith(".html")) {
+      window.open(url, "_blank", "noopener");
+      setStatus("Download file opened in a new tab.");
+      return;
+    }
+    const { blob, fileName } = await downloadBlob(url);
+    triggerBlobDownload(blob, fileName || asset?.file_name || "download.txt");
+    setStatus("Download file saved locally.");
   }
 
   function selectedExamId() {
@@ -2140,16 +2345,17 @@
           .map(
             (item) => `
               <tr>
-                <td>${esc(item.created_at)}</td>
+                <td>${esc(formatDateTime(item.created_at))}</td>
                 <td>${esc(item.artifact_type)}</td>
                 <td>${esc(item.file_name)}</td>
                 <td>${esc(item.reference_code)}</td>
                 <td>${esc(item.created_by)}</td>
+                <td>${renderArtifactAction(item)}</td>
               </tr>
             `,
           )
           .join("")
-      : '<tr><td colspan="5">No generated artifacts yet.</td></tr>';
+      : '<tr><td colspan="6">No generated artifacts yet.</td></tr>';
   }
 
   function bindQuestionTable() {
@@ -2201,6 +2407,18 @@
       if (!button) return;
       try {
         await handleResultAction(button);
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+  }
+
+  function bindArtifactTable() {
+    el.artifactsBody?.addEventListener("click", async (event) => {
+      const button = event.target.closest('button[data-action="artifact-open"]');
+      if (!button) return;
+      try {
+        await openArtifact(button);
       } catch (error) {
         setStatus(error.message, true);
       }
@@ -2285,11 +2503,20 @@
     el.downloadResultsCsv?.addEventListener("click", () => downloadResultsCsv().catch((error) => setStatus(error.message, true)));
     el.downloadPendingCsv?.addEventListener("click", () => downloadPendingReviewCsv().catch((error) => setStatus(error.message, true)));
     el.loadArtifacts?.addEventListener("click", () => loadArtifacts().catch((error) => setStatus(error.message, true)));
+    el.refreshDownloadAssets?.addEventListener("click", () => loadDownloadAssets().catch((error) => setStatus(error.message, true)));
+    el.loadDownloadAsset?.addEventListener("click", () => loadSelectedDownloadAsset().catch((error) => setStatus(error.message, true)));
+    el.openDownloadAsset?.addEventListener("click", () => openSelectedDownloadAsset().catch((error) => setStatus(error.message, true)));
+    el.saveDownloadAsset?.addEventListener("click", () => saveSelectedDownloadAsset().catch((error) => setStatus(error.message, true)));
+    el.createDownloadAsset?.addEventListener("click", () => createDownloadAsset().catch((error) => setStatus(error.message, true)));
+    el.downloadAssetSelect?.addEventListener("change", () => {
+      st.selectedDownloadAsset = el.downloadAssetSelect.value || "";
+    });
     el.createAdminAccount?.addEventListener("click", () => createAdminAccount().catch((error) => setStatus(error.message, true)));
     el.loadAdminAccounts?.addEventListener("click", () => loadAdminAccounts().catch((error) => setStatus(error.message, true)));
     bindQuestionTable();
     bindReviewTables();
     bindResultTable();
+    bindArtifactTable();
   }
 
   try {
@@ -2306,6 +2533,7 @@
     }
     loadAccessProfile().catch(() => {});
     loadArtifacts().catch(() => {});
+    loadDownloadAssets().catch(() => {});
   } catch {
     // Redirect handled in ensureSession.
   }
