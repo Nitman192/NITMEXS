@@ -9,7 +9,10 @@
 <body class="admin-shell" data-default-theme="dark">
   <div class="nebula"></div>
   <header class="topbar admin-topbar">
-    <div class="brand">NITMEXS EXAM CONTROLLER</div>
+    <div class="brand admin-brand">
+      <span class="admin-brand-mark">NITMEXS</span>
+      <span class="admin-brand-subline">Networked Integrated Training, Monitoring, Evaluation and eXamination Suite</span>
+    </div>
     <div class="chips">
       <a class="portal-btn" href="/web">Gateway</a>
       <button id="open-downloads-top" class="portal-btn" type="button">Downloads</button>
@@ -41,39 +44,32 @@
       <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
     </section>
 
-    <nav class="admin-tab-strip" aria-label="Admin sections">
-      <button class="admin-tab active" data-admin-tab="dashboard" type="button">Dashboard</button>
-      <button class="admin-tab" data-admin-tab="exams" type="button">Exams</button>
-      <button class="admin-tab" data-admin-tab="questions" type="button">Questions</button>
-      <button class="admin-tab" data-admin-tab="cadets" type="button">Cadets</button>
-      <button class="admin-tab" data-admin-tab="live" type="button">Live Control</button>
-      <button class="admin-tab" data-admin-tab="review" type="button">Review</button>
-      <button class="admin-tab" data-admin-tab="results" type="button">Results</button>
-      <button class="admin-tab" data-admin-tab="downloads" type="button">Downloads</button>
-      <button class="admin-tab" data-admin-tab="audit" type="button">Audit</button>
-      <button class="admin-tab" data-admin-tab="security" type="button">Security</button>
+    <div class="admin-workspace">
+      <aside id="admin-drawer" class="admin-drawer">
+        <div class="admin-drawer-head">
+          <div>
+            <p class="small">Navigation</p>
+            <strong>Control Drawer</strong>
+          </div>
+          <button id="toggle-admin-drawer" class="alt" type="button" aria-controls="admin-drawer" aria-expanded="true">Collapse</button>
+        </div>
+        <nav class="admin-tab-strip" aria-label="Admin sections">
+          <button class="admin-tab active" data-admin-tab="dashboard" data-short="Dash" title="Dashboard" type="button">Dashboard</button>
+          <button class="admin-tab" data-admin-tab="exams" data-short="Exams" title="Exams" type="button">Exams</button>
+          <button class="admin-tab" data-admin-tab="questions" data-short="Ques" title="Questions" type="button">Questions</button>
+          <button class="admin-tab" data-admin-tab="cadets" data-short="Cadets" title="Cadets" type="button">Cadets</button>
+          <button class="admin-tab" data-admin-tab="live" data-short="Live" title="Live Control" type="button">Live Control</button>
+          <button class="admin-tab" data-admin-tab="review" data-short="Review" title="Review" type="button">Review</button>
+          <button class="admin-tab" data-admin-tab="results" data-short="Results" title="Results" type="button">Results</button>
+          <button class="admin-tab" data-admin-tab="downloads" data-short="Files" title="Downloads" type="button">Downloads</button>
+          <button class="admin-tab" data-admin-tab="audit" data-short="Audit" title="Audit" type="button">Audit</button>
+          <button class="admin-tab" data-admin-tab="security" data-short="Secure" title="Security" type="button">Security</button>
     </nav>
+      </aside>
 
+      <div class="admin-content-stack">
     <section class="admin-tab-panel active" data-admin-panel="dashboard">
       <div class="grid admin-tab-grid">
-        <article class="panel">
-          <h2>Mission Overview</h2>
-          <div class="stack">
-            <div class="box">
-              <p class="small">NITMEXS</p>
-              <strong>Networked Integrated Training, Monitoring, Evaluation and eXamination Suite</strong>
-            </div>
-            <div class="box">
-              <p class="small">Current Focus</p>
-              <p>Use tabs to move directly to the current task instead of scrolling through the whole console.</p>
-            </div>
-            <div class="box">
-              <p class="small">Interface Design</p>
-              <p>Complex security telemetry, audit timelines, and raw JSON outputs are now isolated under the Audit tab so instructors can focus on operational tasks here.</p>
-            </div>
-          </div>
-        </article>
-
         <article class="panel wide">
           <h2>Quick Dashboard</h2>
           <div id="dashboard-overview" class="box">
@@ -169,7 +165,18 @@
         <article class="panel wide">
           <h2>Cadet Registry</h2>
           <div class="stack">
-            <div class="row"><input id="student-id-input" placeholder="Student ID"><input id="student-name-input" placeholder="Display name"><input id="student-password-input" type="password" placeholder="Password"><button id="create-student-id" type="button">Create</button></div>
+            <div class="row">
+              <input id="student-id-input" placeholder="Student ID" autocomplete="off">
+              <input id="student-name-input" placeholder="Display name" autocomplete="off">
+              <div class="password-stack">
+                <div class="password-field">
+                  <input id="student-password-input" type="password" placeholder="Password" autocomplete="new-password" aria-describedby="student-password-caps-warning">
+                  <button id="student-password-toggle" class="password-toggle" type="button" aria-controls="student-password-input" aria-label="Show password" aria-pressed="false">Show</button>
+                </div>
+                <p id="student-password-caps-warning" class="caps-warning" hidden aria-live="polite">Caps Lock is on. Password may not match.</p>
+              </div>
+              <button id="create-student-id" type="button">Create</button>
+            </div>
             <div class="row"><input id="student-prefix" placeholder="Prefix" value="cadet"><input id="student-count" type="number" min="1" max="200" value="10"><button id="generate-student-ids" type="button">Generate</button></div>
             <div class="row"><input id="student-csv-file" type="file" accept=".csv"><button id="upload-student-csv" type="button">Import CSV</button><button id="export-student-csv" type="button">Export CSV</button><button id="refresh-student-ids" type="button">Refresh</button></div>
             <pre id="student-id-result" class="box mono">Registry output will appear here. CSV may include password column.</pre>
@@ -248,69 +255,6 @@
             </table>
           </div>
         </article>
-
-        <article class="panel wide">
-          <h2>Offline AI Assist</h2>
-          <div class="row">
-            <button id="load-ai-status" type="button">Load AI Status</button>
-            <button id="ai-summarize-analytics" class="alt" type="button">Generate Exam Summary</button>
-          </div>
-          <pre id="ai-status-box" class="box mono">AI status will appear here.</pre>
-          <pre id="ai-analytics-box" class="box mono">Exam AI summary will appear here.</pre>
-          <div class="admin-ai-grid">
-            <article class="box">
-              <h3>Question Refine</h3>
-              <input id="ai-question-topic" placeholder="Topic">
-              <div class="row">
-                <select id="ai-question-type" style="width:170px">
-                  <option value="mcq_single">MCQ</option>
-                  <option value="true_false">True / False</option>
-                  <option value="fib_text">Fill in the Blanks</option>
-                  <option value="short_answer">Short Answer</option>
-                  <option value="long_answer">Long Answer</option>
-                </select>
-                <input id="ai-question-marks" type="number" step="0.5" min="0.5" value="1" style="width:120px">
-              </div>
-              <textarea id="ai-question-text" rows="5" placeholder="Paste question text"></textarea>
-              <button id="ai-refine-question" type="button">Refine Question</button>
-              <pre id="ai-question-result" class="box mono">Question refinement output will appear here.</pre>
-            </article>
-            <article class="box">
-              <h3>Rubric Suggest</h3>
-              <div class="row">
-                <select id="ai-rubric-type" style="width:170px">
-                  <option value="short_answer">Short Answer</option>
-                  <option value="long_answer">Long Answer</option>
-                </select>
-                <input id="ai-rubric-marks" type="number" step="0.5" min="0.5" value="4" style="width:120px">
-              </div>
-              <textarea id="ai-rubric-question" rows="5" placeholder="Paste subjective question text"></textarea>
-              <button id="ai-rubric-suggest" type="button">Suggest Rubric</button>
-              <pre id="ai-rubric-result" class="box mono">Rubric suggestion will appear here.</pre>
-            </article>
-            <article class="box">
-              <h3>FIB Cluster</h3>
-              <textarea id="ai-fib-question" rows="3" placeholder="Paste the FIB question text"></textarea>
-              <textarea id="ai-fib-answers" rows="6" placeholder="One submitted answer per line"></textarea>
-              <button id="ai-fib-cluster" type="button">Cluster FIB Answers</button>
-              <pre id="ai-fib-result" class="box mono">FIB clustering output will appear here.</pre>
-            </article>
-            <article class="box">
-              <h3>Subjective Suggest</h3>
-              <div class="row">
-                <select id="ai-subjective-type" style="width:170px">
-                  <option value="short_answer">Short Answer</option>
-                  <option value="long_answer">Long Answer</option>
-                </select>
-                <input id="ai-subjective-marks" type="number" step="0.5" min="0.5" value="4" style="width:120px">
-              </div>
-              <textarea id="ai-subjective-question" rows="3" placeholder="Paste the question text"></textarea>
-              <textarea id="ai-subjective-answer" rows="6" placeholder="Paste the cadet answer"></textarea>
-              <button id="ai-subjective-suggest" type="button">Suggest Marks</button>
-              <pre id="ai-subjective-result" class="box mono">Subjective suggestion will appear here.</pre>
-            </article>
-          </div>
-        </article>
       </div>
     </section>
 
@@ -335,9 +279,20 @@
         </article>
 
         <article class="panel wide">
-          <h2>Results and Reports</h2>
+          <h2>Exam Summary</h2>
           <div class="row">
-            <button id="load-exam-analytics" type="button">Load Exam Analytics</button>
+            <button id="generate-exam-summary" type="button">Generate Exam Summary</button>
+            <button id="load-exam-analytics" class="alt" type="button">Load Detailed Analytics</button>
+          </div>
+          <div id="exam-summary-box" class="box analytics-shell">
+            <p class="small">Graphical exam summary will appear here.</p>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h2>Detailed Analytics</h2>
+          <div class="row">
+            <button id="load-exam-analytics-secondary" type="button">Refresh Detailed Analytics</button>
           </div>
           <div id="analytics-box" class="box analytics-shell">
             <p class="small">Exam analytics dashboard will appear here.</p>
@@ -402,7 +357,9 @@
             <button id="load-metrics" type="button">Load Metrics</button>
           </div>
           <pre id="access-profile-box" class="box mono">Access profile will appear here.</pre>
-          <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
+          <div id="metrics-box" class="box analytics-shell">
+            <p class="small">Operational health dashboard will appear here.</p>
+          </div>
         </article>
 
         <article class="panel wide">
@@ -443,7 +400,13 @@
               </select>
             </div>
             <div class="row">
-              <input id="new-admin-key" type="password" placeholder="Access key">
+              <div class="password-stack">
+                <div class="password-field">
+                  <input id="new-admin-key" type="password" placeholder="Access key" autocomplete="new-password" aria-describedby="new-admin-key-caps-warning">
+                  <button id="new-admin-key-toggle" class="password-toggle" type="button" aria-controls="new-admin-key" aria-label="Show password" aria-pressed="false">Show</button>
+                </div>
+                <p id="new-admin-key-caps-warning" class="caps-warning" hidden aria-live="polite">Caps Lock is on. Password may not match.</p>
+              </div>
               <button id="create-admin-account" type="button">Create Admin Account</button>
               <button id="load-admin-accounts" type="button">Refresh Accounts</button>
             </div>
@@ -458,11 +421,14 @@
         </article>
       </div>
     </section>
+      </div>
+    </div>
   </main>
 
   <dialog id="admin-error-dialog" class="modal">
     <article class="modal-card">
-      <h2>Action Error</h2>
+      <p class="modal-kicker">Please review this message</p>
+      <h2>Something Needs Attention</h2>
       <p id="admin-error-text">Something went wrong.</p>
       <div class="row end">
         <button id="admin-error-close" type="button">OK</button>

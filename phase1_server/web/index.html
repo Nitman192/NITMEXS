@@ -24,8 +24,14 @@
         <h2>Student Login</h2>
         <p>Student ID aur password enter karke NITMEXS exam console open karo.</p>
         <div class="stack">
-          <input id="student-login-id" placeholder="Student ID (example: cadet-01)">
-          <input id="student-login-password" type="password" placeholder="Password">
+          <input id="student-login-id" placeholder="Student ID (example: cadet-01)" autocomplete="username">
+          <div class="password-stack">
+            <div class="password-field">
+              <input id="student-login-password" type="password" placeholder="Password" autocomplete="current-password" aria-describedby="student-login-caps-warning">
+              <button id="student-login-password-toggle" class="password-toggle" type="button" aria-controls="student-login-password" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+            <p id="student-login-caps-warning" class="caps-warning" hidden aria-live="polite">Caps Lock is on. Password may not match.</p>
+          </div>
           <button id="student-login-btn" class="portal-btn primary" type="button">Login As Cadet</button>
         </div>
       </article>
@@ -35,8 +41,14 @@
         <h2>Admin Login</h2>
         <p>Yeh panel sirf trusted host machine par available hai.</p>
         <div class="stack">
-          <input id="admin-login-id" placeholder="Admin ID (example: superadmin)">
-          <input id="admin-login-key" type="password" placeholder="Access Key">
+          <input id="admin-login-id" placeholder="Admin ID (example: superadmin)" autocomplete="username">
+          <div class="password-stack">
+            <div class="password-field">
+              <input id="admin-login-key" type="password" placeholder="Access Key" autocomplete="current-password" aria-describedby="admin-login-caps-warning">
+              <button id="admin-login-key-toggle" class="password-toggle" type="button" aria-controls="admin-login-key" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+            <p id="admin-login-caps-warning" class="caps-warning" hidden aria-live="polite">Caps Lock is on. Password may not match.</p>
+          </div>
           <button id="admin-login-btn" class="portal-btn" type="button">Login As Exam Controller</button>
           <p class="small">Default superadmin: <span class="mono">superadmin / nitmexs-admin</span></p>
         </div>
@@ -57,7 +69,8 @@
 
   <dialog id="gateway-error-dialog" class="modal">
     <article class="modal-card">
-      <h2>Login Error</h2>
+      <p class="modal-kicker">Please check your details</p>
+      <h2>Unable to Sign In</h2>
       <p id="gateway-error-text">Something went wrong.</p>
       <div class="row end">
         <button id="gateway-error-close" type="button">OK</button>

@@ -1,5 +1,6 @@
 (() => {
   const SESSION_KEY = "nitmexs_admin_session";
+  const DRAWER_STATE_KEY = "nitmexs_admin_drawer_collapsed";
   const $ = (id) => document.getElementById(id);
   const esc = (value) =>
     String(value ?? "")
@@ -8,22 +9,85 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  const friendlyFieldLabel = (field) => {
+    const map = {
+      student_id: "Student ID",
+      admin_id: "Admin ID",
+      access_key: "access key",
+      password: "password",
+      display_name: "display name",
+      new_exam_name: "exam name",
+      question_text: "question text",
+      marks_awarded: "marks",
+    };
+    if (!field) return "";
+    return map[field] || String(field).replaceAll("_", " ");
+  };
+  const extractFieldFromLoc = (loc) => {
+    if (!Array.isArray(loc)) return "";
+    for (let index = loc.length - 1; index >= 0; index -= 1) {
+      const item = loc[index];
+      if (typeof item === "string" && !["body", "query", "path"].includes(item)) {
+        return item;
+      }
+    }
+    return "";
+  };
+  const friendlyErrorText = (message, field = "") => {
+    const text = String(message || "").trim();
+    const label = friendlyFieldLabel(field);
+    if (!text) return "";
+    if (/field required/i.test(text)) {
+      return label ? `Please enter ${label}.` : "Please fill in the required details and try again.";
+    }
+    const minMatch = text.match(/at least (\d+) characters?/i);
+    if (minMatch) {
+      return label
+        ? `${label.charAt(0).toUpperCase() + label.slice(1)} must be at least ${minMatch[1]} characters long.`
+        : `Please enter at least ${minMatch[1]} characters.`;
+    }
+    const maxMatch = text.match(/at most (\d+) characters?/i);
+    if (maxMatch) {
+      return label
+        ? `${label.charAt(0).toUpperCase() + label.slice(1)} must be ${maxMatch[1]} characters or fewer.`
+        : `Please keep the text within ${maxMatch[1]} characters.`;
+    }
+    if (/invalid .*credentials|incorrect|authentication failed/i.test(text)) {
+      return "The ID or password you entered is not correct. Please try again.";
+    }
+    if (/trusted host machine/i.test(text)) {
+      return "This admin action works only on the trusted host machine.";
+    }
+    if (/already exists/i.test(text)) {
+      return label
+        ? `This ${label.toLowerCase()} is already in use. Please choose a different one.`
+        : "This value is already in use. Please choose a different one.";
+    }
+    if (/not found/i.test(text)) {
+      return "The requested record could not be found.";
+    }
+    if (/input should be|unable to validate/i.test(text)) {
+      return label
+        ? `Please check ${label} and try again.`
+        : "Please check the entered details and try again.";
+    }
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
   const explainApiError = (detail) => {
     if (detail == null || detail === "") return "";
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
-      return detail.map((item) => explainApiError(item)).filter(Boolean).join("; ");
+      return detail.map((item) => explainApiError(item)).filter(Boolean)[0] || "";
     }
     if (typeof detail === "object") {
       if (typeof detail.msg === "string") {
-        const where = Array.isArray(detail.loc) ? detail.loc.join(" > ") : "";
-        return where ? `${where}: ${detail.msg}` : detail.msg;
+        const field = extractFieldFromLoc(detail.loc);
+        return friendlyErrorText(detail.msg, field);
       }
-      if (typeof detail.detail === "string") return detail.detail;
+      if (typeof detail.detail === "string") return friendlyErrorText(detail.detail);
       return Object.entries(detail)
-        .map(([key, value]) => `${key}: ${explainApiError(value)}`)
-        .filter((item) => item && !item.endsWith(": "))
-        .join(", ");
+        .map(([, value]) => explainApiError(value))
+        .filter(Boolean)[0] || "";
     }
     return String(detail);
   };
@@ -37,12 +101,25 @@
     selectedQuestion: null,
     activeTab: "dashboard",
     examResults: [],
+    analyticsData: null,
+    analyticsUi: {
+      showQuestionIds: false,
+      questionSearch: "",
+      questionFilter: "all",
+      questionSort: "correct_desc",
+      difficultySearch: "",
+      difficultyFilter: "all",
+      difficultySort: "difficulty_index_asc",
+    },
+    drawerCollapsed: false,
   };
 
   const el = {
     sessionAdmin: $("session-admin"),
     version: $("version"),
     selectedExamChip: $("selected-exam-chip"),
+    adminDrawer: $("admin-drawer"),
+    toggleAdminDrawer: $("toggle-admin-drawer"),
     openDownloadsTop: $("open-downloads-top"),
     logoutAdmin: $("logout-admin"),
     status: $("admin-status"),
@@ -97,6 +174,8 @@
     studentIdInput: $("student-id-input"),
     studentNameInput: $("student-name-input"),
     studentPasswordInput: $("student-password-input"),
+    studentPasswordToggle: $("student-password-toggle"),
+    studentPasswordCapsWarning: $("student-password-caps-warning"),
     createStudentId: $("create-student-id"),
     studentPrefix: $("student-prefix"),
     studentCount: $("student-count"),
@@ -121,7 +200,10 @@
     accessProfileBox: $("access-profile-box"),
     loadMetrics: $("load-metrics"),
     metricsBox: $("metrics-box"),
+    generateExamSummary: $("generate-exam-summary"),
     loadExamAnalytics: $("load-exam-analytics"),
+    loadExamAnalyticsSecondary: $("load-exam-analytics-secondary"),
+    examSummaryBox: $("exam-summary-box"),
     analyticsBox: $("analytics-box"),
     dashboardOverview: $("dashboard-overview"),
     loadAiStatus: $("load-ai-status"),
@@ -163,6 +245,8 @@
     newAdminName: $("new-admin-name"),
     newAdminRole: $("new-admin-role"),
     newAdminKey: $("new-admin-key"),
+    newAdminKeyToggle: $("new-admin-key-toggle"),
+    newAdminKeyCapsWarning: $("new-admin-key-caps-warning"),
     createAdminAccount: $("create-admin-account"),
     loadAdminAccounts: $("load-admin-accounts"),
     adminAccountResult: $("admin-account-result"),
@@ -202,6 +286,48 @@
     }
   }
 
+  function bindPasswordControls(input, toggle, warning) {
+    if (!input || !toggle) return;
+    let capsLockOn = false;
+
+    const syncToggle = () => {
+      const isVisible = input.type === "text";
+      toggle.textContent = isVisible ? "Hide" : "Show";
+      toggle.setAttribute("aria-pressed", String(isVisible));
+      toggle.setAttribute("aria-label", `${isVisible ? "Hide" : "Show"} password`);
+    };
+
+    const syncWarning = () => {
+      if (!warning) return;
+      warning.hidden = !(capsLockOn && document.activeElement === input);
+    };
+
+    const detectCapsLock = (event) => {
+      if (typeof event?.getModifierState === "function") {
+        capsLockOn = event.getModifierState("CapsLock");
+      }
+      syncWarning();
+    };
+
+    toggle.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      syncToggle();
+      input.focus({ preventScroll: true });
+      syncWarning();
+    });
+
+    input.addEventListener("keydown", detectCapsLock);
+    input.addEventListener("keyup", detectCapsLock);
+    input.addEventListener("focus", syncWarning);
+    input.addEventListener("blur", () => {
+      capsLockOn = false;
+      syncWarning();
+    });
+
+    syncToggle();
+    syncWarning();
+  }
+
   function setAdminTab(tabName) {
     st.activeTab = tabName || "dashboard";
     adminTabButtons().forEach((button) => {
@@ -212,6 +338,33 @@
       panel.hidden = !isActive;
       panel.classList.toggle("active", isActive);
     });
+  }
+
+  function applyAdminDrawerState(collapsed) {
+    st.drawerCollapsed = Boolean(collapsed);
+    el.adminDrawer?.classList.toggle("collapsed", st.drawerCollapsed);
+    document.body.classList.toggle("admin-drawer-collapsed", st.drawerCollapsed);
+    if (el.toggleAdminDrawer) {
+      el.toggleAdminDrawer.textContent = st.drawerCollapsed ? "Expand" : "Collapse";
+      el.toggleAdminDrawer.setAttribute("aria-expanded", String(!st.drawerCollapsed));
+      el.toggleAdminDrawer.setAttribute(
+        "aria-label",
+        st.drawerCollapsed ? "Expand navigation drawer" : "Collapse navigation drawer",
+      );
+    }
+    try {
+      localStorage.setItem(DRAWER_STATE_KEY, st.drawerCollapsed ? "1" : "0");
+    } catch {
+      // Ignore local storage failures and continue with the default drawer state.
+    }
+  }
+
+  function loadAdminDrawerState() {
+    try {
+      return localStorage.getItem(DRAWER_STATE_KEY) === "1";
+    } catch {
+      return false;
+    }
   }
 
   function updateSelectedExamChip() {
@@ -376,6 +529,227 @@
     return "risk";
   }
 
+  function normalizeSearchText(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function getQuestionLookup() {
+    return new Map(st.questions.map((question) => [question.id, question]));
+  }
+
+  function summarizeQuestionText(value) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!text) return "Question text unavailable";
+    if (text.length <= 120) return text;
+    return `${text.slice(0, 117)}...`;
+  }
+
+  function buildAnalyticsQuestionData(item, questionLookup) {
+    const question = questionLookup.get(item.question_id);
+    return {
+      ...item,
+      question_text:
+        String(item.question_text || question?.text || "").trim() || "Question text unavailable",
+      topic: item.topic || question?.topic || "",
+      topic_tag: item.topic_tag || question?.topic_tag || question?.topic || "",
+      difficulty: item.difficulty || question?.difficulty || "",
+    };
+  }
+
+  function renderQuestionCell(item, { showQuestionIds = false } = {}) {
+    const meta = [];
+    if (showQuestionIds && item.question_id) {
+      meta.push(`<span class="analytics-question-id mono">ID: ${esc(item.question_id)}</span>`);
+    }
+    if (item.topic_tag) {
+      meta.push(`<span class="analytics-question-meta">${esc(item.topic_tag)}</span>`);
+    }
+    return `
+      <div class="analytics-question-cell">
+        <strong>${esc(summarizeQuestionText(item.question_text))}</strong>
+        ${meta.length ? `<div class="analytics-question-meta-row">${meta.join("")}</div>` : ""}
+      </div>
+    `;
+  }
+
+  function questionMatchesSearch(item, query) {
+    if (!query) return true;
+    const haystack = [
+      item.question_text,
+      item.question_id,
+      item.topic,
+      item.topic_tag,
+      item.difficulty,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function sortQuestionMetrics(rows, sortBy) {
+    const list = [...rows];
+    const compareText = (a, b) =>
+      summarizeQuestionText(a.question_text).localeCompare(summarizeQuestionText(b.question_text));
+    list.sort((left, right) => {
+      switch (sortBy) {
+        case "question_asc":
+          return compareText(left, right);
+        case "attempts_desc":
+          return Number(right.total_attempts || 0) - Number(left.total_attempts || 0);
+        case "attempts_asc":
+          return Number(left.total_attempts || 0) - Number(right.total_attempts || 0);
+        case "score_desc":
+          return Number(right.average_score || 0) - Number(left.average_score || 0);
+        case "score_asc":
+          return Number(left.average_score || 0) - Number(right.average_score || 0);
+        case "correct_asc":
+          return Number(left.difficulty_index || 0) - Number(right.difficulty_index || 0);
+        case "correct_desc":
+        default:
+          return Number(right.difficulty_index || 0) - Number(left.difficulty_index || 0);
+      }
+    });
+    return list;
+  }
+
+  function filterQuestionMetrics(rows) {
+    const query = normalizeSearchText(st.analyticsUi.questionSearch);
+    const filter = st.analyticsUi.questionFilter || "all";
+    const list = rows.filter((row) => {
+      if (!questionMatchesSearch(row, query)) return false;
+      if (filter === "all") return true;
+      return performanceTone(row.difficulty_index) === filter;
+    });
+    return sortQuestionMetrics(list, st.analyticsUi.questionSort);
+  }
+
+  function getDifficultyFilterOptions(cells) {
+    const values = Array.from(
+      new Set(
+        cells
+          .map((cell) => String(cell.difficulty || "").trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    return values;
+  }
+
+  function sortDifficultyCells(cells, sortBy) {
+    const list = [...cells];
+    const compareText = (a, b) =>
+      summarizeQuestionText(a.question_text).localeCompare(summarizeQuestionText(b.question_text));
+    list.sort((left, right) => {
+      switch (sortBy) {
+        case "question_asc":
+          return compareText(left, right);
+        case "topic_asc":
+          return String(left.topic_tag || left.topic || "").localeCompare(
+            String(right.topic_tag || right.topic || ""),
+          );
+        case "difficulty_index_desc":
+          return Number(right.difficulty_index || 0) - Number(left.difficulty_index || 0);
+        case "discrimination_desc":
+          return Number(right.discrimination_index || 0) - Number(left.discrimination_index || 0);
+        case "difficulty_index_asc":
+        default:
+          return Number(left.difficulty_index || 0) - Number(right.difficulty_index || 0);
+      }
+    });
+    return list;
+  }
+
+  function filterDifficultyCells(cells) {
+    const query = normalizeSearchText(st.analyticsUi.difficultySearch);
+    const filter = st.analyticsUi.difficultyFilter || "all";
+    const list = cells.filter((cell) => {
+      if (!questionMatchesSearch(cell, query)) return false;
+      if (filter === "all") return true;
+      return String(cell.difficulty || "").trim().toLowerCase() === filter;
+    });
+    return sortDifficultyCells(list, st.analyticsUi.difficultySort);
+  }
+
+  function analyticsControlValue(control) {
+    if (control.type === "checkbox") return control.checked;
+    return control.value;
+  }
+
+  function renderAnalyticsToolbar(summary = {}) {
+    return `
+      <section class="analytics-toolbar analytics-toolbar-global">
+        <div class="analytics-toolbar-info">
+          <strong>Analytics Controls</strong>
+          <span class="small">Search, sort, and filter question-based tables without losing the overall graph view.</span>
+        </div>
+        <label class="analytics-inline-check">
+          <input type="checkbox" data-analytics-control="showQuestionIds" ${st.analyticsUi.showQuestionIds ? "checked" : ""}>
+          Show Question IDs
+        </label>
+        <span class="analytics-summary-chip">Finalized Attempts: ${Number(summary.total_attempts || 0)}</span>
+      </section>
+    `;
+  }
+
+  function renderQuestionAnalyticsControls(totalRows, visibleRows) {
+    return `
+      <div class="analytics-filter-bar">
+        <input
+          type="search"
+          value="${esc(st.analyticsUi.questionSearch)}"
+          data-analytics-control="questionSearch"
+          placeholder="Search by question, topic, difficulty, or ID"
+        >
+        <select data-analytics-control="questionFilter">
+          <option value="all"${st.analyticsUi.questionFilter === "all" ? " selected" : ""}>All performance bands</option>
+          <option value="good"${st.analyticsUi.questionFilter === "good" ? " selected" : ""}>Strong only</option>
+          <option value="mid"${st.analyticsUi.questionFilter === "mid" ? " selected" : ""}>Medium only</option>
+          <option value="risk"${st.analyticsUi.questionFilter === "risk" ? " selected" : ""}>Needs review only</option>
+        </select>
+        <select data-analytics-control="questionSort">
+          <option value="correct_desc"${st.analyticsUi.questionSort === "correct_desc" ? " selected" : ""}>Sort: Highest correct rate</option>
+          <option value="correct_asc"${st.analyticsUi.questionSort === "correct_asc" ? " selected" : ""}>Sort: Lowest correct rate</option>
+          <option value="attempts_desc"${st.analyticsUi.questionSort === "attempts_desc" ? " selected" : ""}>Sort: Highest attempts</option>
+          <option value="attempts_asc"${st.analyticsUi.questionSort === "attempts_asc" ? " selected" : ""}>Sort: Lowest attempts</option>
+          <option value="score_desc"${st.analyticsUi.questionSort === "score_desc" ? " selected" : ""}>Sort: Highest avg score</option>
+          <option value="score_asc"${st.analyticsUi.questionSort === "score_asc" ? " selected" : ""}>Sort: Lowest avg score</option>
+          <option value="question_asc"${st.analyticsUi.questionSort === "question_asc" ? " selected" : ""}>Sort: Question A-Z</option>
+        </select>
+        <span class="analytics-results-chip">Showing ${visibleRows} of ${totalRows}</span>
+      </div>
+    `;
+  }
+
+  function renderDifficultyAnalyticsControls(totalRows, visibleRows, difficultyOptions) {
+    return `
+      <div class="analytics-filter-bar">
+        <input
+          type="search"
+          value="${esc(st.analyticsUi.difficultySearch)}"
+          data-analytics-control="difficultySearch"
+          placeholder="Search by question, topic, difficulty, or ID"
+        >
+        <select data-analytics-control="difficultyFilter">
+          <option value="all"${st.analyticsUi.difficultyFilter === "all" ? " selected" : ""}>All difficulty levels</option>
+          ${difficultyOptions
+            .map(
+              (value) =>
+                `<option value="${esc(value.toLowerCase())}"${st.analyticsUi.difficultyFilter === value.toLowerCase() ? " selected" : ""}>${esc(value)}</option>`,
+            )
+            .join("")}
+        </select>
+        <select data-analytics-control="difficultySort">
+          <option value="difficulty_index_asc"${st.analyticsUi.difficultySort === "difficulty_index_asc" ? " selected" : ""}>Sort: Lowest difficulty index</option>
+          <option value="difficulty_index_desc"${st.analyticsUi.difficultySort === "difficulty_index_desc" ? " selected" : ""}>Sort: Highest difficulty index</option>
+          <option value="discrimination_desc"${st.analyticsUi.difficultySort === "discrimination_desc" ? " selected" : ""}>Sort: Highest discrimination</option>
+          <option value="topic_asc"${st.analyticsUi.difficultySort === "topic_asc" ? " selected" : ""}>Sort: Topic A-Z</option>
+          <option value="question_asc"${st.analyticsUi.difficultySort === "question_asc" ? " selected" : ""}>Sort: Question A-Z</option>
+        </select>
+        <span class="analytics-results-chip">Showing ${visibleRows} of ${totalRows}</span>
+      </div>
+    `;
+  }
+
   function renderDistribution(buckets, totalAttempts) {
     if (!buckets.length) {
       return '<p class="small">Score distribution abhi available nahi hai.</p>';
@@ -419,11 +793,15 @@
     `;
   }
 
-  function renderQuestionMetrics(rows) {
-    if (!rows.length) {
+  function renderQuestionMetrics(rows, totalRows = rows.length) {
+    if (!totalRows) {
       return '<p class="small">Per-question metrics abhi ready nahi hain.</p>';
     }
+    if (!rows.length) {
+      return '<p class="small">No questions match the current search or filter.</p>';
+    }
     return `
+      ${renderQuestionAnalyticsControls(totalRows, rows.length)}
       <div class="table-wrap analytics-table-wrap">
         <table class="analytics-table">
           <thead>
@@ -439,7 +817,7 @@
               .map(
                 (row) => `
                   <tr>
-                    <td><span class="mono">${esc(compactId(row.question_id))}</span></td>
+                    <td>${renderQuestionCell(row, { showQuestionIds: st.analyticsUi.showQuestionIds })}</td>
                     <td>${Number(row.total_attempts || 0)}</td>
                     <td>
                       <div class="analytics-meter">
@@ -458,11 +836,15 @@
     `;
   }
 
-  function renderDifficultyHeatmap(cells) {
-    if (!cells.length) {
+  function renderDifficultyHeatmap(cells, totalRows = cells.length, difficultyOptions = []) {
+    if (!totalRows) {
       return '<p class="small">Difficulty heatmap abhi empty hai.</p>';
     }
+    if (!cells.length) {
+      return '<p class="small">No questions match the current search or filter.</p>';
+    }
     return `
+      ${renderDifficultyAnalyticsControls(totalRows, cells.length, difficultyOptions)}
       <div class="table-wrap analytics-table-wrap">
         <table class="analytics-table">
           <thead>
@@ -479,7 +861,7 @@
               .map(
                 (cell) => `
                   <tr>
-                    <td><span class="mono">${esc(compactId(cell.question_id))}</span></td>
+                    <td>${renderQuestionCell(cell, { showQuestionIds: st.analyticsUi.showQuestionIds })}</td>
                     <td>${esc(cell.topic_tag || cell.topic || "-")}</td>
                     <td>${esc(cell.difficulty || "-")}</td>
                     <td>
@@ -503,8 +885,12 @@
     const difficultyCells = difficultyData.cells || [];
     const buckets = distributionData.buckets || [];
     const totalAttempts = Number(summary.total_attempts ?? distributionData.total_attempts ?? 0);
+    const filteredQuestionMetrics = filterQuestionMetrics(questionMetrics);
+    const filteredDifficultyCells = filterDifficultyCells(difficultyCells);
+    const difficultyOptions = getDifficultyFilterOptions(difficultyCells);
 
     return `
+      ${renderAnalyticsToolbar(summary)}
       <section class="analytics-grid">
         <article class="analytics-kpi">
           <p class="analytics-kpi-label">Total Attempts</p>
@@ -547,22 +933,412 @@
           <div class="analytics-panel-head">
             <div>
               <h3>Question Performance</h3>
-              <p class="small">Each question ki correctness aur average score.</p>
+              <p class="small">Question text primary view me hai. Search, sort, ya performance band se list narrow karo.</p>
             </div>
           </div>
-          ${renderQuestionMetrics(questionMetrics)}
+          ${renderQuestionMetrics(filteredQuestionMetrics, questionMetrics.length)}
         </article>
         <article class="analytics-panel">
           <div class="analytics-panel-head">
             <div>
               <h3>Difficulty Heatmap</h3>
-              <p class="small">Difficulty index aur discrimination values friendly table me.</p>
+              <p class="small">Readable question text ke saath difficulty, topic, aur discrimination ko compare karo.</p>
             </div>
           </div>
-          ${renderDifficultyHeatmap(difficultyCells)}
+          ${renderDifficultyHeatmap(filteredDifficultyCells, difficultyCells.length, difficultyOptions)}
         </article>
       </section>
     `;
+  }
+
+  function metricRows(metrics, name) {
+    return Array.isArray(metrics?.[name]) ? metrics[name] : [];
+  }
+
+  function sumMetricCounts(rows) {
+    return rows.reduce((total, row) => total + Number(row.count || 0), 0);
+  }
+
+  function sumMetricValue(rows, field = "total_value") {
+    return rows.reduce((total, row) => total + Number(row[field] || 0), 0);
+  }
+
+  function averageMetricValue(rows) {
+    const count = sumMetricCounts(rows);
+    return count ? sumMetricValue(rows) / count : 0;
+  }
+
+  function maxMetricValue(rows) {
+    return rows.reduce((max, row) => Math.max(max, Number(row.max_value || 0)), 0);
+  }
+
+  function latestMetricUpdate(...groups) {
+    const timestamps = groups
+      .flat()
+      .map((row) => {
+        const stamp = Date.parse(row.updated_at || "");
+        return Number.isNaN(stamp) ? null : stamp;
+      })
+      .filter((value) => value != null);
+    if (!timestamps.length) return "No telemetry yet";
+    return new Date(Math.max(...timestamps)).toLocaleString();
+  }
+
+  function msTone(value, warn = 400, risk = 1200) {
+    const amount = Number(value || 0);
+    if (amount >= risk) return "risk";
+    if (amount >= warn) return "mid";
+    return "good";
+  }
+
+  function countTone(value, warn = 1, risk = 5) {
+    const amount = Number(value || 0);
+    if (amount >= risk) return "risk";
+    if (amount >= warn) return "mid";
+    return "good";
+  }
+
+  function renderMetricsEndpointTable(rows) {
+    if (!rows.length) {
+      return '<p class="small">Request timing data abhi collect nahi hui hai.</p>';
+    }
+    return `
+      <div class="table-wrap analytics-table-wrap">
+        <table class="analytics-table">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Samples</th>
+              <th>Average</th>
+              <th>Peak</th>
+              <th>Health</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map((row) => {
+                const averageMs = Number(row.average_ms || 0);
+                const tone = msTone(averageMs);
+                return `
+                  <tr>
+                    <td><span class="mono">${esc(row.key || "endpoint")}</span></td>
+                    <td>${Number(row.count || 0)}</td>
+                    <td>${formatNumber(averageMs, 1)} ms</td>
+                    <td>${formatNumber(row.max_value, 1)} ms</td>
+                    <td><span class="analytics-pill tone-${tone}">${tone === "good" ? "Stable" : tone === "mid" ? "Watch" : "Slow"}</span></td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderMetricsDashboard(metrics) {
+    const requestRows = metricRows(metrics, "request_duration_ms")
+      .map((row) => ({
+        ...row,
+        average_ms: Number(row.count || 0) ? Number(row.total_value || 0) / Number(row.count || 1) : 0,
+      }))
+      .sort((left, right) => Number(right.average_ms || 0) - Number(left.average_ms || 0));
+    const gradingRows = metricRows(metrics, "finalize_to_grade_ms");
+    const conflictRows = metricRows(metrics, "concurrency_conflict_count");
+    const autoExpireRows = metricRows(metrics, "auto_expire_count");
+    const alertRaisedRows = metricRows(metrics, "proctor_alert_raised_count");
+    const alertAckRows = metricRows(metrics, "proctor_alert_acknowledged_count");
+    const alertResolvedRows = metricRows(metrics, "proctor_alert_resolved_count");
+    const alertAutoResolvedRows = metricRows(metrics, "proctor_alert_auto_resolved_count");
+    const alertAckMsRows = metricRows(metrics, "proctor_alert_ack_ms");
+    const alertResolutionMsRows = metricRows(metrics, "proctor_alert_resolution_ms");
+
+    const requestSampleCount = sumMetricCounts(requestRows);
+    const avgRequestMs = averageMetricValue(requestRows);
+    const avgGradingMs = averageMetricValue(gradingRows);
+    const conflictCount = sumMetricCounts(conflictRows);
+    const autoExpireCount = sumMetricCounts(autoExpireRows);
+    const alertRaisedCount = sumMetricCounts(alertRaisedRows);
+    const latestUpdate = latestMetricUpdate(
+      requestRows,
+      gradingRows,
+      conflictRows,
+      autoExpireRows,
+      alertRaisedRows,
+      alertAckRows,
+      alertResolvedRows,
+      alertAutoResolvedRows,
+      alertAckMsRows,
+      alertResolutionMsRows,
+    );
+
+    return `
+      <section class="analytics-toolbar">
+        <div class="analytics-toolbar-info">
+          <strong>Operational Health Overview</strong>
+          <span>Metrics ko readable cards aur tables me convert kiya gaya hai, taaki raw JSON ke bina bhi system health samajh aaye.</span>
+        </div>
+        <div class="analytics-inline-check">
+          <span class="analytics-pill tone-${countTone(conflictCount + autoExpireCount, 1, 4)}">Last update: ${esc(latestUpdate)}</span>
+        </div>
+      </section>
+      <section class="analytics-grid">
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Request Samples</p>
+          <strong>${requestSampleCount}</strong>
+          <span>Tracked API timing samples</span>
+        </article>
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Average Response</p>
+          <strong>${formatNumber(avgRequestMs, 1)} ms</strong>
+          <span>Across recorded admin and student API traffic</span>
+        </article>
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Average Grading Delay</p>
+          <strong>${formatNumber(avgGradingMs, 1)} ms</strong>
+          <span>Submit-to-grade pipeline performance</span>
+        </article>
+      </section>
+      <section class="analytics-stack">
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Endpoint Response Time</h3>
+              <p class="small">Ye table batati hai kaunse routes stable hain aur kaunse routes slow ho rahe hain.</p>
+            </div>
+          </div>
+          ${renderMetricsEndpointTable(requestRows)}
+        </article>
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Processing and Reliability</h3>
+              <p class="small">Exam engine ke operational counters ko quick cards me dekho.</p>
+            </div>
+          </div>
+          <div class="analytics-card-grid">
+            <article class="analytics-mini-card tone-${msTone(avgGradingMs, 600, 1800)}">
+              <p class="analytics-mini-label">Grading Average</p>
+              <strong>${formatNumber(avgGradingMs, 1)} ms</strong>
+              <span>Average submit-to-grade delay</span>
+              <span>Peak ${formatNumber(maxMetricValue(gradingRows), 1)} ms</span>
+            </article>
+            <article class="analytics-mini-card tone-${countTone(conflictCount, 1, 3)}">
+              <p class="analytics-mini-label">Concurrency Conflicts</p>
+              <strong>${conflictCount}</strong>
+              <span>Concurrent write conflicts detected</span>
+              <span>Lower is better</span>
+            </article>
+            <article class="analytics-mini-card tone-${countTone(autoExpireCount, 2, 8)}">
+              <p class="analytics-mini-label">Auto Expire Events</p>
+              <strong>${autoExpireCount}</strong>
+              <span>Attempts auto-submitted after expiry</span>
+              <span>Review if unexpected</span>
+            </article>
+          </div>
+        </article>
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Proctor Alert Lifecycle</h3>
+              <p class="small">Raised, acknowledged, aur resolved alert flow ko ek nazar me dekho.</p>
+            </div>
+          </div>
+          <div class="analytics-card-grid">
+            <article class="analytics-mini-card tone-${countTone(alertRaisedCount, 1, 5)}">
+              <p class="analytics-mini-label">Alerts Raised</p>
+              <strong>${alertRaisedCount}</strong>
+              <span>Integrity or proctor alerts triggered</span>
+            </article>
+            <article class="analytics-mini-card tone-${countTone(sumMetricCounts(alertAckRows), 2, 8)}">
+              <p class="analytics-mini-label">Acknowledged</p>
+              <strong>${sumMetricCounts(alertAckRows)}</strong>
+              <span>Alerts acknowledged by operators</span>
+              <span>Avg ack ${formatNumber(averageMetricValue(alertAckMsRows), 1)} ms</span>
+            </article>
+            <article class="analytics-mini-card tone-${countTone(sumMetricCounts(alertResolvedRows), 2, 8)}">
+              <p class="analytics-mini-label">Resolved</p>
+              <strong>${sumMetricCounts(alertResolvedRows)}</strong>
+              <span>Alerts resolved manually</span>
+              <span>Avg resolve ${formatNumber(averageMetricValue(alertResolutionMsRows), 1)} ms</span>
+            </article>
+            <article class="analytics-mini-card tone-${countTone(sumMetricCounts(alertAutoResolvedRows), 3, 10)}">
+              <p class="analytics-mini-label">Auto Resolved</p>
+              <strong>${sumMetricCounts(alertAutoResolvedRows)}</strong>
+              <span>Alerts cleared by automatic recovery</span>
+            </article>
+          </div>
+        </article>
+      </section>
+    `;
+  }
+
+  function renderExamSummary(resultsData, analyticsData) {
+    const summary = analyticsData.summaryData.summary || {};
+    const topicCells = [...(analyticsData.topicData.cells || [])];
+    const buckets = analyticsData.distributionData.buckets || [];
+    const strongestTopics = [...topicCells]
+      .sort((left, right) => Number(right.performance_index || 0) - Number(left.performance_index || 0))
+      .slice(0, 3);
+    const weakTopics = [...topicCells]
+      .sort((left, right) => Number(left.performance_index || 0) - Number(right.performance_index || 0))
+      .slice(0, 3);
+    const totalCadets = Number(resultsData.candidates?.length || summary.total_attempts || 0);
+    const pendingReview = Number(resultsData.pending_review_count || 0);
+    const readyResults = Number(resultsData.ready_result_count || 0);
+    const published = Boolean(resultsData.results_published);
+    const publishedLabel = published ? "Published" : pendingReview > 0 ? "Waiting for review" : "Ready to publish";
+    const publishedTone = published ? "good" : pendingReview > 0 ? "risk" : "mid";
+
+    return `
+      <section class="analytics-toolbar">
+        <div class="analytics-toolbar-info">
+          <strong>Exam Summary Snapshot</strong>
+          <span>High-level graphical summary for quick reporting and publication decisions.</span>
+        </div>
+        <div class="analytics-inline-check">
+          <span class="analytics-pill tone-${publishedTone}">${publishedLabel}</span>
+        </div>
+      </section>
+      <section class="analytics-grid">
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Cadets Processed</p>
+          <strong>${totalCadets}</strong>
+          <span>Total attempts visible in result review</span>
+        </article>
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Results Ready</p>
+          <strong>${readyResults}</strong>
+          <span>Final results ready for publish/export</span>
+        </article>
+        <article class="analytics-kpi">
+          <p class="analytics-kpi-label">Pending Review</p>
+          <strong>${pendingReview}</strong>
+          <span>FIB or subjective answers still awaiting examiner action</span>
+        </article>
+      </section>
+      <section class="analytics-stack">
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Score Distribution</h3>
+              <p class="small">Score bands show overall performance spread across finalized attempts.</p>
+            </div>
+          </div>
+          <div class="analytics-distribution">
+            ${renderDistribution(buckets, Number(summary.total_attempts || totalCadets))}
+          </div>
+        </article>
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Publication Readiness</h3>
+              <p class="small">Use these signals before publishing or exporting final results.</p>
+            </div>
+          </div>
+          <div class="analytics-card-grid">
+            <article class="analytics-mini-card tone-${published ? "good" : "mid"}">
+              <p class="analytics-mini-label">Publish State</p>
+              <strong>${published ? "Live" : "Private"}</strong>
+              <span>${published ? "Cadet result documents can now be exported." : "Results are still admin-controlled."}</span>
+            </article>
+            <article class="analytics-mini-card tone-${pendingReview > 0 ? "risk" : "good"}">
+              <p class="analytics-mini-label">Review Gate</p>
+              <strong>${pendingReview > 0 ? "Blocked" : "Clear"}</strong>
+              <span>${pendingReview > 0 ? "Pending reviews should be resolved first." : "No pending review blockers detected."}</span>
+            </article>
+            <article class="analytics-mini-card tone-${performanceTone(summary.pass_rate)}">
+              <p class="analytics-mini-label">Pass Rate</p>
+              <strong>${formatPercent(summary.pass_rate)}</strong>
+              <span>Average performance trend for this exam</span>
+            </article>
+          </div>
+        </article>
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Strongest Topics</h3>
+              <p class="small">Top-performing areas based on topic heatmap data.</p>
+            </div>
+          </div>
+          ${renderTopicCards(strongestTopics)}
+        </article>
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <div>
+              <h3>Needs Attention</h3>
+              <p class="small">Lower-performing topics that may need revision planning.</p>
+            </div>
+          </div>
+          ${renderTopicCards(weakTopics)}
+        </article>
+      </section>
+    `;
+  }
+
+  async function ensureAnalyticsQuestionCache() {
+    if (st.questions.length) return;
+    try {
+      st.questions = await api("/admin/questions");
+    } catch {
+      st.questions = [];
+    }
+  }
+
+  function prepareAnalyticsPayload(summaryData, difficultyData, topicData, distributionData) {
+    const questionLookup = getQuestionLookup();
+    return {
+      summaryData: {
+        ...summaryData,
+        question_metrics: (summaryData.question_metrics || []).map((item) =>
+          buildAnalyticsQuestionData(item, questionLookup),
+        ),
+      },
+      difficultyData: {
+        ...difficultyData,
+        cells: (difficultyData.cells || []).map((item) =>
+          buildAnalyticsQuestionData(item, questionLookup),
+        ),
+      },
+      topicData,
+      distributionData,
+    };
+  }
+
+  function renderAnalyticsDashboardFromState(focusState = null) {
+    if (!st.analyticsData || !el.analyticsBox) return;
+    el.analyticsBox.innerHTML = renderAnalyticsDashboard(
+      st.analyticsData.summaryData,
+      st.analyticsData.difficultyData,
+      st.analyticsData.topicData,
+      st.analyticsData.distributionData,
+    );
+    if (!focusState?.control) return;
+    const target = el.analyticsBox.querySelector(
+      `[data-analytics-control="${focusState.control}"]`,
+    );
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    if (
+      typeof focusState.cursor === "number" &&
+      typeof target.setSelectionRange === "function"
+    ) {
+      target.setSelectionRange(focusState.cursor, focusState.cursor);
+    }
+  }
+
+  function handleAnalyticsControlEvent(event) {
+    const control = event.target.closest("[data-analytics-control]");
+    if (!control || !st.analyticsData) return;
+    const controlName = control.dataset.analyticsControl;
+    if (!controlName) return;
+    const focusState = {
+      control: controlName,
+      cursor:
+        typeof control.selectionStart === "number" ? control.selectionStart : null,
+    };
+    st.analyticsUi[controlName] = analyticsControlValue(control);
+    renderAnalyticsDashboardFromState(focusState);
   }
 
   function updateExamSelections(exams, preferredId = "") {
@@ -1096,27 +1872,63 @@
 
   async function loadMetrics() {
     const data = await api("/admin/system/metrics");
-    el.metricsBox.textContent = prettyJson(data);
+    if (!el.metricsBox) return;
+    el.metricsBox.innerHTML = renderMetricsDashboard(data);
+    setStatus("Operational health dashboard loaded.");
   }
 
   async function loadAnalytics() {
     const examId = requireExam();
+    st.analyticsUi = {
+      ...st.analyticsUi,
+      questionSearch: "",
+      questionFilter: "all",
+      questionSort: "correct_desc",
+      difficultySearch: "",
+      difficultyFilter: "all",
+      difficultySort: "difficulty_index_asc",
+    };
+    await ensureAnalyticsQuestionCache();
     const [summary, difficultyHeatmap, topicHeatmap, scoreDistribution] = await Promise.all([
       api(`/admin/exams/${examId}/analytics`),
       api(`/admin/exams/${examId}/analytics/difficulty-heatmap`),
       api(`/admin/exams/${examId}/analytics/topic-heatmap`),
       api(`/admin/exams/${examId}/analytics/score-distribution`),
     ]);
-    el.analyticsBox.innerHTML = renderAnalyticsDashboard(
+    st.analyticsData = prepareAnalyticsPayload(
       summary,
       difficultyHeatmap,
       topicHeatmap,
       scoreDistribution,
     );
+    renderAnalyticsDashboardFromState();
     setStatus("Analytics dashboard loaded.");
   }
 
+  async function generateExamSummary() {
+    const examId = requireExam();
+    if (!el.examSummaryBox) return;
+    await ensureAnalyticsQuestionCache();
+    const [resultsData, summary, difficultyHeatmap, topicHeatmap, scoreDistribution] = await Promise.all([
+      api(`/admin/exams/${examId}/results`),
+      api(`/admin/exams/${examId}/analytics`),
+      api(`/admin/exams/${examId}/analytics/difficulty-heatmap`),
+      api(`/admin/exams/${examId}/analytics/topic-heatmap`),
+      api(`/admin/exams/${examId}/analytics/score-distribution`),
+    ]);
+    const analyticsPayload = prepareAnalyticsPayload(
+      summary,
+      difficultyHeatmap,
+      topicHeatmap,
+      scoreDistribution,
+    );
+    st.analyticsData = analyticsPayload;
+    el.examSummaryBox.innerHTML = renderExamSummary(resultsData, analyticsPayload);
+    setStatus("Graphical exam summary generated.");
+  }
+
   async function loadAiStatus() {
+    if (!el.aiStatusBox) return;
     const data = await api("/admin/ai/status");
     el.aiStatusBox.textContent = prettyJson(data);
     setStatus(data.reachable ? "Offline AI sidecar reachable." : "Offline AI sidecar unavailable; heuristic mode active.");
@@ -1374,15 +2186,30 @@
   }
 
   function bindEvents() {
+    bindPasswordControls(
+      el.studentPasswordInput,
+      el.studentPasswordToggle,
+      el.studentPasswordCapsWarning,
+    );
+    bindPasswordControls(
+      el.newAdminKey,
+      el.newAdminKeyToggle,
+      el.newAdminKeyCapsWarning,
+    );
     el.logoutAdmin.addEventListener("click", () => {
       localStorage.removeItem(SESSION_KEY);
       window.location.href = "/web";
+    });
+    el.toggleAdminDrawer?.addEventListener("click", () => {
+      applyAdminDrawerState(!st.drawerCollapsed);
     });
     el.openDownloadsTop?.addEventListener("click", () => setAdminTab("downloads"));
     el.errorClose?.addEventListener("click", () => closeDialog(el.errorDialog));
     el.errorDialog?.addEventListener("click", (event) => {
       if (event.target === el.errorDialog) closeDialog(el.errorDialog);
     });
+    el.analyticsBox?.addEventListener("input", handleAnalyticsControlEvent);
+    el.analyticsBox?.addEventListener("change", handleAnalyticsControlEvent);
     adminTabButtons().forEach((button) => {
       button.addEventListener("click", () => setAdminTab(button.dataset.adminTab));
     });
@@ -1421,7 +2248,9 @@
     el.loadAuditEvents.addEventListener("click", () => loadAudit().catch((error) => setStatus(error.message, true)));
     el.loadAccessProfile.addEventListener("click", () => loadAccessProfile().catch((error) => setStatus(error.message, true)));
     el.loadMetrics.addEventListener("click", () => loadMetrics().catch((error) => setStatus(error.message, true)));
+    el.generateExamSummary?.addEventListener("click", () => generateExamSummary().catch((error) => setStatus(error.message, true)));
     el.loadExamAnalytics.addEventListener("click", () => loadAnalytics().catch((error) => setStatus(error.message, true)));
+    el.loadExamAnalyticsSecondary?.addEventListener("click", () => loadAnalytics().catch((error) => setStatus(error.message, true)));
     el.loadAiStatus?.addEventListener("click", () => loadAiStatus().catch((error) => setStatus(error.message, true)));
     el.aiRefineQuestion?.addEventListener("click", () => refineQuestionWithAi().catch((error) => setStatus(error.message, true)));
     el.aiRubricSuggest?.addEventListener("click", () => suggestRubricWithAi().catch((error) => setStatus(error.message, true)));
@@ -1444,6 +2273,7 @@
   try {
     ensureSession();
     bindEvents();
+    applyAdminDrawerState(loadAdminDrawerState());
     setAdminTab("dashboard");
     loadVersion();
     loadExams().catch((error) => setStatus(error.message, true));
@@ -1453,7 +2283,6 @@
       loadAdminAccounts().catch((error) => setStatus(error.message, true));
     }
     loadAccessProfile().catch(() => {});
-    loadAiStatus().catch(() => {});
     loadArtifacts().catch(() => {});
   } catch {
     // Redirect handled in ensureSession.

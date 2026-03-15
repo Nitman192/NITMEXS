@@ -2,22 +2,85 @@
   const STUDENT_SESSION_KEY = "nitmexs_student_session";
   const ADMIN_SESSION_KEY = "nitmexs_admin_session";
   const $ = (id) => document.getElementById(id);
+  const friendlyFieldLabel = (field) => {
+    const map = {
+      student_id: "Student ID",
+      admin_id: "Admin ID",
+      access_key: "access key",
+      password: "password",
+      display_name: "display name",
+    };
+    if (!field) return "";
+    return map[field] || String(field).replaceAll("_", " ");
+  };
+
+  const extractFieldFromLoc = (loc) => {
+    if (!Array.isArray(loc)) return "";
+    for (let index = loc.length - 1; index >= 0; index -= 1) {
+      const item = loc[index];
+      if (typeof item === "string" && !["body", "query", "path"].includes(item)) {
+        return item;
+      }
+    }
+    return "";
+  };
+
+  const friendlyErrorText = (message, field = "") => {
+    const text = String(message || "").trim();
+    const label = friendlyFieldLabel(field);
+    if (!text) return "";
+    if (/field required/i.test(text)) {
+      return label ? `Please enter ${label}.` : "Please fill in the required details and try again.";
+    }
+    const minMatch = text.match(/at least (\d+) characters?/i);
+    if (minMatch) {
+      return label
+        ? `${label.charAt(0).toUpperCase() + label.slice(1)} must be at least ${minMatch[1]} characters long.`
+        : `Please enter at least ${minMatch[1]} characters.`;
+    }
+    const maxMatch = text.match(/at most (\d+) characters?/i);
+    if (maxMatch) {
+      return label
+        ? `${label.charAt(0).toUpperCase() + label.slice(1)} must be ${maxMatch[1]} characters or fewer.`
+        : `Please keep the text within ${maxMatch[1]} characters.`;
+    }
+    if (/invalid .*credentials|incorrect|authentication failed/i.test(text)) {
+      return "The ID or password you entered is not correct. Please try again.";
+    }
+    if (/trusted host machine/i.test(text)) {
+      return "This admin login works only on the trusted host machine.";
+    }
+    if (/already exists/i.test(text)) {
+      return label
+        ? `This ${label.toLowerCase()} is already in use. Please choose a different one.`
+        : "This value is already in use. Please choose a different one.";
+    }
+    if (/not found/i.test(text)) {
+      return "The requested record could not be found.";
+    }
+    if (/input should be|unable to validate/i.test(text)) {
+      return label
+        ? `Please check ${label} and try again.`
+        : "Please check the entered details and try again.";
+    }
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+
   const explainApiError = (detail) => {
     if (detail == null || detail === "") return "";
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
-      return detail.map((item) => explainApiError(item)).filter(Boolean).join("; ");
+      return detail.map((item) => explainApiError(item)).filter(Boolean)[0] || "";
     }
     if (typeof detail === "object") {
       if (typeof detail.msg === "string") {
-        const where = Array.isArray(detail.loc) ? detail.loc.join(" > ") : "";
-        return where ? `${where}: ${detail.msg}` : detail.msg;
+        const field = extractFieldFromLoc(detail.loc);
+        return friendlyErrorText(detail.msg, field);
       }
-      if (typeof detail.detail === "string") return detail.detail;
+      if (typeof detail.detail === "string") return friendlyErrorText(detail.detail);
       return Object.entries(detail)
-        .map(([key, value]) => `${key}: ${explainApiError(value)}`)
-        .filter((item) => item && !item.endsWith(": "))
-        .join(", ");
+        .map(([, value]) => explainApiError(value))
+        .filter(Boolean)[0] || "";
     }
     return String(detail);
   };
@@ -26,10 +89,14 @@
     accessProfile: $("access-profile-label"),
     studentId: $("student-login-id"),
     studentPassword: $("student-login-password"),
+    studentPasswordToggle: $("student-login-password-toggle"),
+    studentCapsWarning: $("student-login-caps-warning"),
     studentLogin: $("student-login-btn"),
     adminCard: $("admin-card"),
     adminId: $("admin-login-id"),
     adminKey: $("admin-login-key"),
+    adminKeyToggle: $("admin-login-key-toggle"),
+    adminCapsWarning: $("admin-login-caps-warning"),
     adminLogin: $("admin-login-btn"),
     continueStudent: $("continue-student"),
     continueAdmin: $("continue-admin"),
@@ -59,8 +126,53 @@
   };
 
   const setStatus = (message, isError = false) => {
-    if (el.status) el.status.textContent = String(message ?? "");
+    if (el.status) {
+      el.status.textContent = String(message ?? "");
+      el.status.classList.toggle("error", isError);
+    }
     if (isError && message) showErrorDialog(message);
+  };
+
+  const bindPasswordControls = (input, toggle, warning) => {
+    if (!input || !toggle) return;
+    let capsLockOn = false;
+
+    const syncToggle = () => {
+      const isVisible = input.type === "text";
+      toggle.textContent = isVisible ? "Hide" : "Show";
+      toggle.setAttribute("aria-pressed", String(isVisible));
+      toggle.setAttribute("aria-label", `${isVisible ? "Hide" : "Show"} password`);
+    };
+
+    const syncWarning = () => {
+      if (!warning) return;
+      warning.hidden = !(capsLockOn && document.activeElement === input);
+    };
+
+    const detectCapsLock = (event) => {
+      if (typeof event?.getModifierState === "function") {
+        capsLockOn = event.getModifierState("CapsLock");
+      }
+      syncWarning();
+    };
+
+    toggle.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      syncToggle();
+      input.focus({ preventScroll: true });
+      syncWarning();
+    });
+
+    input.addEventListener("keydown", detectCapsLock);
+    input.addEventListener("keyup", detectCapsLock);
+    input.addEventListener("focus", syncWarning);
+    input.addEventListener("blur", () => {
+      capsLockOn = false;
+      syncWarning();
+    });
+
+    syncToggle();
+    syncWarning();
   };
 
   const readSession = (key) => {
@@ -118,7 +230,7 @@
     const studentId = (el.studentId.value || "").trim();
     const password = (el.studentPassword.value || "").trim();
     if (!studentId || !password) {
-      setStatus("Student login ke liye Student ID aur password dono required hain.", true);
+      setStatus("Please enter Student ID and password.", true);
       return;
     }
     const session = await api("/student/login", {
@@ -137,7 +249,7 @@
     const adminId = (el.adminId.value || "").trim();
     const accessKey = (el.adminKey.value || "").trim();
     if (!adminId || !accessKey) {
-      setStatus("Admin login ke liye Admin ID aur access key required hai.", true);
+      setStatus("Please enter Admin ID and access key.", true);
       return;
     }
     const session = await api("/system/admin-login", {
@@ -170,11 +282,14 @@
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("reason") === "login_required") {
-    setStatus("Requested page open karne ke liye pehle login karo.", true);
+    setStatus("Please sign in first to open that page.", true);
   }
   if (params.get("reason") === "host_only") {
-    setStatus("Admin panel sirf trusted host machine par available hai.", true);
+    setStatus("The admin panel is available only on the trusted host machine.", true);
   }
+
+  bindPasswordControls(el.studentPassword, el.studentPasswordToggle, el.studentCapsWarning);
+  bindPasswordControls(el.adminKey, el.adminKeyToggle, el.adminCapsWarning);
 
   el.studentLogin.addEventListener("click", () =>
     loginStudent().catch((error) => setStatus(error.message, true)),
