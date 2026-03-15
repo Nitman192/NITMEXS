@@ -2960,11 +2960,12 @@ body.admin-shell .admin-brand-subline {
 body.admin-shell .admin-page {
   display: grid;
   gap: 14px;
+  --admin-sticky-top: 86px;
 }
 
 body.admin-shell .admin-context-bar {
   position: sticky;
-  top: 72px;
+  top: var(--admin-sticky-top);
   z-index: 20;
 }
 
@@ -2983,8 +2984,11 @@ body.admin-shell .admin-content-stack {
 
 body.admin-shell .admin-drawer {
   position: sticky;
-  top: 176px;
+  top: var(--admin-sticky-top);
   z-index: 19;
+  align-self: start;
+  max-height: calc(100vh - var(--admin-sticky-top) - 18px);
+  overflow: hidden;
   display: grid;
   gap: 10px;
   padding: 10px;

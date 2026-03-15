@@ -370,6 +370,25 @@
     }
   }
 
+  function questionTypeLabel(type) {
+    const keyMap = {
+      mcq_single: "admin.question_type_mcq",
+      true_false: "admin.question_type_true_false",
+      fib_text: "admin.question_type_fib",
+      short_answer: "admin.question_type_short",
+      long_answer: "admin.question_type_long",
+    };
+    const fallbackMap = {
+      mcq_single: "MCQ",
+      true_false: "True / False",
+      fib_text: "Fill in the Blanks",
+      short_answer: "Short Answer",
+      long_answer: "Long Answer",
+    };
+    const resolvedType = String(type || "mcq_single");
+    return label(keyMap[resolvedType] || "", fallbackMap[resolvedType] || resolvedType);
+  }
+
   function updateSelectedExamChip() {
     if (!el.selectedExamChip) return;
     const current = st.exams.find((item) => item.id === selectedExamId());
@@ -1473,15 +1492,15 @@
     const wordPolicy = [question.word_target_min, question.word_target_max, question.word_hard_max].some(
       (value) => value != null,
     )
-      ? `<p><strong>Word policy:</strong> ${question.word_target_min ?? "-"} to ${question.word_target_max ?? "-"}, hard max ${question.word_hard_max ?? "-"}</p>`
+      ? `<p><strong>${esc(label("admin.preview_word_policy", "Word policy"))}:</strong> ${question.word_target_min ?? "-"} to ${question.word_target_max ?? "-"}, hard max ${question.word_hard_max ?? "-"}</p>`
       : "";
     if (type === "fib_text") {
-      return `<div><p><strong>Fill in the blank:</strong> ${esc(question.text)}</p><input class="army-text-input" type="text" placeholder="Cadet types the missing word here" disabled>${accepted ? `<p><strong>Accepted answers</strong></p><ul>${accepted}</ul>` : ""}</div>`;
+      return `<div><p><strong>${esc(label("admin.preview_fib_title", "Fill in the blank"))}:</strong> ${esc(question.text)}</p><input class="army-text-input" type="text" placeholder="${esc(label("admin.preview_fib_placeholder", "Cadet types the missing word here"))}" disabled>${accepted ? `<p><strong>${esc(label("admin.preview_accepted_answers", "Accepted answers"))}</strong></p><ul>${accepted}</ul>` : ""}</div>`;
     }
     if (type === "short_answer" || type === "long_answer") {
-      return `<div><p><strong>${type === "short_answer" ? "Short answer" : "Long answer"}:</strong> ${esc(question.text)}</p>${wordPolicy}<textarea class="army-textarea" rows="${type === "long_answer" ? 8 : 4}" placeholder="Cadet writes the answer here" disabled></textarea></div>`;
+      return `<div><p><strong>${esc(type === "short_answer" ? label("admin.preview_short_title", "Short answer") : label("admin.preview_long_title", "Long answer"))}:</strong> ${esc(question.text)}</p>${wordPolicy}<textarea class="army-textarea" rows="${type === "long_answer" ? 8 : 4}" placeholder="${esc(label("admin.preview_subjective_placeholder", "Cadet writes the answer here"))}" disabled></textarea></div>`;
     }
-    return `<div><p><strong>${type === "true_false" ? "True / False" : "MCQ"}:</strong> ${esc(question.text)}</p><ul>${options}</ul></div>`;
+    return `<div><p><strong>${esc(type === "true_false" ? label("admin.preview_true_false_title", "True / False") : label("admin.preview_mcq_title", "MCQ"))}:</strong> ${esc(question.text)}</p><ul>${options}</ul></div>`;
   }
 
   function renderQuestions(questions) {
@@ -1495,7 +1514,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${esc(question.id)}</td>
-        <td>${esc(question.question_type)}</td>
+        <td>${esc(questionTypeLabel(question.question_type))}</td>
         <td>${esc(question.topic)}</td>
         <td>${esc(question.marks)}</td>
         <td>${esc(question.text)}</td>
@@ -1812,7 +1831,7 @@
       tr.innerHTML = `
         <td>${esc(item.student_id)}</td>
         <td>${esc(item.question_text)}</td>
-        <td>${esc(item.question_type)}</td>
+        <td>${esc(questionTypeLabel(item.question_type))}</td>
         <td>${esc(item.word_count ?? 0)} / ${esc(item.word_target_max ?? "-")}</td>
         <td>${esc(item.text_answer || "")}</td>
         <td><input data-role="subjective-marks" type="number" min="0" max="${esc(item.max_marks)}" step="0.5" value="0" style="width:90px"></td>

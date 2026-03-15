@@ -28,22 +28,6 @@
   </header>
 
   <main class="page admin-page">
-    <section class="panel wide admin-context-bar">
-      <div class="row space-between">
-        <div>
-          <h2>Exam Context</h2>
-          <p class="small">Trusted host machine control room for NITMEXS Basic deployment.</p>
-        </div>
-        <button id="load-exams" type="button">Load Exams</button>
-      </div>
-      <div class="row">
-        <select id="exam-select" style="flex:1 1 320px"><option value="">Select exam...</option></select>
-        <select id="reference-exam-select" style="flex:1 1 260px"><option value="">Reference exam (optional)</option></select>
-        <button id="save-reference-exam" class="alt" type="button">Save Reference Exam</button>
-      </div>
-      <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
-    </section>
-
     <div class="admin-workspace">
       <aside id="admin-drawer" class="admin-drawer">
         <div class="admin-drawer-head">
@@ -64,11 +48,27 @@
           <button class="admin-tab" data-admin-tab="downloads" data-short="Files" title="Downloads" type="button">Downloads</button>
           <button class="admin-tab" data-admin-tab="audit" data-short="Audit" title="Audit" type="button">Audit</button>
           <button class="admin-tab" data-admin-tab="security" data-short="Secure" title="Security" type="button">Security</button>
-    </nav>
+        </nav>
       </aside>
 
       <div class="admin-content-stack">
-    <section class="admin-tab-panel active" data-admin-panel="dashboard">
+        <section class="panel wide admin-context-bar">
+          <div class="row space-between">
+            <div>
+              <h2>Exam Context</h2>
+              <p class="small">Trusted host machine control room for NITMEXS Basic deployment.</p>
+            </div>
+            <button id="load-exams" type="button">Load Exams</button>
+          </div>
+          <div class="row">
+            <select id="exam-select" style="flex:1 1 320px"><option value="">Select exam...</option></select>
+            <select id="reference-exam-select" style="flex:1 1 260px"><option value="">Reference exam (optional)</option></select>
+            <button id="save-reference-exam" class="alt" type="button">Save Reference Exam</button>
+          </div>
+          <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
+        </section>
+
+        <section class="admin-tab-panel active" data-admin-panel="dashboard">
       <div class="grid admin-tab-grid">
         <article class="panel wide">
           <h2>Quick Dashboard</h2>
@@ -77,9 +77,9 @@
           </div>
         </article>
       </div>
-    </section>
+        </section>
 
-    <section class="admin-tab-panel" data-admin-panel="exams" hidden>
+        <section class="admin-tab-panel" data-admin-panel="exams" hidden>
       <div class="grid admin-tab-grid">
         <article class="panel wide">
           <h2>Exam Scope</h2>
@@ -103,7 +103,7 @@
           </div>
         </article>
       </div>
-    </section>
+        </section>
 
     <section class="admin-tab-panel" data-admin-panel="questions" hidden>
       <div class="grid admin-tab-grid">
