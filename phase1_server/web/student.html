@@ -1,249 +1,288 @@
 ﻿<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NITMEXS Examination</title>
-  <link rel="stylesheet" href="/web/theme.css">
-</head>
-<body class="student-body" data-default-theme="dark">
-  <main class="student-shell army-shell">
-    <header class="student-header army-header">
-      <div>
-        <p class="student-kicker">NITMEXS EXAM MODE</p>
-        <h1>Cadet Examination Console</h1>
-        <p class="student-subtitle">Controlled three-stage examination workflow.</p>
-      </div>
-      <div class="student-header-actions">
-        <span class="student-pill">Cadet: <strong id="session-student">...</strong></span>
-        <span class="student-pill">Server: <span id="version">...</span></span>
-        <label class="theme-switch">
-          <input id="student-theme-toggle" data-theme-toggle type="checkbox">
-          <span data-theme-label>Dark</span>
-        </label>
-        <details class="army-tools-menu">
-          <summary>Tools</summary>
-          <div class="army-tools-list">
-            <label><input id="high-contrast-toggle" type="checkbox"> High Contrast</label>
-            <label><input id="confirm-unanswered-toggle" type="checkbox" checked> Confirm Unanswered</label>
-            <label><input id="colorblind-toggle" type="checkbox"> Color Blind Theme</label>
-            <label><input id="reduced-motion-toggle" type="checkbox"> Reduced Motion</label>
-            <label><input id="large-cursor-toggle" type="checkbox"> Large Cursor</label>
-          </div>
-        </details>
-        <button id="open-shortcuts" class="btn-outline" type="button">Shortcuts</button>
-        <button id="logout-student" class="btn-outline" type="button">Logout</button>
-      </div>
-    </header>
-
-    <section class="card stage-rail" aria-label="Exam stage progress">
-      <button id="stage-pill-lobby" class="stage-pill active" type="button">1. Pre-Exam Lobby</button>
-      <button id="stage-pill-exam" class="stage-pill" type="button" disabled>2. Active Exam</button>
-      <button id="stage-pill-submission" class="stage-pill" type="button" disabled>3. Exam Submission</button>
-    </section>
-
-    <section id="student-stage-lobby" class="student-stage">
-      <section class="card army-grid-two">
-        <article class="army-panel-block">
-          <div class="row space-between">
-            <h2>Select Exam</h2>
-            <button id="load-exams" class="btn-outline" type="button">Refresh Exams</button>
-          </div>
-          <label for="exam-select">Choose an Available Exam</label>
-          <select id="exam-select">
-            <option value="">Choose an available exam...</option>
-          </select>
-          <div class="row" style="margin-top:12px">
-            <button id="preview-reference" class="btn-outline" type="button">Reference Exam</button>
-            <button id="start-attempt" class="btn-primary" type="button">Start Exam</button>
-          </div>
-          <div class="status-strip">
-            <span class="status-label">Exam Status</span>
-            <span id="student-status">Ready. Select an exam and start.</span>
-          </div>
-          <label class="utility-field" for="font-size-select">
-            Font Size
-            <select id="font-size-select">
-              <option value="normal">Normal</option>
-              <option value="large">Large</option>
-              <option value="xlarge">Extra Large</option>
-            </select>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NITMEXS Examination</title>
+    <link rel="stylesheet" href="/web/theme.css" />
+  </head>
+  <body class="student-body" data-default-theme="dark">
+    <main class="student-shell army-shell">
+      <header class="student-header army-header">
+        <div>
+          <p class="student-kicker">NITMEXS EXAM MODE</p>
+          <h1>Student Examination Console</h1>
+          <p class="student-subtitle">Controlled three-stage examination workflow.</p>
+        </div>
+        <div class="student-header-actions">
+          <span class="student-pill">Cadet: <strong id="session-student">...</strong></span>
+          <span class="student-pill">Server: <span id="version">...</span></span>
+          <label class="theme-switch">
+            <input id="student-theme-toggle" data-theme-toggle type="checkbox" />
+            <span data-theme-label>Dark</span>
           </label>
-          <p id="attempt-meta" class="attempt-meta">No active attempt.</p>
-        </article>
+          <details class="army-tools-menu">
+            <summary>Tools</summary>
+            <div class="army-tools-list">
+              <label><input id="high-contrast-toggle" type="checkbox" /> High Contrast</label>
+              <label
+                ><input id="confirm-unanswered-toggle" type="checkbox" checked /> Confirm
+                Unanswered</label
+              >
+              <label><input id="colorblind-toggle" type="checkbox" /> Color Blind Theme</label>
+              <label><input id="reduced-motion-toggle" type="checkbox" /> Reduced Motion</label>
+              <label><input id="large-cursor-toggle" type="checkbox" /> Large Cursor</label>
+            </div>
+          </details>
+          <button id="open-shortcuts" class="btn-outline" type="button">Shortcuts</button>
+          <button id="logout-student" class="btn-outline" type="button">Logout</button>
+        </div>
+      </header>
 
-        <article class="army-panel-block">
-          <div class="row space-between">
-            <h2>Device Diagnostics</h2>
-            <button id="run-diagnostics" class="btn-outline" type="button">Run Diagnostics</button>
-          </div>
-          <div id="diagnostics-result" class="box small">Diagnostics not run yet.</div>
-          <div class="army-health-grid">
-            <span id="autosave-indicator" class="status-pill autosave-synced">Autosave: Synced</span>
-            <span id="sync-health-indicator" class="status-pill sync-online">LAN: Healthy</span>
-            <span id="heartbeat-indicator" class="status-pill sync-online">Server: Checking...</span>
-          </div>
-          <div id="low-time-alert" class="low-time-alert" hidden></div>
-          <h3>Exam Rules</h3>
-          <div id="pre-exam-rules-box" class="box small">
-            <p>1. Stay on the exam screen.</p>
-            <p>2. Do not copy, paste, or open external apps.</p>
-            <p>3. Use only the approved tools shown in this console.</p>
-            <p>4. Submit before time expires. Auto-submit will run at timeout.</p>
-          </div>
-        </article>
+      <section class="card stage-rail" aria-label="Exam stage progress">
+        <button id="stage-pill-lobby" class="stage-pill active" type="button">
+          1. Pre-Exam Lobby
+        </button>
+        <button id="stage-pill-exam" class="stage-pill" type="button" disabled>
+          2. Active Exam
+        </button>
+        <button id="stage-pill-submission" class="stage-pill" type="button" disabled>
+          3. Exam Submission
+        </button>
       </section>
-    </section>
 
-    <section id="student-stage-exam" class="student-stage" hidden>
-      <section class="army-exam-layout">
-        <section class="card army-main-column">
-          <div class="row space-between army-title-row">
-            <div>
-              <h2 id="exam-name">Exam</h2>
-              <p id="question-progress" class="small">Question 0 of 0</p>
+      <section id="student-stage-lobby" class="student-stage">
+        <section class="card army-grid-two">
+          <article class="army-panel-block">
+            <div class="row space-between">
+              <h2>Select Exam</h2>
+              <button id="load-exams" class="btn-outline" type="button">Refresh Exams</button>
             </div>
-            <div class="row">
-              <button id="question-zoom-out" class="btn-outline" type="button">A-</button>
-              <button id="question-zoom-reset" class="btn-outline" type="button">Reset</button>
-              <button id="question-zoom-in" class="btn-outline" type="button">A+</button>
-              <span id="question-zoom-label" class="student-pill">100%</span>
+            <label for="exam-select">Choose an Available Exam</label>
+            <select id="exam-select">
+              <option value="">Choose an available exam...</option>
+            </select>
+            <div class="row" style="margin-top: 12px">
+              <button id="preview-reference" class="btn-outline" type="button">
+                Reference Exam
+              </button>
+              <button id="start-attempt" class="btn-primary" type="button">Start Exam</button>
             </div>
-          </div>
-
-          <div class="row" style="margin-bottom:12px">
-            <button id="toggle-support" class="btn-outline" type="button">Exam Support Panel</button>
-            <button id="toggle-diagram" class="btn-outline" type="button">Diagram Canvas</button>
-            <button id="toggle-input-tools" class="btn-outline" type="button">Input Tools</button>
-          </div>
-
-          <article class="question-viewer compact-viewer">
-            <h3>Question Viewer</h3>
-            <p id="question-text">Question will appear here.</p>
+            <div class="status-strip">
+              <span class="status-label">Exam Status</span>
+              <span id="student-status">Ready. Select an exam and start.</span>
+            </div>
+            <label class="utility-field" for="font-size-select">
+              Font Size
+              <select id="font-size-select">
+                <option value="normal">Normal</option>
+                <option value="large">Large</option>
+                <option value="xlarge">Extra Large</option>
+              </select>
+            </label>
+            <p id="attempt-meta" class="attempt-meta">No active attempt.</p>
           </article>
 
-          <section id="answer-zone" class="army-answer-zone">
-            <h3 id="answer-label">Answer</h3>
-            <div id="options-list" class="option-list"></div>
-            <div id="text-answer-wrap" hidden>
-              <input id="fib-input" class="army-text-input" type="text" maxlength="4000" hidden>
-              <textarea id="subjective-input" class="army-textarea" rows="6" maxlength="20000" hidden></textarea>
-              <div class="row space-between">
-                <span id="word-counter" class="small">Words: 0</span>
-                <span id="word-warning" class="small warning-text"></span>
-              </div>
+          <article class="army-panel-block">
+            <div class="row space-between">
+              <h2>Device Diagnostics</h2>
+              <button id="run-diagnostics" class="btn-outline" type="button">
+                Run Diagnostics
+              </button>
             </div>
-          </section>
-
-          <details id="support-panel" class="army-collapsible" hidden>
-            <summary>Exam Support</summary>
-            <div class="box small">
-              <p>Need help? Use technical issue reporting if input or screen behavior is affected.</p>
-              <p>Broadcasts from Exam Controller will appear below when available.</p>
-              <div id="broadcast-feed" class="army-feed small">No broadcast messages.</div>
+            <div id="diagnostics-result" class="box small">Diagnostics not run yet.</div>
+            <div class="army-health-grid">
+              <span id="autosave-indicator" class="status-pill autosave-synced"
+                >Autosave: Synced</span
+              >
+              <span id="sync-health-indicator" class="status-pill sync-online">LAN: Healthy</span>
+              <span id="heartbeat-indicator" class="status-pill sync-online"
+                >Server: Checking...</span
+              >
             </div>
-          </details>
-
-          <details id="diagram-panel" class="army-collapsible" hidden>
-            <summary>Diagram Canvas</summary>
-            <div class="row" style="margin-bottom:8px">
-              <button id="clear-diagram" class="btn-outline" type="button">Clear</button>
+            <div id="low-time-alert" class="low-time-alert" hidden></div>
+            <h3>Exam Rules</h3>
+            <div id="pre-exam-rules-box" class="box small">
+              <p>1. Stay on the exam screen.</p>
+              <p>2. Do not copy, paste, or open external apps.</p>
+              <p>3. Use only the approved tools shown in this console.</p>
+              <p>4. Submit before time expires. Auto-submit will run at timeout.</p>
             </div>
-            <canvas id="diagram-canvas" width="640" height="220" class="army-canvas"></canvas>
-          </details>
-
-          <details id="input-tools-panel" class="army-collapsible" hidden>
-            <summary>Input Tools</summary>
-            <div class="box small">
-              <p>Virtual keyboard is available only for text-entry questions.</p>
-              <div id="virtual-keyboard" class="virtual-keyboard"></div>
-            </div>
-          </details>
-
-          <footer class="main-actions compact-actions">
-            <button id="mark-review" class="btn-outline" type="button">Mark Current Question</button>
-            <button id="prev-question" class="btn-outline" type="button">Previous</button>
-            <button id="save-next" class="btn-primary strong" type="button">Save &amp; Next</button>
-            <button id="jump-unanswered" class="btn-outline" type="button">Jump to First Unanswered</button>
-            <button id="report-question-issue" class="btn-outline" type="button">Report Question Issue</button>
-            <button id="report-technical-issue" class="btn-outline" type="button">Report Technical Issue</button>
-            <button id="submit-exam" class="danger" type="button">Submit Exam</button>
-          </footer>
+          </article>
         </section>
+      </section>
 
-        <aside class="army-side-column">
-          <section class="card timer-card compact-timer">
-            <p class="section-label">Time Left</p>
-            <p id="remaining-time" class="timer-display">--:--</p>
-          </section>
-
-          <section class="card army-status-card">
-            <p class="section-label">Live Status Tracker</p>
-            <div class="army-counter-row">
+      <section id="student-stage-exam" class="student-stage" hidden>
+        <section class="army-exam-layout">
+          <section class="card army-main-column">
+            <div class="row space-between army-title-row">
               <div>
-                <span class="army-counter-label">Attempted</span>
-                <strong id="attempted-count">0</strong>
+                <h2 id="exam-name">Exam</h2>
+                <p id="question-progress" class="small">Question 0 of 0</p>
               </div>
-              <div>
-                <span class="army-counter-label">Remaining</span>
-                <strong id="remaining-count">0</strong>
+              <div class="row">
+                <button id="question-zoom-out" class="btn-outline" type="button">A-</button>
+                <button id="question-zoom-reset" class="btn-outline" type="button">Reset</button>
+                <button id="question-zoom-in" class="btn-outline" type="button">A+</button>
+                <span id="question-zoom-label" class="student-pill">100%</span>
               </div>
             </div>
-            <p id="review-count-label" class="small">Marked for review: 0</p>
-            <p id="security-status" class="small">Security status: normal</p>
+
+            <div class="row" style="margin-bottom: 12px">
+              <button id="toggle-support" class="btn-outline" type="button">
+                Exam Support Panel
+              </button>
+              <button id="toggle-diagram" class="btn-outline" type="button">Diagram Canvas</button>
+              <button id="toggle-input-tools" class="btn-outline" type="button">Input Tools</button>
+            </div>
+
+            <article class="question-viewer compact-viewer">
+              <h3>Question Viewer</h3>
+              <p id="question-text">Question will appear here.</p>
+            </article>
+
+            <section id="answer-zone" class="army-answer-zone">
+              <h3 id="answer-label">Answer</h3>
+              <div id="options-list" class="option-list"></div>
+              <div id="text-answer-wrap" hidden>
+                <input id="fib-input" class="army-text-input" type="text" maxlength="4000" hidden />
+                <textarea
+                  id="subjective-input"
+                  class="army-textarea"
+                  rows="6"
+                  maxlength="20000"
+                  hidden
+                ></textarea>
+                <div class="row space-between">
+                  <span id="word-counter" class="small">Words: 0</span>
+                  <span id="word-warning" class="small warning-text"></span>
+                </div>
+              </div>
+            </section>
+
+            <details id="support-panel" class="army-collapsible" hidden>
+              <summary>Exam Support</summary>
+              <div class="box small">
+                <p>
+                  Need help? Use technical issue reporting if input or screen behavior is affected.
+                </p>
+                <p>Broadcasts from Exam Controller will appear below when available.</p>
+                <div id="broadcast-feed" class="army-feed small">No broadcast messages.</div>
+              </div>
+            </details>
+
+            <details id="diagram-panel" class="army-collapsible" hidden>
+              <summary>Diagram Canvas</summary>
+              <div class="row" style="margin-bottom: 8px">
+                <button id="clear-diagram" class="btn-outline" type="button">Clear</button>
+              </div>
+              <canvas id="diagram-canvas" width="640" height="220" class="army-canvas"></canvas>
+            </details>
+
+            <details id="input-tools-panel" class="army-collapsible" hidden>
+              <summary>Input Tools</summary>
+              <div class="box small">
+                <p>Virtual keyboard is available only for text-entry questions.</p>
+                <div id="virtual-keyboard" class="virtual-keyboard"></div>
+              </div>
+            </details>
+
+            <footer class="main-actions compact-actions">
+              <button id="mark-review" class="btn-outline" type="button">
+                Mark Current Question
+              </button>
+              <button id="prev-question" class="btn-outline" type="button">Previous</button>
+              <button id="save-next" class="btn-primary strong" type="button">
+                Save &amp; Next
+              </button>
+              <button id="jump-unanswered" class="btn-outline" type="button">
+                Jump to First Unanswered
+              </button>
+              <button id="report-question-issue" class="btn-outline" type="button">
+                Report Question Issue
+              </button>
+              <button id="report-technical-issue" class="btn-outline" type="button">
+                Report Technical Issue
+              </button>
+              <button id="submit-exam" class="danger" type="button">Submit Exam</button>
+            </footer>
           </section>
-        </aside>
+
+          <aside class="army-side-column">
+            <section class="card timer-card compact-timer">
+              <p class="section-label">Time Left</p>
+              <p id="remaining-time" class="timer-display">--:--</p>
+            </section>
+
+            <section class="card army-status-card">
+              <p class="section-label">Live Status Tracker</p>
+              <div class="army-counter-row">
+                <div>
+                  <span class="army-counter-label">Attempted</span>
+                  <strong id="attempted-count">0</strong>
+                </div>
+                <div>
+                  <span class="army-counter-label">Remaining</span>
+                  <strong id="remaining-count">0</strong>
+                </div>
+              </div>
+              <p id="review-count-label" class="small">Marked for review: 0</p>
+              <p id="security-status" class="small">Security status: normal</p>
+            </section>
+          </aside>
+        </section>
       </section>
-    </section>
 
-    <section id="student-stage-submission" class="student-stage" hidden>
-      <section class="card army-submission-stage">
-        <h2>Exam Submission</h2>
-        <p id="submission-state-text">Your exam flow has ended.</p>
-        <button id="final-logout" class="btn-primary big-logout" type="button" hidden>Logout</button>
+      <section id="student-stage-submission" class="student-stage" hidden>
+        <section class="card army-submission-stage">
+          <h2>Exam Submission</h2>
+          <p id="submission-state-text">Your exam flow has ended.</p>
+          <button id="final-logout" class="btn-primary big-logout" type="button" hidden>
+            Logout
+          </button>
+        </section>
       </section>
-    </section>
-  </main>
+    </main>
 
-  <dialog id="reference-modal" class="army-modal">
-    <h3>Reference Exam</h3>
-    <div id="reference-preview-box" class="box small">No reference exam linked.</div>
-    <div class="row" style="margin-top:12px">
-      <button id="close-reference" class="btn-outline" type="button">Close</button>
-    </div>
-  </dialog>
+    <dialog id="reference-modal" class="army-modal">
+      <h3>Reference Exam</h3>
+      <div id="reference-preview-box" class="box small">No reference exam linked.</div>
+      <div class="row" style="margin-top: 12px">
+        <button id="close-reference" class="btn-outline" type="button">Close</button>
+      </div>
+    </dialog>
 
-  <dialog id="shortcuts-modal" class="army-modal">
-    <h3>Keyboard Shortcuts</h3>
-    <div class="box small">
-      <p><strong>S</strong> = Save &amp; Next</p>
-      <p><strong>M</strong> = Mark Current Question</p>
-      <p><strong>A</strong> = Jump to First Unanswered</p>
-      <p><strong>Q</strong> or <strong>?</strong> = Open Shortcut Card</p>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <button id="close-shortcuts" class="btn-outline" type="button">Close</button>
-    </div>
-  </dialog>
+    <dialog id="shortcuts-modal" class="army-modal">
+      <h3>Keyboard Shortcuts</h3>
+      <div class="box small">
+        <p><strong>S</strong> = Save &amp; Next</p>
+        <p><strong>M</strong> = Mark Current Question</p>
+        <p><strong>A</strong> = Jump to First Unanswered</p>
+        <p><strong>Q</strong> or <strong>?</strong> = Open Shortcut Card</p>
+      </div>
+      <div class="row" style="margin-top: 12px">
+        <button id="close-shortcuts" class="btn-outline" type="button">Close</button>
+      </div>
+    </dialog>
 
-  <dialog id="submission-modal" class="army-modal">
-    <h3 id="submission-modal-title">Exam Submitted</h3>
-    <p id="submission-modal-text">Your exam has been submitted.</p>
-    <div class="row" style="margin-top:12px">
-      <button id="submission-modal-ok" class="btn-primary" type="button">OK</button>
-    </div>
-  </dialog>
+    <dialog id="submission-modal" class="army-modal">
+      <h3 id="submission-modal-title">Exam Submitted</h3>
+      <p id="submission-modal-text">Your exam has been submitted.</p>
+      <div class="row" style="margin-top: 12px">
+        <button id="submission-modal-ok" class="btn-primary" type="button">OK</button>
+      </div>
+    </dialog>
 
-  <dialog id="broadcast-modal" class="army-modal">
-    <h3 id="broadcast-modal-title">Broadcast Message</h3>
-    <p id="broadcast-modal-text">Exam Controller message will appear here.</p>
-    <div class="row" style="margin-top:12px">
-      <button id="broadcast-modal-ok" class="btn-primary" type="button">OK</button>
-    </div>
-  </dialog>
+    <dialog id="broadcast-modal" class="army-modal">
+      <h3 id="broadcast-modal-title">Broadcast Message</h3>
+      <p id="broadcast-modal-text">Exam Controller message will appear here.</p>
+      <div class="row" style="margin-top: 12px">
+        <button id="broadcast-modal-ok" class="btn-primary" type="button">OK</button>
+      </div>
+    </dialog>
 
-  <script src="/web/ui_labels.js"></script>
-  <script src="/web/theme_toggle.js"></script>
-  <script src="/web/student.js"></script>
-</body>
+    <script src="/web/ui_labels.js"></script>
+    <script src="/web/theme_toggle.js"></script>
+    <script src="/web/student.js"></script>
+  </body>
 </html>

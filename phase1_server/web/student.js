@@ -30,7 +30,27 @@
   function openDialog(d) { if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "open"); }
   function closeDialog(d) { if (typeof d.close === "function") d.close(); else d.removeAttribute("open"); }
   function ensureSession() { let s = null; try { s = JSON.parse(localStorage.getItem(KEY) || "null"); } catch {} if (!s?.student_id) { window.location.href = "/web?target=student&reason=login_required"; throw new Error("Student login required"); } st.studentId = s.student_id; el.sessionStudent.textContent = s.student_id; }
-  function setStage(stage) { el.stageLobby.hidden = stage !== "lobby"; el.stageExam.hidden = stage !== "exam"; el.stageSubmission.hidden = stage !== "submission"; el.stageLobbyPill.classList.toggle("active", stage === "lobby"); el.stageExamPill.classList.toggle("active", stage === "exam"); el.stageSubmissionPill.classList.toggle("active", stage === "submission"); }
+  function setStage(stage) {
+    const order = ["lobby", "exam", "submission"];
+    const currentIndex = Math.max(0, order.indexOf(stage));
+    const pills = [el.stageLobbyPill, el.stageExamPill, el.stageSubmissionPill];
+    st.stage = stage;
+    el.stageLobby.hidden = stage !== "lobby";
+    el.stageExam.hidden = stage !== "exam";
+    el.stageSubmission.hidden = stage !== "submission";
+    pills.forEach((pill, index) => {
+      if (!pill) return;
+      const isActive = index === currentIndex;
+      const isCompleted = index < currentIndex;
+      const isLocked = index > currentIndex;
+      pill.classList.toggle("active", isActive);
+      pill.classList.toggle("completed", isCompleted);
+      pill.classList.toggle("locked", isLocked);
+      pill.disabled = isLocked;
+      if (isActive) pill.setAttribute("aria-current", "step");
+      else pill.removeAttribute("aria-current");
+    });
+  }
   function applyA11y() { document.body.classList.toggle("student-high-contrast", el.highContrastToggle.checked); document.body.classList.toggle("student-colorblind", el.colorblindToggle.checked); document.body.classList.toggle("student-reduced-motion", el.reducedMotionToggle.checked); document.body.classList.toggle("student-large-cursor", el.largeCursorToggle.checked); document.body.dataset.fontSize = el.fontSizeSelect.value; }
   function updateZoom() { document.documentElement.style.setProperty("--student-question-zoom", String(st.zoom)); el.questionZoomLabel.textContent = `${Math.round(st.zoom * 100)}%`; }
   async function loadVersion() { try { const d = await api("/system/version"); el.version.textContent = d.version || "n/a"; } catch { el.version.textContent = "offline"; } }
@@ -92,5 +112,5 @@
     el.questionZoomOut.addEventListener("click", () => { st.zoom = Math.max(0.8, st.zoom - 0.1); updateZoom(); }); el.questionZoomReset.addEventListener("click", () => { st.zoom = 1; updateZoom(); }); el.questionZoomIn.addEventListener("click", () => { st.zoom = Math.min(1.8, st.zoom + 0.1); updateZoom(); });
     [el.highContrastToggle, el.confirmUnansweredToggle, el.colorblindToggle, el.reducedMotionToggle, el.largeCursorToggle, el.fontSizeSelect].forEach((c) => c.addEventListener("change", applyA11y));
   }
-  try { ensureSession(); bindEvents(); bindCanvas(); bindSecurity(); bindShortcuts(); applyA11y(); updateZoom(); loadVersion(); loadExams().then(() => loadRulesPreview().catch(() => {})).catch((e) => setStatus(e.message)); } catch {}
+  try { ensureSession(); setStage("lobby"); bindEvents(); bindCanvas(); bindSecurity(); bindShortcuts(); applyA11y(); updateZoom(); loadVersion(); loadExams().then(() => loadRulesPreview().catch(() => {})).catch((e) => setStatus(e.message)); } catch {}
 })();

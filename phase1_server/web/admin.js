@@ -266,6 +266,10 @@
     errorDialog: $("admin-error-dialog"),
     errorText: $("admin-error-text"),
     errorClose: $("admin-error-close"),
+    successDialog: $("admin-success-dialog"),
+    successTitle: $("admin-success-title"),
+    successText: $("admin-success-text"),
+    successClose: $("admin-success-close"),
   };
 
   const adminTabButtons = () => Array.from(document.querySelectorAll("[data-admin-tab]"));
@@ -287,6 +291,15 @@
     if (!el.errorDialog || !el.errorText) return;
     el.errorText.textContent = String(message ?? "Something went wrong.");
     openDialog(el.errorDialog);
+  }
+
+  function showSuccessDialog(title, message) {
+    if (!el.successDialog || !el.successTitle || !el.successText) return;
+    el.successTitle.textContent = String(title ?? "Action completed");
+    el.successText.textContent = String(
+      message ?? "The action was completed successfully.",
+    );
+    openDialog(el.successDialog);
   }
 
   function setStatus(message, isError = false) {
@@ -1973,7 +1986,12 @@
     el.newAdminName.value = "";
     el.newAdminKey.value = "";
     await loadAdminAccounts();
-    setStatus(`Admin account '${data.admin_id}' created.`);
+    const roleLabel = role === "superadmin" ? "Superadmin" : "Examiner";
+    setStatus(`${roleLabel} account '${data.admin_id}' created.`);
+    showSuccessDialog(
+      `${roleLabel} Account Created`,
+      `${roleLabel} account '${data.admin_id}' was created successfully.`,
+    );
   }
 
   function renderFibQueue(items) {
@@ -2447,6 +2465,10 @@
     el.errorClose?.addEventListener("click", () => closeDialog(el.errorDialog));
     el.errorDialog?.addEventListener("click", (event) => {
       if (event.target === el.errorDialog) closeDialog(el.errorDialog);
+    });
+    el.successClose?.addEventListener("click", () => closeDialog(el.successDialog));
+    el.successDialog?.addEventListener("click", (event) => {
+      if (event.target === el.successDialog) closeDialog(el.successDialog);
     });
     el.analyticsBox?.addEventListener("input", handleAnalyticsControlEvent);
     el.analyticsBox?.addEventListener("change", handleAnalyticsControlEvent);
