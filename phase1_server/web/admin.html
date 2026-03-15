@@ -85,8 +85,8 @@
           <h2>Exam Scope</h2>
           <div class="row">
             <input id="new-exam-name" placeholder="New exam name" style="flex:1 1 240px">
-            <input id="new-exam-duration" type="number" min="1" max="480" value="60" placeholder="Duration minutes" style="width:140px">
-            <input id="new-exam-negative-marking" type="number" min="0" step="0.01" value="0" placeholder="Negative marking" style="width:140px">
+            <input id="new-exam-duration" type="number" min="1" max="480" placeholder="Duration in minutes (example: 60)" style="width:220px">
+            <input id="new-exam-negative-marking" type="number" min="0" step="0.01" placeholder="Negative marking (example: 0.25)" style="width:220px">
             <button id="create-exam" type="button">Create Exam</button>
           </div>
           <div class="row" style="margin-top:8px">
@@ -132,7 +132,11 @@
                 <option value="long_answer">Long Answer</option>
               </select>
               <input id="question-topic" placeholder="Topic" style="flex:1 1 180px">
-              <input id="question-difficulty" placeholder="Difficulty" value="medium" style="width:140px">
+              <select id="question-difficulty" style="width:160px">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+              </select>
               <input id="question-marks" type="number" min="0.5" step="0.5" value="1" placeholder="Marks" style="width:120px">
             </div>
             <textarea id="question-text" rows="4" placeholder="Question text"></textarea>
@@ -436,6 +440,7 @@
     </article>
   </dialog>
 
+  <script src="/web/ui_labels.js"></script>
   <script src="/web/theme_toggle.js"></script>
   <script src="/web/admin.js"></script>
 </body>

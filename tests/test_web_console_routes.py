@@ -35,6 +35,7 @@ class WebConsoleRouteTests(unittest.TestCase):
         with TestClient(app) as client:
             index_response = client.get("/web")
             index_js_response = client.get("/web/index.js")
+            ui_labels_response = client.get("/web/ui_labels.js")
             theme_toggle_response = client.get("/web/theme_toggle.js")
             theme_response = client.get("/web/theme.css")
             student_response = client.get("/web/student.html")
@@ -67,9 +68,18 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("access-profile-label", index_js_response.text)
         self.assertIn("loadPortalContext", index_js_response.text)
 
+        self.assertEqual(ui_labels_response.status_code, 200)
+        self.assertIn("javascript", ui_labels_response.headers.get("content-type", ""))
+        self.assertIn("NITMEXSUILabels", ui_labels_response.text)
+        self.assertIn("student.console_title", ui_labels_response.text)
+        self.assertIn("admin.drawer_title", ui_labels_response.text)
+        self.assertIn("admin.exam_duration_placeholder", ui_labels_response.text)
+        self.assertIn("admin.difficulty_medium", ui_labels_response.text)
+
         self.assertEqual(theme_toggle_response.status_code, 200)
         self.assertIn("javascript", theme_toggle_response.headers.get("content-type", ""))
         self.assertIn("nitmexs_theme_mode", theme_toggle_response.text)
+        self.assertIn("common.theme_dark", theme_toggle_response.text)
 
         self.assertEqual(theme_response.status_code, 200)
         self.assertIn("text/css", theme_response.headers.get("content-type", ""))
@@ -91,6 +101,7 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("Diagram Canvas", student_response.text)
         self.assertIn("Input Tools", student_response.text)
         self.assertIn("Live Status Tracker", student_response.text)
+        self.assertIn("/web/ui_labels.js", student_response.text)
         self.assertNotIn("Post-Exam Analysis", student_response.text)
         self.assertNotIn("Analyze Exam", student_response.text)
         self.assertNotIn("Practice Simulation", student_response.text)
@@ -129,6 +140,10 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("Exam Summary", admin_response.text)
         self.assertIn("Access and Health Audit", admin_response.text)
         self.assertIn("Custom Exam Rules", admin_response.text)
+        self.assertIn("Duration in minutes (example: 60)", admin_response.text)
+        self.assertIn("Negative marking (example: 0.25)", admin_response.text)
+        self.assertIn('select id="question-difficulty"', admin_response.text)
+        self.assertIn('<option value="easy">Easy</option>', admin_response.text)
         self.assertIn("Admin Accounts", admin_response.text)
         self.assertIn("FIB Review Queue", admin_response.text)
         self.assertIn("Subjective Review Queue", admin_response.text)
@@ -140,6 +155,7 @@ class WebConsoleRouteTests(unittest.TestCase):
         self.assertIn("Delete Selected Exam", admin_response.text)
         self.assertIn("System Security", admin_response.text)
         self.assertIn("analytics-shell", admin_response.text)
+        self.assertIn("/web/ui_labels.js", admin_response.text)
         self.assertNotIn("Offline AI Assist", admin_response.text)
         self.assertNotIn("Publish and Safety Studio", admin_response.text)
         self.assertNotIn("AI Draft + Human Review Lane", admin_response.text)
@@ -184,6 +200,11 @@ class WebConsoleRouteTests(unittest.TestCase):
             )
         )
         self.assertIn("question_type", demo_question_csv_response.text)
+        self.assertIn("mcq_single", demo_question_csv_response.text)
+        self.assertIn("true_false", demo_question_csv_response.text)
+        self.assertIn("fib_text", demo_question_csv_response.text)
+        self.assertIn("short_answer", demo_question_csv_response.text)
+        self.assertIn("long_answer", demo_question_csv_response.text)
 
         self.assertEqual(demo_exam_pack_csv_response.status_code, 200)
         self.assertTrue(
@@ -194,6 +215,11 @@ class WebConsoleRouteTests(unittest.TestCase):
         )
         self.assertIn("exam_name", demo_exam_pack_csv_response.text)
         self.assertIn("question_type", demo_exam_pack_csv_response.text)
+        self.assertIn("mcq_single", demo_exam_pack_csv_response.text)
+        self.assertIn("true_false", demo_exam_pack_csv_response.text)
+        self.assertIn("fib_text", demo_exam_pack_csv_response.text)
+        self.assertIn("short_answer", demo_exam_pack_csv_response.text)
+        self.assertIn("long_answer", demo_exam_pack_csv_response.text)
 
         self.assertEqual(demo_student_csv_response.status_code, 200)
         self.assertTrue(

@@ -9,6 +9,7 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  const label = (key, fallback) => window.NITMEXSUILabels?.get(key, fallback) ?? fallback;
   const friendlyFieldLabel = (field) => {
     const map = {
       student_id: "Student ID",
@@ -345,7 +346,9 @@
     el.adminDrawer?.classList.toggle("collapsed", st.drawerCollapsed);
     document.body.classList.toggle("admin-drawer-collapsed", st.drawerCollapsed);
     if (el.toggleAdminDrawer) {
-      el.toggleAdminDrawer.textContent = st.drawerCollapsed ? "Expand" : "Collapse";
+      el.toggleAdminDrawer.textContent = st.drawerCollapsed
+        ? label("admin.drawer_expand", "Expand")
+        : label("admin.drawer_collapse", "Collapse");
       el.toggleAdminDrawer.setAttribute("aria-expanded", String(!st.drawerCollapsed));
       el.toggleAdminDrawer.setAttribute(
         "aria-label",
@@ -1392,7 +1395,7 @@
 
   async function createExam() {
     const name = (el.newExamName.value || "").trim();
-    const duration_minutes = Number(el.newExamDuration.value || 0);
+    const duration_minutes = Number(el.newExamDuration.value || 60);
     const negative_marking = Number(el.newExamNegativeMarking.value || 0);
     if (!name) throw new Error("Exam name is required.");
     const exam = await api("/admin/exams", {

@@ -3,3 +3,4 @@ NITMEXS Data Literacy Mock,45,0.25,true,OSI model has how many layers?,Networkin
 NITMEXS Data Literacy Mock,45,0.25,true,SQLite WAL improves concurrent read access.,Databases,Easy,1,true_false,,,,,True,,,
 NITMEXS Data Literacy Mock,45,0.25,true,MS Access reports ka use ______ ke liye hota hai.,MS Access,Easy,2,fib_text,,,,,,data print karne ke liye|data summarize karne ke liye,,,
 NITMEXS Data Literacy Mock,45,0.25,true,What is a database management system?,Databases,Medium,4,short_answer,,,,,,,20,50,80
+NITMEXS Data Literacy Mock,45,0.25,true,Explain how a database management system works in an organization.,Databases,Hard,8,long_answer,,,,,,,80,150,220

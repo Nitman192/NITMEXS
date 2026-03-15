@@ -20,9 +20,13 @@
   }
 
   function updateToggleLabels(mode) {
+    const labelText =
+      mode === "dark"
+        ? window.NITMEXSUILabels?.get("common.theme_dark", "Dark") || "Dark"
+        : window.NITMEXSUILabels?.get("common.theme_light", "Light") || "Light";
     const labels = document.querySelectorAll("[data-theme-label]");
     labels.forEach((label) => {
-      label.textContent = mode === "dark" ? "Dark" : "Light";
+      label.textContent = labelText;
     });
   }
 
@@ -80,4 +84,3 @@
     initTheme();
   }
 })();
-
