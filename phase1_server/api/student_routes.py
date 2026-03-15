@@ -9,10 +9,12 @@ from phase1_server.schemas import (
     AIExplainRequestSchema,
     AnswerSubmitSchema,
     BroadcastReceiptSchema,
+    StudentLoginSchema,
     StudentIssueReportSchema,
     TechnicalIssueReportSchema,
 )
 from phase1_server.services.audit_service import AuditService
+from phase1_server.services.deployment_service import DeploymentProfileService
 from phase1_server.services.delivery_service import (
     AnswerSubmissionPayload,
     AnalysisQuestionNotFoundError,
@@ -36,8 +38,38 @@ from phase1_server.services.exam_service import (
     ExamValidationError,
 )
 from phase1_server.uow import UnitOfWork
+from phase1_server.services.student_registry_service import StudentRegistryService, StudentValidationError
 
 router = APIRouter(prefix="/student", tags=["student"])
+
+
+@router.post("/login")
+def student_login(payload: StudentLoginSchema, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = StudentRegistryService(uow.student_accounts)
+        try:
+            data = service.authenticate_student(
+                student_id=payload.student_id,
+                password=payload.password,
+            )
+        except StudentValidationError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+def _ensure_student_result_access_allowed(request: Request) -> None:
+    with UnitOfWork(request.app.state.db) as uow:
+        service = DeploymentProfileService(
+            uow.deployment_settings,
+            audit_service=AuditService(uow.audit_events),
+        )
+        settings = service.ensure_initialized()
+        if settings.student_result_policy == "no_student_result":
+            raise HTTPException(
+                status_code=403,
+                detail="Student result access is disabled in the active NITMEXS Basic deployment profile",
+            )
 
 
 @router.get("/exams")
@@ -58,11 +90,62 @@ def list_available_exams(
             "status": exam.status.value,
             "published": exam.published,
             "created_at": exam.created_at,
+            "reference_exam_id": exam.reference_exam_id,
         }
         for exam in exams
         if exam.published or exam.status.value == "ACTIVE"
     ]
     return {"status": "success", "data": active}
+
+
+@router.get("/exams/{exam_id}/reference-preview")
+def get_reference_exam_preview(
+    exam_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    _ = student_id
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_reference_exam_preview(exam_id)
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DeliveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.get("/exams/{exam_id}/rules-preview")
+def get_exam_rules_preview(
+    exam_id: str,
+    request: Request,
+    student_id: str = Depends(student_identity),
+):
+    _ = student_id
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        service = DeliveryService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+            metrics_service=MetricsService(uow.metrics),
+            analytics_repo=uow.analytics,
+        )
+        try:
+            data = service.get_exam_rules_preview(exam_id=exam_id)
+        except (ExamNotFoundError, DeliveryError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
 
 
 @router.post("/exams/{exam_id}/start")
@@ -228,7 +311,7 @@ def submit_answer(
                     attempt_id=attempt_id,
                     question_id=payload.question_id,
                     selected_option_id=payload.selected_option_id,
-                    confidence_tag=payload.confidence_tag,
+                    text_answer=payload.text_answer,
                 ),
                 student_id=student_id,
             )

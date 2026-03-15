@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -47,7 +48,9 @@ class Database:
                     updated_at TEXT NOT NULL,
                     version INTEGER NOT NULL DEFAULT 0,
                     submitted_at TEXT,
-                    expires_at TEXT
+                    expires_at TEXT,
+                    timer_frozen INTEGER NOT NULL DEFAULT 0,
+                    timer_paused_at TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_attempts_candidate_id
@@ -59,7 +62,9 @@ class Database:
                 CREATE TABLE IF NOT EXISTS student_accounts (
                     student_id TEXT PRIMARY KEY,
                     display_name TEXT,
+                    password_hash TEXT NOT NULL DEFAULT '',
                     created_by TEXT NOT NULL,
+                    owner_admin_id TEXT NOT NULL DEFAULT 'superadmin',
                     created_at TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'ACTIVE'
                 );
@@ -80,10 +85,15 @@ class Database:
                     difficulty TEXT NOT NULL,
                     marks REAL NOT NULL,
                     created_at TEXT NOT NULL,
+                    owner_admin_id TEXT NOT NULL DEFAULT 'superadmin',
+                    question_type TEXT NOT NULL DEFAULT 'mcq_single',
                     difficulty_level INTEGER,
                     discrimination_index REAL,
                     topic_tag TEXT,
-                    cognitive_level TEXT
+                    cognitive_level TEXT,
+                    word_target_min INTEGER,
+                    word_target_max INTEGER,
+                    word_hard_max INTEGER
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_questions_topic_tag
@@ -112,8 +122,48 @@ class Database:
                         CHECK(status IN ('DRAFT', 'ACTIVE', 'CLOSED', 'ARCHIVED')),
                     published INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
-                    passing_percentage REAL NOT NULL DEFAULT 40
+                    owner_admin_id TEXT NOT NULL DEFAULT 'superadmin',
+                    passing_percentage REAL NOT NULL DEFAULT 40,
+                    reference_exam_id TEXT,
+                    custom_rules_json TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS admin_accounts (
+                    admin_id TEXT PRIMARY KEY,
+                    display_name TEXT,
+                    role TEXT NOT NULL CHECK(role IN ('superadmin', 'examiner')),
+                    access_key_hash TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS deployment_settings (
+                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    deployment_profile TEXT NOT NULL,
+                    branding_profile TEXT NOT NULL,
+                    student_result_policy TEXT NOT NULL,
+                    trusted_host_fingerprint TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS question_text_variants (
+                    id TEXT PRIMARY KEY,
+                    question_id TEXT NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    normalized_answer_text TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK(decision IN ('accepted', 'rejected')),
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_question_text_variants_question
+                ON question_text_variants(question_id);
+
+                CREATE INDEX IF NOT EXISTS idx_question_text_variants_norm
+                ON question_text_variants(question_id, normalized_answer_text);
 
                 CREATE TABLE IF NOT EXISTS exam_questions (
                     exam_id TEXT NOT NULL,
@@ -153,7 +203,10 @@ class Database:
                 CREATE TABLE IF NOT EXISTS attempt_responses (
                     attempt_id TEXT NOT NULL,
                     question_id TEXT NOT NULL,
-                    selected_option_id TEXT NOT NULL,
+                    selected_option_id TEXT,
+                    text_answer TEXT,
+                    normalized_text_answer TEXT,
+                    word_count INTEGER,
                     answered_at TEXT NOT NULL,
                     PRIMARY KEY(attempt_id, question_id),
                     FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
@@ -185,11 +238,18 @@ class Database:
                 CREATE TABLE IF NOT EXISTS attempt_question_results (
                     attempt_id TEXT NOT NULL,
                     question_id TEXT NOT NULL,
+                    question_type TEXT NOT NULL DEFAULT 'mcq_single',
                     selected_option_id TEXT,
-                    correct_option_id TEXT NOT NULL,
+                    correct_option_id TEXT,
+                    text_answer TEXT,
+                    matched_variant_id TEXT,
+                    grading_state TEXT NOT NULL DEFAULT 'auto_incorrect',
                     marks_awarded REAL NOT NULL,
                     max_marks REAL NOT NULL,
                     is_correct INTEGER NOT NULL,
+                    reviewed_by TEXT,
+                    reviewed_at TEXT,
+                    review_note TEXT,
                     PRIMARY KEY(attempt_id, question_id),
                     FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
                     FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
@@ -378,29 +438,6 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_exam_audit_logs_exam_id
                 ON exam_audit_logs(exam_id);
 
-                CREATE TRIGGER IF NOT EXISTS trg_attempt_results_no_update
-                BEFORE UPDATE ON attempt_results
-                BEGIN
-                    SELECT RAISE(ABORT, 'attempt_results is immutable');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_attempt_results_no_delete
-                BEFORE DELETE ON attempt_results
-                BEGIN
-                    SELECT RAISE(ABORT, 'attempt_results is immutable');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_attempt_question_results_no_update
-                BEFORE UPDATE ON attempt_question_results
-                BEGIN
-                    SELECT RAISE(ABORT, 'attempt_question_results is immutable');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_attempt_question_results_no_delete
-                BEFORE DELETE ON attempt_question_results
-                BEGIN
-                    SELECT RAISE(ABORT, 'attempt_question_results is immutable');
-                END;
                 """
             )
 
@@ -413,6 +450,12 @@ class Database:
                 conn.execute(
                     "ALTER TABLE attempts ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
                 )
+            if "timer_frozen" not in attempt_columns:
+                conn.execute(
+                    "ALTER TABLE attempts ADD COLUMN timer_frozen INTEGER NOT NULL DEFAULT 0"
+                )
+            if "timer_paused_at" not in attempt_columns:
+                conn.execute("ALTER TABLE attempts ADD COLUMN timer_paused_at TEXT")
 
             exam_columns = {
                 row["name"]
@@ -430,6 +473,14 @@ class Database:
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(questions)").fetchall()
             }
+            if "question_type" not in question_columns:
+                conn.execute(
+                    "ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT 'mcq_single'"
+                )
+            if "owner_admin_id" not in question_columns:
+                conn.execute(
+                    "ALTER TABLE questions ADD COLUMN owner_admin_id TEXT NOT NULL DEFAULT 'superadmin'"
+                )
             if "difficulty_level" not in question_columns:
                 conn.execute("ALTER TABLE questions ADD COLUMN difficulty_level INTEGER")
             if "discrimination_index" not in question_columns:
@@ -441,6 +492,175 @@ class Database:
                 )
             if "cognitive_level" not in question_columns:
                 conn.execute("ALTER TABLE questions ADD COLUMN cognitive_level TEXT")
+            if "word_target_min" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN word_target_min INTEGER")
+            if "word_target_max" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN word_target_max INTEGER")
+            if "word_hard_max" not in question_columns:
+                conn.execute("ALTER TABLE questions ADD COLUMN word_hard_max INTEGER")
+            conn.execute(
+                "UPDATE questions SET question_type = 'mcq_single' WHERE question_type IS NULL OR TRIM(question_type) = ''"
+            )
+
+            if "reference_exam_id" not in exam_columns:
+                conn.execute("ALTER TABLE exams ADD COLUMN reference_exam_id TEXT")
+            if "owner_admin_id" not in exam_columns:
+                conn.execute(
+                    "ALTER TABLE exams ADD COLUMN owner_admin_id TEXT NOT NULL DEFAULT 'superadmin'"
+                )
+            if "custom_rules_json" not in exam_columns:
+                conn.execute("ALTER TABLE exams ADD COLUMN custom_rules_json TEXT")
+
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO deployment_settings(
+                    id, deployment_profile, branding_profile, student_result_policy, trusted_host_fingerprint, created_at, updated_at
+                ) VALUES(1, 'army_basic', 'indian_army_education', 'no_student_result', NULL, datetime('now'), datetime('now'))
+                """
+            )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS question_text_variants (
+                    id TEXT PRIMARY KEY,
+                    question_id TEXT NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    normalized_answer_text TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK(decision IN ('accepted', 'rejected')),
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_question_text_variants_question
+                ON question_text_variants(question_id)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_question_text_variants_norm
+                ON question_text_variants(question_id, normalized_answer_text)
+                """
+            )
+
+            attempt_response_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(attempt_responses)").fetchall()
+            }
+            if attempt_response_columns and (
+                "text_answer" not in attempt_response_columns
+                or "normalized_text_answer" not in attempt_response_columns
+                or "word_count" not in attempt_response_columns
+            ):
+                conn.execute("ALTER TABLE attempt_responses RENAME TO attempt_responses_legacy")
+                conn.execute(
+                    """
+                    CREATE TABLE attempt_responses (
+                        attempt_id TEXT NOT NULL,
+                        question_id TEXT NOT NULL,
+                        selected_option_id TEXT,
+                        text_answer TEXT,
+                        normalized_text_answer TEXT,
+                        word_count INTEGER,
+                        answered_at TEXT NOT NULL,
+                        PRIMARY KEY(attempt_id, question_id),
+                        FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
+                        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE,
+                        FOREIGN KEY(selected_option_id) REFERENCES options(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO attempt_responses(
+                        attempt_id, question_id, selected_option_id, answered_at
+                    )
+                    SELECT attempt_id, question_id, selected_option_id, answered_at
+                    FROM attempt_responses_legacy
+                    """
+                )
+                conn.execute("DROP TABLE attempt_responses_legacy")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_attempt_responses_attempt_id ON attempt_responses(attempt_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_attempt_responses_question_id ON attempt_responses(question_id)"
+                )
+
+            conn.execute("DROP TRIGGER IF EXISTS trg_attempt_results_no_update")
+            conn.execute("DROP TRIGGER IF EXISTS trg_attempt_results_no_delete")
+            conn.execute("DROP TRIGGER IF EXISTS trg_attempt_question_results_no_update")
+            conn.execute("DROP TRIGGER IF EXISTS trg_attempt_question_results_no_delete")
+
+            question_result_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(attempt_question_results)").fetchall()
+            }
+            if question_result_columns and (
+                "question_type" not in question_result_columns
+                or "text_answer" not in question_result_columns
+                or "matched_variant_id" not in question_result_columns
+                or "grading_state" not in question_result_columns
+                or "reviewed_by" not in question_result_columns
+                or "reviewed_at" not in question_result_columns
+                or "review_note" not in question_result_columns
+            ):
+                conn.execute(
+                    "ALTER TABLE attempt_question_results RENAME TO attempt_question_results_legacy"
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE attempt_question_results (
+                        attempt_id TEXT NOT NULL,
+                        question_id TEXT NOT NULL,
+                        question_type TEXT NOT NULL DEFAULT 'mcq_single',
+                        selected_option_id TEXT,
+                        correct_option_id TEXT,
+                        text_answer TEXT,
+                        matched_variant_id TEXT,
+                        grading_state TEXT NOT NULL DEFAULT 'auto_incorrect',
+                        marks_awarded REAL NOT NULL,
+                        max_marks REAL NOT NULL,
+                        is_correct INTEGER NOT NULL,
+                        reviewed_by TEXT,
+                        reviewed_at TEXT,
+                        review_note TEXT,
+                        PRIMARY KEY(attempt_id, question_id),
+                        FOREIGN KEY(attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
+                        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO attempt_question_results(
+                        attempt_id, question_id, question_type, selected_option_id, correct_option_id,
+                        grading_state, marks_awarded, max_marks, is_correct
+                    )
+                    SELECT
+                        legacy.attempt_id,
+                        legacy.question_id,
+                        COALESCE(q.question_type, 'mcq_single'),
+                        legacy.selected_option_id,
+                        legacy.correct_option_id,
+                        CASE WHEN legacy.is_correct = 1 THEN 'auto_correct' ELSE 'auto_incorrect' END,
+                        legacy.marks_awarded,
+                        legacy.max_marks,
+                        legacy.is_correct
+                    FROM attempt_question_results_legacy legacy
+                    LEFT JOIN questions q ON q.id = legacy.question_id
+                    """
+                )
+                conn.execute("DROP TABLE attempt_question_results_legacy")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_attempt_question_results_attempt_id ON attempt_question_results(attempt_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_attempt_question_results_question_id ON attempt_question_results(question_id)"
+                )
 
             recalibration_run_columns = {
                 row["name"]
@@ -472,6 +692,40 @@ class Database:
                 conn.execute(
                     "ALTER TABLE student_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'"
                 )
+            if student_columns and "password_hash" not in student_columns:
+                conn.execute(
+                    "ALTER TABLE student_accounts ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''"
+                )
+                conn.execute(
+                    "UPDATE student_accounts SET password_hash = ? WHERE COALESCE(password_hash, '') = ''",
+                    (self._legacy_student_password_hash(),),
+                )
+            if student_columns and "owner_admin_id" not in student_columns:
+                conn.execute(
+                    "ALTER TABLE student_accounts ADD COLUMN owner_admin_id TEXT NOT NULL DEFAULT 'superadmin'"
+                )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS admin_accounts (
+                    admin_id TEXT PRIMARY KEY,
+                    display_name TEXT,
+                    role TEXT NOT NULL CHECK(role IN ('superadmin', 'examiner')),
+                    access_key_hash TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ACTIVE',
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO admin_accounts(
+                    admin_id, display_name, role, access_key_hash, status, created_by, created_at
+                ) VALUES(?, ?, 'superadmin', ?, 'ACTIVE', 'system', datetime('now'))
+                """,
+                ("superadmin", "Super Admin", self._superadmin_password_hash()),
+            )
 
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",
@@ -520,6 +774,14 @@ class Database:
         )
         conn.execute(f"PRAGMA synchronous={self._config.synchronous};")
         conn.execute(f"PRAGMA foreign_keys={1 if self._config.foreign_keys else 0};")
+
+    @staticmethod
+    def _superadmin_password_hash() -> str:
+        return hashlib.sha256("superadmin:nitmexs-admin".encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _legacy_student_password_hash() -> str:
+        return hashlib.sha256("legacy:legacy".encode("utf-8")).hexdigest()
 
 
 def get_connection_dependency(db: Database):

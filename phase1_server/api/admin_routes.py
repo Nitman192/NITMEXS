@@ -18,9 +18,13 @@ from fastapi.responses import Response
 from phase1_server.api.deps import admin_only
 from phase1_server.schemas import (
     AddQuestionsSchema,
+    AdminAccountCreateSchema,
     AdminBroadcastSchema,
     ExamCreateSchema,
     ExamControlSchema,
+    ExamReferenceUpdateSchema,
+    ExamRulesUpdateSchema,
+    FibReviewDecisionSchema,
     ForceSubmitSchema,
     ProctorAlertResolveSchema,
     QuestionCreateSchema,
@@ -29,8 +33,15 @@ from phase1_server.schemas import (
     QuestionRecalibrationRollbackSchema,
     StudentGenerateSchema,
     StudentRegisterSchema,
+    SubjectiveReviewSchema,
 )
 from phase1_server.services.analytics_service import AnalyticsService
+from phase1_server.services.admin_account_service import (
+    AdminAccountCreatePayload,
+    AdminAccountService,
+    AdminAuthorizationError,
+    AdminValidationError,
+)
 from phase1_server.services.audit_service import AuditService
 from phase1_server.services.delivery_service import (
     AttemptStateError,
@@ -75,6 +86,12 @@ from phase1_server.services.question_service import (
     QuestionMetadataUpdatePayload,
     QuestionValidationError,
 )
+from phase1_server.services.review_service import (
+    ReviewError,
+    ReviewNotFoundError,
+    ReviewService,
+    ReviewValidationError,
+)
 from phase1_server.services.student_registry_service import (
     StudentAlreadyExistsError,
     StudentGeneratePayload,
@@ -87,13 +104,50 @@ from phase1_server.services.student_registry_csv_service import (
     StudentRegistryCsvService,
 )
 from phase1_server.uow import UnitOfWork
+from phase1_server.models import AdminIdentity, AdminRole
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_only)])
+
+
+def _admin_identity(request: Request) -> AdminIdentity:
+    identity = getattr(request.state, "admin_identity", None)
+    if isinstance(identity, AdminIdentity):
+        return identity
+    return AdminIdentity(admin_id="admin", role=AdminRole.SUPERADMIN)
+
+
+def _ensure_exam_access(uow: UnitOfWork, request: Request, exam_id: str):
+    exam = uow.exams.get_exam(exam_id)
+    if exam is None:
+        raise HTTPException(status_code=404, detail=f"Exam '{exam_id}' not found")
+    admin = _admin_identity(request)
+    if not admin.is_superadmin and exam.owner_admin_id != admin.admin_id:
+        raise HTTPException(status_code=403, detail="Exam access is restricted to the owning examiner")
+    return admin, exam
+
+
+def _ensure_question_access(uow: UnitOfWork, request: Request, question_id: str):
+    question = uow.questions.get_question(question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail=f"Question '{question_id}' not found")
+    admin = _admin_identity(request)
+    if not admin.is_superadmin and question.owner_admin_id != admin.admin_id:
+        raise HTTPException(status_code=403, detail="Question access is restricted to the owning examiner")
+    return admin, question
+
+
+def _ensure_attempt_access(uow: UnitOfWork, request: Request, attempt_id: str):
+    attempt = uow.attempts.get(attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail=f"Attempt '{attempt_id}' not found")
+    admin, _ = _ensure_exam_access(uow, request, attempt.exam_id)
+    return admin, attempt
 
 
 @router.post("/questions", status_code=status.HTTP_201_CREATED)
 def create_question(payload: QuestionCreateSchema, request: Request):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = QuestionService(uow.questions)
         try:
@@ -103,14 +157,22 @@ def create_question(payload: QuestionCreateSchema, request: Request):
                     topic=payload.topic,
                     difficulty=payload.difficulty,
                     marks=payload.marks,
+                    owner_admin_id=admin.admin_id,
+                    created_by=admin.admin_id,
+                    question_type=payload.question_type,
                     difficulty_level=payload.difficulty_level,
                     discrimination_index=payload.discrimination_index,
                     topic_tag=payload.topic_tag,
                     cognitive_level=payload.cognitive_level,
                     options=[
                         (option.option_text, option.is_correct)
-                        for option in payload.options
-                    ],
+                        for option in (payload.options or [])
+                    ]
+                    or None,
+                    accepted_answers=payload.accepted_answers,
+                    word_target_min=payload.word_target_min,
+                    word_target_max=payload.word_target_max,
+                    word_hard_max=payload.word_hard_max,
                 )
             )
         except QuestionValidationError as exc:
@@ -125,10 +187,14 @@ def create_question(payload: QuestionCreateSchema, request: Request):
             "difficulty": question.difficulty,
             "marks": question.marks,
             "created_at": question.created_at,
+            "question_type": question.question_type.value,
             "difficulty_level": question.difficulty_level,
             "discrimination_index": question.discrimination_index,
             "topic_tag": question.topic_tag,
             "cognitive_level": question.cognitive_level,
+            "word_target_min": question.word_target_min,
+            "word_target_max": question.word_target_max,
+            "word_hard_max": question.word_hard_max,
         },
     }
 
@@ -136,9 +202,13 @@ def create_question(payload: QuestionCreateSchema, request: Request):
 @router.get("/questions")
 def list_questions(request: Request):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = QuestionService(uow.questions)
-        items = service.list_questions()
+        items = service.list_questions(
+            owner_admin_id=admin.admin_id,
+            include_all=admin.is_superadmin,
+        )
 
     return {"status": "success", "data": items}
 
@@ -147,6 +217,7 @@ def list_questions(request: Request):
 def delete_question(question_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_question_access(uow, request, question_id)
         service = QuestionService(uow.questions)
         try:
             service.delete_question(question_id)
@@ -164,6 +235,7 @@ def update_question_metadata(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_question_access(uow, request, question_id)
         service = QuestionService(uow.questions)
         try:
             question = service.update_question_metadata(
@@ -174,6 +246,9 @@ def update_question_metadata(
                     discrimination_index=payload.discrimination_index,
                     topic_tag=payload.topic_tag,
                     cognitive_level=payload.cognitive_level,
+                    word_target_min=payload.word_target_min,
+                    word_target_max=payload.word_target_max,
+                    word_hard_max=payload.word_hard_max,
                 ),
             )
         except QuestionNotFoundError as exc:
@@ -190,6 +265,9 @@ def update_question_metadata(
             "discrimination_index": question.discrimination_index,
             "topic_tag": question.topic_tag,
             "cognitive_level": question.cognitive_level,
+            "word_target_min": question.word_target_min,
+            "word_target_max": question.word_target_max,
+            "word_hard_max": question.word_hard_max,
         },
     }
 
@@ -332,11 +410,16 @@ async def import_questions_csv(
     content = (await file.read()).decode("utf-8", errors="replace")
 
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         question_service = QuestionService(uow.questions)
         import_service = QuestionCsvImportService(question_service)
         try:
-            result = import_service.import_csv(content)
+            result = import_service.import_csv(
+                content,
+                owner_admin_id=admin.admin_id,
+                created_by=admin.admin_id,
+            )
         except CsvImportError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -365,6 +448,7 @@ async def import_exam_question_pack_csv(
     content = (await file.read()).decode("utf-8", errors="replace")
 
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         question_service = QuestionService(uow.questions)
         exam_service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
@@ -373,7 +457,11 @@ async def import_exam_question_pack_csv(
             exam_service,
         )
         try:
-            result = import_service.import_csv(content)
+            result = import_service.import_csv(
+                content,
+                owner_admin_id=admin.admin_id,
+                created_by=admin.admin_id,
+            )
         except (
             CsvImportError,
             ExamValidationError,
@@ -405,6 +493,7 @@ async def import_exam_question_pack_csv(
 @router.post("/exams", status_code=status.HTTP_201_CREATED)
 def create_exam(payload: ExamCreateSchema, request: Request):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
@@ -413,6 +502,7 @@ def create_exam(payload: ExamCreateSchema, request: Request):
                     name=payload.name,
                     duration_minutes=payload.duration_minutes,
                     negative_marking=payload.negative_marking,
+                    owner_admin_id=admin.admin_id,
                 )
             )
         except ExamValidationError as exc:
@@ -428,6 +518,9 @@ def create_exam(payload: ExamCreateSchema, request: Request):
             "status": exam.status.value,
             "published": exam.published,
             "created_at": exam.created_at,
+            "owner_admin_id": exam.owner_admin_id,
+            "reference_exam_id": exam.reference_exam_id,
+            "custom_rules": exam.custom_rules or [],
         },
     }
 
@@ -436,6 +529,17 @@ def create_exam(payload: ExamCreateSchema, request: Request):
 def add_questions(exam_id: str, payload: AddQuestionsSchema, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        if not admin.is_superadmin:
+            for question_id in payload.question_ids:
+                question = uow.questions.get_question(question_id)
+                if question is None:
+                    raise HTTPException(status_code=404, detail=f"Question '{question_id}' not found")
+                if question.owner_admin_id != admin.admin_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Examiners can attach only their own questions",
+                    )
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             service.add_questions(exam_id, payload.question_ids)
@@ -450,10 +554,73 @@ def add_questions(exam_id: str, payload: AddQuestionsSchema, request: Request):
     }
 
 
+@router.patch("/exams/{exam_id}/reference-exam")
+def set_reference_exam(
+    exam_id: str,
+    payload: ExamReferenceUpdateSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
+        try:
+            exam = service.set_reference_exam(
+                exam_id=exam_id,
+                reference_exam_id=payload.reference_exam_id,
+                actor_id=admin.admin_id,
+                actor_role=admin.role.value,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExamValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "success",
+        "data": {
+            "id": exam.id,
+            "reference_exam_id": exam.reference_exam_id,
+        },
+    }
+
+
+@router.patch("/exams/{exam_id}/rules")
+def update_exam_rules(
+    exam_id: str,
+    payload: ExamRulesUpdateSchema,
+    request: Request,
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
+        try:
+            exam = service.set_custom_rules(
+                exam_id=exam_id,
+                custom_rules=payload.custom_rules,
+                actor_id=admin.admin_id,
+                actor_role=admin.role.value,
+            )
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExamValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "status": "success",
+        "data": {
+            "id": exam.id,
+            "custom_rules": exam.custom_rules or [],
+        },
+    }
+
+
 @router.post("/exams/{exam_id}/publish")
 def publish_exam(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
             exam = service.publish_exam(exam_id)
@@ -481,9 +648,10 @@ def close_exam(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
-            exam = service.close_exam(exam_id, actor_id=x_admin_id, actor_role="admin")
+            exam = service.close_exam(exam_id, actor_id=admin.admin_id, actor_role=admin.role.value)
         except ExamNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except (ExamValidationError, ExamAlreadyPublishedError) as exc:
@@ -510,6 +678,7 @@ def pause_exam_attempts(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
         service = DeliveryService(
             uow.attempts,
             uow.exams,
@@ -521,8 +690,9 @@ def pause_exam_attempts(
         try:
             data = service.pause_exam_attempts(
                 exam_id=exam_id,
-                actor_id=x_admin_id,
+                actor_id=admin.admin_id,
                 reason=None if payload is None else payload.reason,
+                freeze_timer=False if payload is None else payload.freeze_timer,
                 limit=limit,
             )
         except ExamNotFoundError as exc:
@@ -543,6 +713,7 @@ def resume_exam_attempts(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
         service = DeliveryService(
             uow.attempts,
             uow.exams,
@@ -554,7 +725,7 @@ def resume_exam_attempts(
         try:
             data = service.resume_exam_attempts(
                 exam_id=exam_id,
-                actor_id=x_admin_id,
+                actor_id=admin.admin_id,
                 reason=None if payload is None else payload.reason,
                 limit=limit,
             )
@@ -575,6 +746,7 @@ def broadcast_to_candidates(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
         service = DeliveryService(
             uow.attempts,
             uow.exams,
@@ -588,7 +760,7 @@ def broadcast_to_candidates(
                 exam_id=exam_id,
                 message=payload.message,
                 severity=payload.severity,
-                actor_id=x_admin_id,
+                actor_id=admin.admin_id,
             )
         except ExamNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -601,9 +773,10 @@ def broadcast_to_candidates(
 @router.get("/exams")
 def list_exams(request: Request):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
-        exams = service.list_exams()
+        exams = service.list_exams(owner_admin_id=admin.admin_id, include_all=admin.is_superadmin)
 
     return {
         "status": "success",
@@ -616,10 +789,153 @@ def list_exams(request: Request):
                 "status": exam.status.value,
                 "published": exam.published,
                 "created_at": exam.created_at,
+                "owner_admin_id": exam.owner_admin_id,
+                "reference_exam_id": exam.reference_exam_id,
+                "custom_rules": exam.custom_rules or [],
             }
             for exam in exams
         ],
     }
+
+
+@router.get("/accounts")
+def list_admin_accounts(request: Request):
+    db = request.app.state.db
+    admin = _admin_identity(request)
+    with UnitOfWork(db) as uow:
+        service = AdminAccountService(uow.admin_accounts)
+        try:
+            accounts = service.list_accounts(admin)
+        except AdminAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"status": "success", "data": accounts}
+
+
+@router.post("/accounts", status_code=status.HTTP_201_CREATED)
+def create_admin_account(payload: AdminAccountCreateSchema, request: Request):
+    db = request.app.state.db
+    admin = _admin_identity(request)
+    with UnitOfWork(db) as uow:
+        service = AdminAccountService(uow.admin_accounts)
+        try:
+            account = service.create_account(
+                AdminAccountCreatePayload(
+                    admin_id=payload.admin_id,
+                    display_name=payload.display_name,
+                    role=payload.role,
+                    access_key=payload.access_key,
+                    created_by=admin.admin_id,
+                ),
+                viewer=admin,
+            )
+        except AdminAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AdminValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": account}
+
+
+@router.get("/exams/{exam_id}/fib-review-queue")
+def list_fib_review_queue(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
+        service = ReviewService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
+        try:
+            data = service.list_fib_review_queue(exam_id)
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ReviewError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.post("/exams/{exam_id}/fib-review-decisions")
+def apply_fib_review_decision(
+    exam_id: str,
+    payload: FibReviewDecisionSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
+        service = ReviewService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
+        try:
+            data = service.apply_fib_decision(
+                exam_id=exam_id,
+                question_id=payload.question_id,
+                normalized_text_answer=payload.normalized_text_answer,
+                decision=payload.decision,
+                canonical_answer_text=payload.canonical_answer_text,
+                reviewer_id=admin.admin_id,
+            )
+        except (ExamNotFoundError, ReviewNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ReviewValidationError, ReviewError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.get("/exams/{exam_id}/subjective-review-queue")
+def list_subjective_review_queue(exam_id: str, request: Request):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
+        service = ReviewService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
+        try:
+            data = service.list_subjective_review_queue(exam_id)
+        except ExamNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ReviewError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
+
+
+@router.post("/attempts/{attempt_id}/subjective-review")
+def score_subjective_answer(
+    attempt_id: str,
+    payload: SubjectiveReviewSchema,
+    request: Request,
+    x_admin_id: str = Header(default="admin"),
+):
+    db = request.app.state.db
+    with UnitOfWork(db) as uow:
+        admin, _ = _ensure_attempt_access(uow, request, attempt_id)
+        service = ReviewService(
+            uow.attempts,
+            uow.exams,
+            uow.questions,
+            audit_service=AuditService(uow.audit_events),
+        )
+        try:
+            data = service.score_subjective_answer(
+                attempt_id=attempt_id,
+                question_id=payload.question_id,
+                marks_awarded=payload.marks_awarded,
+                reviewer_id=admin.admin_id,
+                review_note=payload.review_note,
+            )
+        except ReviewNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ReviewValidationError, ReviewError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "data": data}
 
 
 @router.delete("/exams/{exam_id}")
@@ -630,9 +946,10 @@ def delete_exam(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_exam_access(uow, request, exam_id)
         service = ExamService(uow.exams, uow.questions, AuditService(uow.audit_events))
         try:
-            data = service.delete_exam(exam_id, actor_id=x_admin_id, actor_role="admin")
+            data = service.delete_exam(exam_id, actor_id=admin.admin_id, actor_role=admin.role.value)
         except ExamNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ExamDeleteBlockedError as exc:
@@ -645,6 +962,7 @@ def delete_exam(
 def get_exam_analytics(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = AnalyticsService(uow.analytics, uow.exams)
         try:
             analytics = service.get_exam_analytics(exam_id)
@@ -658,6 +976,7 @@ def get_exam_analytics(exam_id: str, request: Request):
 def get_difficulty_heatmap(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = AnalyticsService(uow.analytics, uow.exams)
         try:
             data = service.get_question_difficulty_heatmap(exam_id)
@@ -671,6 +990,7 @@ def get_difficulty_heatmap(exam_id: str, request: Request):
 def get_topic_heatmap(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = AnalyticsService(uow.analytics, uow.exams)
         try:
             data = service.get_topic_performance_heatmap(exam_id)
@@ -684,6 +1004,7 @@ def get_topic_heatmap(exam_id: str, request: Request):
 def get_score_distribution(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = AnalyticsService(uow.analytics, uow.exams)
         try:
             data = service.get_score_distribution(exam_id)
@@ -697,6 +1018,7 @@ def get_score_distribution(exam_id: str, request: Request):
 def get_attempt_timeline(attempt_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_attempt_access(uow, request, attempt_id)
         service = AuditService(uow.audit_events)
         timeline = service.list_entity_timeline(entity_type="attempt", entity_id=attempt_id)
 
@@ -716,7 +1038,10 @@ def search_audit_events(
     limit: int = Query(default=200, ge=1, le=2000),
 ):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
+        if entity_type == "exam" and entity_id:
+            _ensure_exam_access(uow, request, entity_id)
         service = AuditService(uow.audit_events)
         try:
             events = service.search_events(
@@ -724,7 +1049,7 @@ def search_audit_events(
                 entity_id=entity_id,
                 event_type=event_type,
                 actor_type=actor_type,
-                actor_id=actor_id,
+                actor_id=actor_id if admin.is_superadmin else (actor_id or admin.admin_id),
                 since=since,
                 until=until,
                 limit=limit,
@@ -750,6 +1075,7 @@ def force_submit_attempt(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin, _ = _ensure_attempt_access(uow, request, attempt_id)
         service = DeliveryService(
             uow.attempts,
             uow.exams,
@@ -761,7 +1087,7 @@ def force_submit_attempt(
         try:
             data = service.force_finalize_attempt_by_admin(
                 attempt_id=attempt_id,
-                actor_id=x_admin_id,
+                actor_id=admin.admin_id,
                 reason=None if payload is None else payload.reason,
             )
         except AttemptStateError as exc:
@@ -781,6 +1107,9 @@ def force_submit_expired_attempts(
 ):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        admin = _admin_identity(request)
+        if exam_id:
+            _ensure_exam_access(uow, request, exam_id)
         service = DeliveryService(
             uow.attempts,
             uow.exams,
@@ -791,7 +1120,7 @@ def force_submit_expired_attempts(
         )
         try:
             data = service.force_finalize_expired_attempts(
-                actor_id=x_admin_id,
+                actor_id=admin.admin_id,
                 exam_id=exam_id,
                 limit=limit,
             )
@@ -818,9 +1147,14 @@ def list_student_accounts(
     limit: int = Query(default=300, ge=1, le=1000),
 ):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = StudentRegistryService(uow.student_accounts)
-        students = service.list_students(limit=limit)
+        students = service.list_students(
+            limit=limit,
+            owner_admin_id=admin.admin_id,
+            include_all=admin.is_superadmin,
+        )
 
     return {
         "status": "success",
@@ -838,6 +1172,7 @@ def register_student_account(
     x_admin_id: str = Header(default="admin"),
 ):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = StudentRegistryService(uow.student_accounts)
         try:
@@ -845,7 +1180,8 @@ def register_student_account(
                 StudentRegisterPayload(
                     student_id=payload.student_id,
                     display_name=payload.display_name,
-                    created_by=x_admin_id,
+                    created_by=admin.admin_id,
+                    password=payload.password,
                 )
             )
         except StudentAlreadyExistsError as exc:
@@ -863,6 +1199,7 @@ def generate_student_accounts(
     x_admin_id: str = Header(default="admin"),
 ):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         service = StudentRegistryService(uow.student_accounts)
         try:
@@ -870,7 +1207,7 @@ def generate_student_accounts(
                 StudentGeneratePayload(
                     prefix=payload.prefix,
                     count=payload.count,
-                    created_by=x_admin_id,
+                    created_by=admin.admin_id,
                 )
             )
         except StudentValidationError as exc:
@@ -891,11 +1228,12 @@ async def import_student_accounts_csv(
     content = (await file.read()).decode("utf-8", errors="replace")
 
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         registry_service = StudentRegistryService(uow.student_accounts)
         csv_service = StudentRegistryCsvService(registry_service)
         try:
-            result = csv_service.import_csv(content, default_created_by=x_admin_id)
+            result = csv_service.import_csv(content, default_created_by=admin.admin_id)
         except StudentCsvError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -919,10 +1257,15 @@ def export_student_accounts_csv(
     limit: int = Query(default=1000, ge=1, le=5000),
 ):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
         registry_service = StudentRegistryService(uow.student_accounts)
         csv_service = StudentRegistryCsvService(registry_service)
-        content = csv_service.export_csv(limit=limit)
+        content = csv_service.export_csv(
+            limit=limit if admin.is_superadmin else min(limit, 1000),
+            owner_admin_id=admin.admin_id,
+            include_all=admin.is_superadmin,
+        )
 
     return Response(
         content=content,
@@ -936,7 +1279,12 @@ def export_student_accounts_csv(
 @router.get("/students/{student_id}/performance")
 def get_student_performance(student_id: str, request: Request):
     db = request.app.state.db
+    admin = _admin_identity(request)
     with UnitOfWork(db) as uow:
+        if not admin.is_superadmin:
+            record = uow.student_accounts.get_student_auth_record(student_id)
+            if record is None or record.get("owner_admin_id") != admin.admin_id:
+                raise HTTPException(status_code=403, detail="Student performance access is restricted")
         service = AnalyticsService(uow.analytics, uow.exams)
         performance = service.get_student_performance(student_id)
 
@@ -947,6 +1295,7 @@ def get_student_performance(student_id: str, request: Request):
 def get_active_attempts(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = ProctoringService(uow.attempts, uow.exams)
         try:
             data = service.get_active_attempts(exam_id)
@@ -960,6 +1309,7 @@ def get_active_attempts(exam_id: str, request: Request):
 def get_exam_live_status(exam_id: str, request: Request):
     db = request.app.state.db
     with UnitOfWork(db) as uow:
+        _ensure_exam_access(uow, request, exam_id)
         service = ProctoringService(uow.attempts, uow.exams)
         try:
             data = service.get_live_status(exam_id)

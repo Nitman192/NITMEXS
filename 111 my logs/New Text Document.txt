@@ -4,6 +4,8 @@ Server ka main entrypoint phase1_server/server_entry.py hai. Repo root X:\NITMEX
 
 cd X:\NITMEXS
 python -m phase1_server.server_entry --mode foreground
+
+
 Default config phase1_server/settings.py ke hisab se server 127.0.0.1:8000 par chalega. Browser me:
 
 http://127.0.0.1:8000/web

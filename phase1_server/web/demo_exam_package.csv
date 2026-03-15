@@ -1,3 +1,5 @@
-exam_name,duration_minutes,negative_marking,publish_exam,text,topic,difficulty,marks,option_a,option_b,option_c,option_d,correct_option
-LAN Defense Mock 1,45,0.25,true,OSI model has how many layers?,Networking,Easy,1,7,5,4,3,A
-LAN Defense Mock 1,45,0.25,true,Which command checks reachability?,Networking,Easy,1,ping,tracert,arp,netstat,A
+exam_name,duration_minutes,negative_marking,publish_exam,text,topic,difficulty,marks,question_type,option_a,option_b,option_c,option_d,correct_option,accepted_answers,word_target_min,word_target_max,word_hard_max
+Army Data Literacy Mock,45,0.25,true,OSI model has how many layers?,Networking,Easy,1,mcq_single,7,5,4,3,A,,,
+Army Data Literacy Mock,45,0.25,true,SQLite WAL improves concurrent read access.,Databases,Easy,1,true_false,,,,,True,,,
+Army Data Literacy Mock,45,0.25,true,MS Access reports ka use ______ ke liye hota hai.,MS Access,Easy,2,fib_text,,,,,,data print karne ke liye|data summarize karne ke liye,,,
+Army Data Literacy Mock,45,0.25,true,What is a database management system?,Databases,Medium,4,short_answer,,,,,,,20,50,80

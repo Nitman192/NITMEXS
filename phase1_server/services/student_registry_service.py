@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 import re
 from dataclasses import dataclass
 
@@ -26,6 +28,7 @@ class StudentRegisterPayload:
     student_id: str
     display_name: str | None
     created_by: str
+    password: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class StudentRegistryService:
         student_id = self._normalize_student_id(payload.student_id)
         display_name = self._normalize_display_name(payload.display_name)
         created_by = (payload.created_by or "admin").strip() or "admin"
+        password = self._normalize_password(student_id, payload.password)
 
         if self._repo.exists(student_id):
             raise StudentAlreadyExistsError(f"Student ID '{student_id}' already exists")
@@ -54,13 +58,17 @@ class StudentRegistryService:
         self._repo.create_student(
             student_id=student_id,
             display_name=display_name,
+            password_hash=self._hash_password(student_id, password),
             created_by=created_by,
+            owner_admin_id=created_by,
             created_at=created_at,
         )
         return {
             "student_id": student_id,
             "display_name": display_name,
             "created_by": created_by,
+            "owner_admin_id": created_by,
+            "password": password,
             "created_at": created_at,
             "status": "ACTIVE",
         }
@@ -82,10 +90,13 @@ class StudentRegistryService:
             if self._repo.exists(candidate_id):
                 continue
             created_at = utc_now_iso()
+            password = self._generate_password()
             self._repo.create_student(
                 student_id=candidate_id,
                 display_name=None,
+                password_hash=self._hash_password(candidate_id, password),
                 created_by=created_by,
+                owner_admin_id=created_by,
                 created_at=created_at,
             )
             generated.append(
@@ -93,6 +104,8 @@ class StudentRegistryService:
                     "student_id": candidate_id,
                     "display_name": None,
                     "created_by": created_by,
+                    "owner_admin_id": created_by,
+                    "password": password,
                     "created_at": created_at,
                     "status": "ACTIVE",
                 }
@@ -107,9 +120,34 @@ class StudentRegistryService:
             "students": generated,
         }
 
-    def list_students(self, limit: int = 300) -> list[dict]:
+    def list_students(
+        self,
+        limit: int = 300,
+        owner_admin_id: str | None = None,
+        include_all: bool = False,
+    ) -> list[dict]:
         normalized_limit = max(1, min(int(limit), 1000))
-        return self._repo.list_students(limit=normalized_limit)
+        return self._repo.list_students(
+            limit=normalized_limit,
+            owner_admin_id=owner_admin_id,
+            include_all=include_all,
+        )
+
+    def authenticate_student(self, student_id: str, password: str) -> dict:
+        normalized_student_id = self._normalize_student_id(student_id)
+        normalized_password = self._normalize_password(normalized_student_id, password)
+        record = self._repo.get_student_auth_record(normalized_student_id)
+        if record is None or record.get("status") != "ACTIVE":
+            raise StudentValidationError("Invalid student credentials")
+        expected_hash = record.get("password_hash") or ""
+        if expected_hash != self._hash_password(normalized_student_id, normalized_password):
+            raise StudentValidationError("Invalid student credentials")
+        return {
+            "student_id": record["student_id"],
+            "display_name": record.get("display_name"),
+            "status": record.get("status"),
+            "owner_admin_id": record.get("owner_admin_id"),
+        }
 
     def _normalize_student_id(self, student_id: str) -> str:
         value = (student_id or "").strip()
@@ -138,3 +176,20 @@ class StudentRegistryService:
             raise StudentValidationError("display_name must be <= 120 characters")
         return value
 
+    @staticmethod
+    def _normalize_password(student_id: str, password: str | None) -> str:
+        value = (password or "").strip()
+        if not value:
+            value = student_id
+        if len(value) < 4 or len(value) > 120:
+            raise StudentValidationError("password must be between 4 and 120 characters")
+        return value
+
+    @staticmethod
+    def _hash_password(student_id: str, password: str) -> str:
+        return hashlib.sha256(f"{student_id}:{password}".encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _generate_password(length: int = 8) -> str:
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+        return "".join(secrets.choice(alphabet) for _ in range(length))

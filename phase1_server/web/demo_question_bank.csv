@@ -1,3 +1,6 @@
-text,topic,difficulty,marks,option_a,option_b,option_c,option_d,correct_option
-What is 2 + 2?,Math,Easy,1,4,3,5,2,A
-Which protocol is connection-oriented?,Networking,Medium,2,TCP,UDP,ICMP,ARP,A
+text,topic,difficulty,marks,question_type,option_a,option_b,option_c,option_d,correct_option,accepted_answers,word_target_min,word_target_max,word_hard_max
+What is 2 + 2?,Math,Easy,1,mcq_single,4,3,5,2,A,,,
+SQLite WAL improves concurrent read access.,Databases,Easy,1,true_false,,,,,True,,,
+MS Access reports ka use ______ ke liye hota hai.,MS Access,Easy,2,fib_text,,,,,,data print karne ke liye|data summarize karne ke liye,,,
+What is a database management system?,Databases,Medium,4,short_answer,,,,,,,20,50,80
+Explain how a database management system works in an organization.,Databases,Medium,8,long_answer,,,,,,,80,150,220

@@ -1,34 +1,30 @@
 (() => {
-  const ADMIN_DEMO_KEY = "nitmexs-admin";
   const STUDENT_SESSION_KEY = "nitmexs_student_session";
   const ADMIN_SESSION_KEY = "nitmexs_admin_session";
-
+  const $ = (id) => document.getElementById(id);
   const el = {
-    version: document.getElementById("version-badge"),
-    studentId: document.getElementById("student-login-id"),
-    studentLogin: document.getElementById("student-login-btn"),
-    adminId: document.getElementById("admin-login-id"),
-    adminKey: document.getElementById("admin-login-key"),
-    adminLogin: document.getElementById("admin-login-btn"),
-    continueStudent: document.getElementById("continue-student"),
-    continueAdmin: document.getElementById("continue-admin"),
-    logoutAll: document.getElementById("logout-all"),
-    status: document.getElementById("portal-status"),
+    version: $("version-badge"),
+    accessProfile: $("access-profile-label"),
+    studentId: $("student-login-id"),
+    studentPassword: $("student-login-password"),
+    studentLogin: $("student-login-btn"),
+    adminCard: $("admin-card"),
+    adminId: $("admin-login-id"),
+    adminKey: $("admin-login-key"),
+    adminLogin: $("admin-login-btn"),
+    continueStudent: $("continue-student"),
+    continueAdmin: $("continue-admin"),
+    logoutAll: $("logout-all"),
+    status: $("portal-status"),
   };
 
   const setStatus = (message) => {
-    if (el.status) {
-      el.status.textContent = message;
-    }
+    if (el.status) el.status.textContent = message;
   };
 
   const readSession = (key) => {
     try {
-      const raw = localStorage.getItem(key);
-      if (!raw) {
-        return null;
-      }
-      return JSON.parse(raw);
+      return JSON.parse(localStorage.getItem(key) || "null");
     } catch {
       return null;
     }
@@ -38,100 +34,105 @@
     localStorage.setItem(key, JSON.stringify(payload));
   };
 
-  async function loadVersion() {
-    if (!el.version) {
-      return;
+  async function api(path, options = {}) {
+    const req = { ...options, headers: { ...(options.headers || {}) } };
+    if (req.body && typeof req.body !== "string" && !(req.body instanceof FormData)) {
+      req.headers["Content-Type"] = "application/json";
+      req.body = JSON.stringify(req.body);
+    }
+    const res = await fetch(path, req);
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.detail || payload.error || `HTTP ${res.status}`);
+    return payload.data ?? payload;
+  }
+
+  async function loadPortalContext() {
+    try {
+      const version = await api("/system/version");
+      el.version.textContent = version.version || "n/a";
+    } catch {
+      el.version.textContent = "offline";
     }
     try {
-      const response = await fetch("/system/version");
-      const payload = await response.json();
-      el.version.textContent = payload?.data?.version ?? "n/a";
+      const profile = await api("/system/access-profile");
+      el.accessProfile.textContent = `${profile.request_machine_type} / ${profile.deployment_profile}`;
+      const adminVisible = Boolean(profile.admin_visible);
+      el.adminCard.hidden = !adminVisible;
+      el.continueAdmin.hidden = !adminVisible;
+      if (!adminVisible) {
+        setStatus("Client machine detected. Only Cadet login is available.");
+      }
     } catch {
-      el.version.textContent = "unreachable";
+      el.accessProfile.textContent = "unavailable";
     }
   }
 
-  function loginStudent() {
-    const studentId = (el.studentId?.value || "").trim();
-    if (!studentId) {
-      setStatus("Student login ke liye Student ID required hai.");
+  async function loginStudent() {
+    const studentId = (el.studentId.value || "").trim();
+    const password = (el.studentPassword.value || "").trim();
+    if (!studentId || !password) {
+      setStatus("Student login ke liye Student ID aur password dono required hain.");
       return;
     }
+    const session = await api("/student/login", {
+      method: "POST",
+      body: { student_id: studentId, password },
+    });
     writeSession(STUDENT_SESSION_KEY, {
-      student_id: studentId,
+      student_id: session.student_id,
+      display_name: session.display_name,
       logged_in_at: new Date().toISOString(),
     });
-    setStatus(`Student session created for ${studentId}. Redirecting...`);
     window.location.href = "/web/student.html";
   }
 
-  function loginAdmin() {
-    const adminId = (el.adminId?.value || "").trim();
-    const adminKey = (el.adminKey?.value || "").trim();
-    if (!adminId) {
-      setStatus("Admin login ke liye Admin ID required hai.");
+  async function loginAdmin() {
+    const adminId = (el.adminId.value || "").trim();
+    const accessKey = (el.adminKey.value || "").trim();
+    if (!adminId || !accessKey) {
+      setStatus("Admin login ke liye Admin ID aur access key required hai.");
       return;
     }
-    if (!adminKey) {
-      setStatus("Admin login ke liye Access Key required hai.");
-      return;
-    }
-    if (adminKey !== ADMIN_DEMO_KEY) {
-      setStatus("Access Key invalid hai. Demo key use karo: nitmexs-admin");
-      return;
-    }
+    const session = await api("/system/admin-login", {
+      method: "POST",
+      body: { admin_id: adminId, access_key: accessKey },
+    });
     writeSession(ADMIN_SESSION_KEY, {
-      admin_id: adminId,
+      admin_id: session.admin_id,
+      role: session.role,
+      display_name: session.display_name,
       logged_in_at: new Date().toISOString(),
     });
-    setStatus(`Admin session created for ${adminId}. Redirecting...`);
     window.location.href = "/web/admin.html";
   }
 
-  function continueStudentSession() {
-    const session = readSession(STUDENT_SESSION_KEY);
-    if (!session?.student_id) {
-      setStatus("No active student session found.");
+  function continueSession(key, path, label) {
+    const session = readSession(key);
+    if (!session) {
+      setStatus(`No active ${label} session found.`);
       return;
     }
-    window.location.href = "/web/student.html";
+    window.location.href = path;
   }
 
-  function continueAdminSession() {
-    const session = readSession(ADMIN_SESSION_KEY);
-    if (!session?.admin_id) {
-      setStatus("No active admin session found.");
-      return;
-    }
-    window.location.href = "/web/admin.html";
-  }
-
-  function logoutAllSessions() {
+  function logoutAll() {
     localStorage.removeItem(STUDENT_SESSION_KEY);
     localStorage.removeItem(ADMIN_SESSION_KEY);
     setStatus("All sessions cleared. Fresh login required.");
   }
 
-  function hydrateFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    const target = params.get("target");
-    const reason = params.get("reason");
-    if (target === "student" && reason === "login_required") {
-      setStatus("Student page open karne ke liye pehle student login karo.");
-    } else if (target === "admin" && reason === "login_required") {
-      setStatus("Admin console open karne ke liye pehle admin login karo.");
-    }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("reason") === "login_required") {
+    setStatus("Requested page open karne ke liye pehle login karo.");
+  }
+  if (params.get("reason") === "host_only") {
+    setStatus("Admin panel sirf trusted host machine par available hai.");
   }
 
-  function bindEvents() {
-    el.studentLogin?.addEventListener("click", loginStudent);
-    el.adminLogin?.addEventListener("click", loginAdmin);
-    el.continueStudent?.addEventListener("click", continueStudentSession);
-    el.continueAdmin?.addEventListener("click", continueAdminSession);
-    el.logoutAll?.addEventListener("click", logoutAllSessions);
-  }
-
-  loadVersion();
-  hydrateFromQuery();
-  bindEvents();
+  el.studentLogin.addEventListener("click", () => loginStudent().catch((error) => setStatus(error.message)));
+  el.adminLogin?.addEventListener("click", () => loginAdmin().catch((error) => setStatus(error.message)));
+  el.continueStudent.addEventListener("click", () => continueSession(STUDENT_SESSION_KEY, "/web/student.html", "student"));
+  el.continueAdmin.addEventListener("click", () => continueSession(ADMIN_SESSION_KEY, "/web/admin.html", "admin"));
+  el.logoutAll.addEventListener("click", logoutAll);
+  loadPortalContext();
 })();

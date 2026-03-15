@@ -33,6 +33,7 @@ class ExamEventType:
     EXAM_CLOSED = "EXAM_CLOSED"
     EXAM_PUBLISHED = "EXAM_PUBLISHED"
     EXAM_DELETED = "EXAM_DELETED"
+    EXAM_REFERENCE_UPDATED = "EXAM_REFERENCE_UPDATED"
 
 
 @dataclass(frozen=True)
@@ -40,9 +41,18 @@ class ExamCreatePayload:
     name: str
     duration_minutes: int
     negative_marking: float
+    owner_admin_id: str = "superadmin"
 
 
 class ExamService:
+    DEFAULT_EXAM_RULES = [
+        "Read each question carefully before selecting an option.",
+        "Use Save & Next to persist each answer.",
+        "Do not switch tabs or open external resources during attempt.",
+        "Keep LAN connected; local queue auto-syncs on reconnect.",
+        "Review marked/unanswered items before final submission.",
+    ]
+
     def __init__(
         self,
         exam_repo: ExamRepository,
@@ -67,12 +77,85 @@ class ExamService:
             status=ExamStatus.DRAFT,
             published=False,
             created_at=utc_now_iso(),
+            owner_admin_id=(payload.owner_admin_id or "superadmin").strip() or "superadmin",
         )
         self._exam_repo.create_exam(exam)
         return exam
 
-    def list_exams(self) -> list[Exam]:
-        return self._exam_repo.list_exams()
+    def list_exams(
+        self,
+        owner_admin_id: str | None = None,
+        include_all: bool = False,
+    ) -> list[Exam]:
+        return self._exam_repo.list_exams(owner_admin_id=owner_admin_id, include_all=include_all)
+
+    def set_custom_rules(
+        self,
+        exam_id: str,
+        custom_rules: list[str],
+        actor_id: str = "admin",
+        actor_role: str = "admin",
+    ) -> Exam:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+        normalized_rules = [
+            str(item).strip()
+            for item in (custom_rules or [])
+            if str(item).strip()
+        ][:20]
+        self._exam_repo.set_custom_rules(exam_id, normalized_rules)
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type=actor_role,
+            actor_id=actor_id,
+            event_type="EXAM_RULES_UPDATED",
+            payload={"custom_rules_count": len(normalized_rules)},
+        )
+        updated_exam = self._exam_repo.get_exam(exam_id)
+        if updated_exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found after rules update")
+        return updated_exam
+
+    def build_exam_rules(self, exam: Exam) -> list[str]:
+        merged: list[str] = []
+        for item in [*self.DEFAULT_EXAM_RULES, *(exam.custom_rules or [])]:
+            normalized = str(item).strip()
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+        return merged
+
+    def set_reference_exam(
+        self,
+        exam_id: str,
+        reference_exam_id: str | None,
+        actor_id: str = "admin",
+        actor_role: str = "admin",
+    ) -> Exam:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+        if reference_exam_id:
+            reference_exam = self._exam_repo.get_exam(reference_exam_id)
+            if reference_exam is None:
+                raise ExamNotFoundError(f"Reference exam '{reference_exam_id}' not found")
+            if reference_exam_id == exam_id:
+                raise ExamValidationError("Reference exam must differ from the live exam")
+
+        self._exam_repo.set_reference_exam(exam_id, reference_exam_id)
+        self._log_event_safely(
+            entity_type="exam",
+            entity_id=exam_id,
+            actor_type=actor_role,
+            actor_id=actor_id,
+            event_type=ExamEventType.EXAM_REFERENCE_UPDATED,
+            payload={"reference_exam_id": reference_exam_id},
+        )
+        updated_exam = self._exam_repo.get_exam(exam_id)
+        if updated_exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found after reference update")
+        return updated_exam
 
     def delete_exam(self, exam_id: str, actor_id: str, actor_role: str = "admin") -> dict:
         exam = self._exam_repo.get_exam(exam_id)

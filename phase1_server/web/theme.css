@@ -2367,3 +2367,503 @@ body.student-body.theme-dark .choice-option.drag-hover {
     width: 100%;
   }
 }
+
+body.student-body[data-font-size="large"] {
+  font-size: 18px;
+}
+
+body.student-body[data-font-size="xlarge"] {
+  font-size: 20px;
+}
+
+body.student-body .army-shell {
+  max-width: 1440px;
+}
+
+body.student-body .army-header {
+  align-items: flex-start;
+}
+
+body.student-body .army-tools-menu {
+  border: 1px solid rgba(115, 169, 255, 0.35);
+  border-radius: 14px;
+  background: rgba(18, 33, 62, 0.82);
+  padding: 8px 12px;
+}
+
+body.student-body .army-tools-menu summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+body.student-body .army-tools-list {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+  margin-top: 10px;
+}
+
+body.student-body .army-grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+body.student-body .army-panel-block {
+  display: grid;
+  gap: 12px;
+}
+
+body.student-body .status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(115, 169, 255, 0.25);
+  border-radius: 12px;
+  background: rgba(14, 27, 54, 0.55);
+}
+
+body.student-body .status-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #92a6c7;
+}
+
+body.student-body .army-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body.student-body .army-exam-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 18px;
+  align-items: start;
+}
+
+body.student-body .army-main-column,
+body.student-body .army-side-column {
+  min-width: 0;
+}
+
+body.student-body .army-side-column {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+}
+
+body.student-body .army-title-row {
+  align-items: flex-start;
+}
+
+body.student-body .compact-viewer p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+body.student-body .army-answer-zone {
+  display: grid;
+  gap: 12px;
+}
+
+body.student-body .option-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid #355583;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(17, 30, 58, 0.78);
+  color: #e7efff;
+  font-size: 1rem;
+}
+
+body.student-body .option-btn.active {
+  border-color: #68a6ff;
+  background: rgba(25, 58, 109, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(104, 166, 255, 0.45) inset,
+    0 10px 22px rgba(19, 58, 124, 0.28);
+}
+
+body.student-body .option-btn-indicator {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+  color: #8cbcff;
+}
+
+body.student-body .option-btn-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.student-body .option-btn-label {
+  font-weight: 800;
+  color: #9bc2ff;
+}
+
+body.student-body .option-selected-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(137, 197, 255, 0.45);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(137, 197, 255, 0.16);
+  color: #dff1ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+body.student-body .army-text-input,
+body.student-body .army-textarea {
+  width: 100%;
+  border: 1px solid #355583;
+  border-radius: 14px;
+  background: rgba(11, 20, 40, 0.92);
+  color: #e7efff;
+  padding: 12px 14px;
+}
+
+body.student-body .army-collapsible {
+  border: 1px solid rgba(115, 169, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(13, 24, 46, 0.72);
+  padding: 10px 12px;
+}
+
+body.student-body .army-collapsible summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+body.student-body .army-canvas {
+  width: 100%;
+  border: 1px solid #355583;
+  border-radius: 14px;
+  background: #0f1a2e;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+body.student-body .virtual-keyboard {
+  display: grid;
+  gap: 8px;
+}
+
+body.student-body .vk-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body.student-body .vk-key {
+  min-width: 42px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #355583;
+  background: rgba(17, 30, 58, 0.78);
+  color: #e7efff;
+}
+
+body.student-body .vk-key.wide {
+  min-width: 110px;
+}
+
+body.student-body .army-status-card {
+  display: grid;
+  gap: 12px;
+}
+
+body.student-body .compact-timer {
+  position: sticky;
+  top: 14px;
+  padding: 18px 18px 20px;
+  border: 1px solid rgba(115, 169, 255, 0.35);
+  box-shadow: 0 18px 38px rgba(4, 10, 24, 0.34);
+}
+
+body.student-body .compact-timer .section-label {
+  font-size: 0.9rem;
+  letter-spacing: 0.12em;
+}
+
+body.student-body .compact-timer .timer-display {
+  margin-top: 10px;
+  font-size: clamp(2.45rem, 4vw, 3.35rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+body.student-body .army-counter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body.student-body .army-counter-row > div {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(115, 169, 255, 0.22);
+  background: rgba(13, 24, 46, 0.72);
+}
+
+body.student-body .army-counter-label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #92a6c7;
+  margin-bottom: 6px;
+}
+
+body.student-body .army-feed {
+  display: grid;
+  gap: 8px;
+}
+
+body.student-body .army-feed p {
+  margin: 0;
+}
+
+body.student-body .warning-text {
+  color: #ffc47f;
+}
+
+body.student-body .army-submission-stage {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  padding: 40px 24px;
+}
+
+body.student-body .big-logout {
+  min-width: 260px;
+  min-height: 58px;
+  font-size: 1.15rem;
+}
+
+body.student-body .army-modal {
+  width: min(780px, calc(100vw - 32px));
+  border: 1px solid rgba(115, 169, 255, 0.28);
+  border-radius: 18px;
+  background: rgba(8, 16, 36, 0.97);
+  color: #e7efff;
+  padding: 24px;
+}
+
+body.student-body .army-modal::backdrop {
+  background: rgba(4, 9, 20, 0.7);
+}
+
+body.student-body .army-preview-item {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(115, 169, 255, 0.12);
+}
+
+body.student-body.theme-dark .army-tools-menu,
+body.student-body.theme-dark .status-strip,
+body.student-body.theme-dark .army-counter-row > div,
+body.student-body.theme-dark .army-collapsible,
+body.student-body.theme-dark .army-modal {
+  background: rgba(8, 16, 36, 0.94);
+}
+
+body.admin-shell .status.error {
+  border-color: #d94040;
+  color: #ffd2d2;
+}
+
+body.admin-shell .analytics-shell {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+body.admin-shell .analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+body.admin-shell .analytics-kpi {
+  border: 1px solid rgba(115, 169, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(13, 24, 46, 0.78);
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+body.admin-shell .analytics-kpi strong {
+  font-size: 2rem;
+  line-height: 1;
+  color: #f8fbff;
+}
+
+body.admin-shell .analytics-kpi span,
+body.admin-shell .analytics-kpi-label {
+  color: #9db0cf;
+}
+
+body.admin-shell .analytics-kpi-label {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+body.admin-shell .analytics-stack {
+  display: grid;
+  gap: 14px;
+}
+
+body.admin-shell .analytics-panel {
+  border: 1px solid rgba(115, 169, 255, 0.18);
+  border-radius: 16px;
+  background: rgba(10, 18, 35, 0.7);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+body.admin-shell .analytics-panel-head h3 {
+  margin: 0 0 4px;
+}
+
+body.admin-shell .analytics-panel-head p {
+  margin: 0;
+}
+
+body.admin-shell .analytics-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+body.admin-shell .analytics-mini-card {
+  border-radius: 14px;
+  border: 1px solid rgba(115, 169, 255, 0.16);
+  background: rgba(14, 26, 51, 0.74);
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+}
+
+body.admin-shell .analytics-mini-card strong {
+  font-size: 1.35rem;
+}
+
+body.admin-shell .analytics-mini-card span,
+body.admin-shell .analytics-mini-label {
+  color: #9db0cf;
+}
+
+body.admin-shell .analytics-mini-label {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+body.admin-shell .analytics-table-wrap {
+  margin-top: 0;
+}
+
+body.admin-shell .analytics-table td,
+body.admin-shell .analytics-table th {
+  vertical-align: middle;
+}
+
+body.admin-shell .analytics-meter {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(84, 106, 161, 0.24);
+  border: 1px solid rgba(115, 169, 255, 0.14);
+}
+
+body.admin-shell .analytics-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+body.admin-shell .analytics-meter-label {
+  display: inline-block;
+  margin-top: 4px;
+  color: #c8d6ee;
+  font-size: 0.82rem;
+}
+
+body.admin-shell .analytics-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid rgba(115, 169, 255, 0.18);
+  background: rgba(18, 34, 64, 0.84);
+}
+
+body.admin-shell .tone-good {
+  background: rgba(28, 122, 83, 0.22);
+  color: #98f0bb;
+}
+
+body.admin-shell .tone-mid {
+  background: rgba(171, 124, 28, 0.24);
+  color: #ffd88a;
+}
+
+body.admin-shell .tone-risk {
+  background: rgba(152, 46, 46, 0.24);
+  color: #ffb2b2;
+}
+
+body.admin-shell .analytics-meter-fill.tone-good {
+  background: linear-gradient(90deg, #1da364, #7ef2b1);
+}
+
+body.admin-shell .analytics-meter-fill.tone-mid {
+  background: linear-gradient(90deg, #b8851b, #ffd168);
+}
+
+body.admin-shell .analytics-meter-fill.tone-risk {
+  background: linear-gradient(90deg, #c74d4d, #ff9b9b);
+}
+
+@media (max-width: 1100px) {
+  body.student-body .army-exam-layout {
+    grid-template-columns: 1fr;
+  }
+
+  body.student-body .army-grid-two,
+  body.student-body .army-health-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.student-body .army-side-column,
+  body.student-body .compact-timer {
+    position: static;
+    top: auto;
+  }
+
+  body.admin-shell .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  body.student-body .army-counter-row {
+    grid-template-columns: 1fr;
+  }
+}

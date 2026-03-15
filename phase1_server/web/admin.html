@@ -1,577 +1,236 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NITMEXS Admin Command Center</title>
+  <title>NITMEXS Exam Controller Console</title>
   <link rel="stylesheet" href="/web/theme.css">
 </head>
 <body class="admin-shell" data-default-theme="dark">
   <div class="nebula"></div>
-
-  <div id="idle-overlay" class="idle-overlay">
-    <div class="idle-card">
-      <h2>Panel Idle Shield Active</h2>
-      <p>10s inactivity detect hui. Mouse move ya key press karo to unlock ho jayega.</p>
-    </div>
-  </div>
-
   <header class="topbar">
-    <div class="brand">NITMEXS ADMIN COMMAND CENTER</div>
+    <div class="brand">NITMEXS EXAM CONTROLLER</div>
     <div class="chips">
       <a class="portal-btn" href="/web">Gateway</a>
-      <a class="portal-btn primary" href="/web/student.html">Student UI</a>
-      <div class="identity-chip">
-        <span class="identity-label">Admin</span>
-        <span id="session-admin" class="identity-value">...</span>
-      </div>
-      <div class="identity-chip">
-        <span class="identity-label">Server</span>
-        <span id="version" class="identity-value">...</span>
-      </div>
-      <label class="theme-switch" for="theme-toggle">
-        <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
-        <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
-        <span class="theme-switch-text" data-theme-label>Dark</span>
-      </label>
-      <label class="chip row"><input type="checkbox" id="guided-toggle"> Guided Mode</label>
-      <button id="emergency-stop-btn" class="danger" type="button">Emergency STOP</button>
+      <div class="identity-chip"><span class="identity-label">Admin</span><span id="session-admin" class="identity-value">...</span></div>
+      <div class="identity-chip"><span class="identity-label">Server</span><span id="version" class="identity-value">...</span></div>
       <button id="logout-admin" class="danger" type="button">Logout</button>
     </div>
   </header>
 
-  <main class="page blur-target">
-    <section class="panel">
-      <h2>Exam Scope</h2>
+  <main class="page">
+    <section class="panel wide">
+      <div class="row space-between">
+        <div>
+          <h2>Exam Scope</h2>
+          <p class="small">Trusted host machine control room for NITMEXS Basic deployment.</p>
+        </div>
+        <button id="load-exams" type="button">Load Exams</button>
+      </div>
       <div class="row">
-        <button id="load-exams">Load Exams</button>
-        <select id="exam-select" style="flex:1 1 300px">
-          <option value="">Select exam...</option>
-        </select>
+        <input id="new-exam-name" placeholder="New exam name" style="flex:1 1 240px">
+        <input id="new-exam-duration" type="number" min="1" max="480" value="60" placeholder="Duration minutes" style="width:140px">
+        <input id="new-exam-negative-marking" type="number" min="0" step="0.01" value="0" placeholder="Negative marking" style="width:140px">
+        <button id="create-exam" type="button">Create Exam</button>
+      </div>
+      <div class="row">
+        <select id="exam-select" style="flex:1 1 280px"><option value="">Select exam...</option></select>
+        <select id="reference-exam-select" style="flex:1 1 280px"><option value="">Reference exam (optional)</option></select>
+        <button id="save-reference-exam" class="alt" type="button">Save Reference Exam</button>
+        <button id="publish-exam" type="button">Activate / Publish</button>
+        <button id="close-exam" class="warn" type="button">Close Exam</button>
         <button id="delete-exam" class="danger" type="button">Delete Selected Exam</button>
       </div>
-      <p class="small">Safe delete sirf un exams ke liye allowed hai jinke saath koi attempt history nahi hai.</p>
+      <div class="stack" style="margin-top:8px">
+        <label for="custom-rules-text"><strong>Custom Exam Rules</strong></label>
+        <textarea id="custom-rules-text" rows="4" placeholder="One custom rule per line. Default rules always remain active."></textarea>
+        <div class="row">
+          <button id="save-custom-rules" class="alt" type="button">Save Custom Rules</button>
+        </div>
+      </div>
       <div id="admin-status" class="status" style="margin-top:8px">Ready.</div>
     </section>
 
-    <section class="admin-layout">
-      <aside class="admin-sidebar">
-        <button class="nav-btn active" data-page="page-monitor">Live Monitor</button>
-        <button class="nav-btn" data-page="page-question-bank">Question Bank</button>
-        <button class="nav-btn" data-page="page-recalibration">Recalibration</button>
-        <button class="nav-btn" data-page="page-analytics">Analytics</button>
-        <button class="nav-btn" data-page="page-system">System Ops</button>
-      </aside>
+    <section class="grid">
+      <article class="panel wide">
+        <h2>Exam Control</h2>
+        <div class="row">
+          <button id="refresh-live" type="button">Refresh Live Status</button>
+          <button id="pause-exam" class="warn" type="button">Emergency STOP (Pause All)</button>
+          <button id="resume-exam" type="button">Resume Paused Attempts</button>
+          <input id="exam-control-reason" placeholder="Control reason (optional)" style="flex:1 1 220px">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="small"><input id="freeze-timer-toggle" type="checkbox"> Pause ke waqt exam timer bhi freeze karo</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="force-attempt-id" placeholder="Attempt ID" style="flex:1 1 220px">
+          <button id="force-submit-attempt" class="warn" type="button">Force Submit Attempt</button>
+          <button id="force-submit-expired" class="warn" type="button">Force Submit Expired</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="broadcast-message" placeholder="Broadcast message to active candidates..." style="flex:1 1 340px">
+          <select id="broadcast-severity" style="width:120px"><option value="info">Info</option><option value="warn">Warn</option><option value="critical">Critical</option></select>
+          <button id="send-broadcast" class="alt" type="button">Send Broadcast</button>
+        </div>
+        <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
+        <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
+        <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
+      </article>
 
-      <div class="admin-content">
-        <section id="page-monitor" class="page-panel active">
-          <article class="panel">
-            <h2>Live Monitoring</h2>
-            <div class="row">
-              <button id="refresh-live">Refresh Live</button>
-              <button id="sync-alerts" class="alt">Sync Alerts</button>
-              <button id="load-alerts" class="alt">Load Alerts</button>
-            </div>
-            <pre id="live-summary" class="box mono">Live summary will appear here.</pre>
-          </article>
+      <article class="panel wide">
+        <h2>Active Attempts</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Attempt</th><th>Cadet</th><th>Answered</th><th>Total</th><th>Expires</th></tr></thead>
+            <tbody id="active-body"></tbody>
+          </table>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Active Attempts</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Attempt</th>
-                    <th>Student</th>
-                    <th>Remaining</th>
-                    <th>Answered</th>
-                    <th>Progress</th>
-                  </tr>
-                </thead>
-                <tbody id="active-body"></tbody>
-              </table>
-            </div>
-          </article>
+      <article class="panel">
+        <h2>Question and Reference Setup</h2>
+        <div class="stack">
+          <label>Upload Question CSV <input id="question-csv-file" type="file" accept=".csv"></label>
+          <button id="upload-question-csv" type="button">Upload Questions</button>
+          <pre id="question-upload-result" class="box mono">Question upload result will appear here.</pre>
+          <label>Upload Exam Package CSV <input id="exam-pack-file" type="file" accept=".csv"></label>
+          <button id="upload-exam-pack" type="button">Upload Exam Package</button>
+          <pre id="exam-pack-result" class="box mono">Exam package upload result will appear here.</pre>
+          <button id="load-questions" type="button">Refresh Question List</button>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Emergency Force Submit</h2>
-            <div class="row">
-              <input id="force-attempt-id" placeholder="Attempt ID (individual force submit)" style="flex:1 1 320px">
-              <button id="force-submit-attempt" class="warn">Force Submit Attempt</button>
-              <button id="force-submit-expired" class="warn">Force Submit Expired (Selected Exam)</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <input id="exam-control-reason" placeholder="Pause/Resume reason (optional)" style="flex:1 1 260px">
-              <button id="pause-exam" class="warn">Emergency STOP (Pause All)</button>
-              <button id="resume-exam">Resume Paused Attempts</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <select id="broadcast-template" style="width:240px">
-                <option value="">Select template...</option>
-                <option value="info::Please remain calm and continue answering.">Calm Continue (Info)</option>
-                <option value="warn::Network fluctuation detected. Your answers are safe. Continue normally.">Network Reassurance (Warn)</option>
-                <option value="warn::Final 5 minutes left. Review marked questions first.">Final 5-Min Alert (Warn)</option>
-                <option value="critical::Technical team is active. Follow on-screen instructions and stay on exam tab.">Technical Advisory (Critical)</option>
-              </select>
-              <button id="apply-broadcast-template" class="alt">Apply Template</button>
-              <input id="broadcast-message" placeholder="Broadcast message to all active candidates..." style="flex:1 1 320px">
-              <select id="broadcast-severity" style="width:120px">
-                <option value="info">Info</option>
-                <option value="warn">Warn</option>
-                <option value="critical">Critical</option>
-              </select>
-              <button id="send-broadcast" class="alt">Send Broadcast</button>
-              <button id="refresh-broadcast-receipts" class="alt">Read Receipts</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <label class="chip row"><input id="auto-force-expired-toggle" type="checkbox"> Auto force-submit expired (30s)</label>
-              <button id="run-preflight" class="alt">Run Preflight Report</button>
-            </div>
-            <pre id="force-submit-result" class="box mono">Force-submit output will appear here.</pre>
-            <pre id="broadcast-result" class="box mono">Broadcast output will appear here.</pre>
-            <pre id="preflight-result" class="box mono">Preflight report will appear here.</pre>
-          </article>
+      <article class="panel wide">
+        <h2>Question Authoring</h2>
+        <div class="stack">
+          <div class="row">
+            <select id="question-type" style="width:190px">
+              <option value="mcq_single">MCQ</option>
+              <option value="true_false">True / False</option>
+              <option value="fib_text">Fill in the Blanks</option>
+              <option value="short_answer">Short Answer</option>
+              <option value="long_answer">Long Answer</option>
+            </select>
+            <input id="question-topic" placeholder="Topic" style="flex:1 1 180px">
+            <input id="question-difficulty" placeholder="Difficulty" value="medium" style="width:140px">
+            <input id="question-marks" type="number" min="0.5" step="0.5" value="1" placeholder="Marks" style="width:120px">
+          </div>
+          <textarea id="question-text" rows="4" placeholder="Question text"></textarea>
+          <textarea id="question-options" rows="4" placeholder="MCQ format: Option text :: true/false&#10;FIB format: one accepted answer per line&#10;True/False: write True or False on one line"></textarea>
+          <div class="row">
+            <input id="word-target-min" type="number" min="1" placeholder="Word target min" style="width:160px">
+            <input id="word-target-max" type="number" min="1" placeholder="Word target max" style="width:160px">
+            <input id="word-hard-max" type="number" min="1" placeholder="Word hard max" style="width:160px">
+            <button id="create-question" type="button">Create Question</button>
+          </div>
+          <pre id="question-create-result" class="box mono">Question authoring output will appear here.</pre>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Publish and Safety Studio</h2>
-            <div class="row">
-              <input id="publish-lab" placeholder="Canary lab/group (example: lab-a)" style="width:220px">
-              <button id="run-canary-publish" class="alt">Run Canary Publish</button>
-              <button id="run-publish-gate" class="alt">Run Publish Gate</button>
-              <button id="create-rollback-snapshot" class="alt">Create Rollback Snapshot</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <button id="apply-circuit-breaker" class="warn">Apply Circuit Breaker Pause Rule</button>
-              <label class="small row">Grace Minutes
-                <input id="grace-minutes" type="number" min="0" max="30" value="2" style="width:80px">
-              </label>
-              <button id="apply-grace-policy" class="alt">Apply Grace Policy</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <label class="small row">Approval Steps
-                <input id="approval-steps" type="number" min="1" max="5" value="2" style="width:80px">
-              </label>
-              <button id="save-approval-builder" class="alt">Save Multi-Step Approvals</button>
-            </div>
-            <pre id="publish-ops-box" class="box mono">Canary/publish gate/snapshot output will appear here.</pre>
-          </article>
+      <article class="panel wide">
+        <h2>Question Bank</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Type</th><th>Topic</th><th>Marks</th><th>Question</th><th>Preview</th><th>Exam Link</th></tr></thead>
+            <tbody id="questions-body"></tbody>
+          </table>
+        </div>
+        <div id="student-preview-box" class="box" style="margin-top:8px"><p class="small">No preview selected.</p></div>
+      </article>
 
-          <article class="panel">
-            <h2>Alert Queue</h2>
-            <div class="row" style="margin-bottom:8px">
-              <label class="small row">Noise Min Incidents
-                <input id="alert-noise-threshold" type="number" min="1" value="2" style="width:80px">
-              </label>
-              <button id="apply-alert-noise-filter" class="alt">Apply Noise Filter</button>
-              <button id="clear-alert-noise-filter" class="alt">Clear Noise Filter</button>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Alert</th>
-                    <th>Status</th>
-                    <th>Indicator</th>
-                    <th>Student</th>
-                    <th>Detected</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="alert-body"></tbody>
-              </table>
-            </div>
-            <pre id="risk-insights-box" class="box mono">Cheat risk and anomaly insights will appear here.</pre>
-          </article>
+      <article class="panel">
+        <h2>Cadet Registry</h2>
+        <div class="stack">
+          <div class="row"><input id="student-id-input" placeholder="Student ID"><input id="student-name-input" placeholder="Display name"><input id="student-password-input" type="password" placeholder="Password"><button id="create-student-id" type="button">Create</button></div>
+          <div class="row"><input id="student-prefix" placeholder="Prefix" value="cadet"><input id="student-count" type="number" min="1" max="200" value="10"><button id="generate-student-ids" type="button">Generate</button></div>
+          <div class="row"><input id="student-csv-file" type="file" accept=".csv"><button id="upload-student-csv" type="button">Import CSV</button><button id="export-student-csv" type="button">Export CSV</button><button id="refresh-student-ids" type="button">Refresh</button></div>
+          <pre id="student-id-result" class="box mono">Registry output will appear here. CSV may include password column.</pre>
+          <pre id="student-csv-result" class="box mono">CSV output will appear here.</pre>
+        </div>
+        <div class="table-wrap" style="margin-top:8px">
+          <table>
+            <thead><tr><th>Student ID</th><th>Name</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody id="students-body"></tbody>
+          </table>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Exactly-Once Event Polling</h2>
-            <div class="row">
-              <button id="pull-events">Pull Page</button>
-              <button id="toggle-auto" class="alt">Start Auto Poll</button>
-              <span class="chip mono">Cursor: <span id="cursor-label">none</span></span>
-            </div>
-            <p class="small">Cursor boundary: <span class="mono">created_at + event_id</span>.</p>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Created</th>
-                    <th>Event</th>
-                    <th>Attempt</th>
-                    <th>Student</th>
-                    <th>Event ID</th>
-                  </tr>
-                </thead>
-                <tbody id="events-body"></tbody>
-              </table>
-            </div>
-          </article>
+      <article class="panel wide">
+        <h2>FIB Review Queue</h2>
+        <button id="load-fib-review" type="button">Load FIB Queue</button>
+        <div class="table-wrap" style="margin-top:8px">
+          <table>
+            <thead><tr><th>Question</th><th>Normalized Answer</th><th>Sample</th><th>Count</th><th>Decision</th><th>Canonical Text</th><th>Apply</th></tr></thead>
+            <tbody id="fib-review-body"></tbody>
+          </table>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Deep Audit Explorer</h2>
-            <div class="row">
-              <input id="audit-entity-type" placeholder="entity_type (attempt/exam)" style="width:180px">
-              <input id="audit-entity-id" placeholder="entity_id" style="flex:1 1 180px">
-              <input id="audit-event-type" placeholder="event_type" style="width:170px">
-              <input id="audit-actor-id" placeholder="actor_id" style="width:170px">
-              <button id="load-audit-events" class="alt">Load Audit Events</button>
-            </div>
-            <div class="table-wrap" style="margin-top:8px">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Created</th>
-                    <th>Entity</th>
-                    <th>Event</th>
-                    <th>Actor</th>
-                    <th>Payload</th>
-                  </tr>
-                </thead>
-                <tbody id="audit-events-body"></tbody>
-              </table>
-            </div>
-          </article>
+      <article class="panel wide">
+        <h2>Subjective Review Queue</h2>
+        <button id="load-subjective-review" type="button">Load Subjective Queue</button>
+        <div class="table-wrap" style="margin-top:8px">
+          <table>
+            <thead><tr><th>Cadet</th><th>Question</th><th>Type</th><th>Words</th><th>Answer</th><th>Marks</th><th>Note</th><th>Save</th></tr></thead>
+            <tbody id="subjective-review-body"></tbody>
+          </table>
+        </div>
+      </article>
 
-          <article class="guide-only panel">
-            <h2>Guide: Live Monitor</h2>
-            <p class="small">1. Load exams karo. 2. Exam select karo. 3. Refresh Live se active attempts dekho.</p>
-            <p class="small">4. Sync Alerts chalakar suspicious flags raise/update karo. 5. Pull Events se chronological feed dekho.</p>
-          </article>
-        </section>
+      <article class="panel">
+        <h2>Deep Audit Explorer</h2>
+        <div class="stack">
+          <div class="row"><input id="audit-entity-type" placeholder="entity_type"><input id="audit-entity-id" placeholder="entity_id"><input id="audit-event-type" placeholder="event_type"><button id="load-audit-events" class="alt" type="button">Load Audit</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Created</th><th>Entity</th><th>Event</th><th>Actor</th></tr></thead><tbody id="audit-events-body"></tbody></table></div>
+        </div>
+      </article>
 
-        <section id="page-question-bank" class="page-panel">
-          <article class="panel">
-            <h2>CSV Templates</h2>
-            <div class="row">
-              <a class="portal-btn" href="/web/demo_question_bank.csv" download>Download Question Bank CSV</a>
-              <a class="portal-btn primary" href="/web/demo_exam_package.csv" download>Download Exam Package CSV</a>
-              <a class="portal-btn" href="/web/demo_student_ids.csv" download>Download Student IDs CSV</a>
-            </div>
-            <p class="small">Question Bank CSV = sirf questions. Exam Package CSV = exam + questions ek saath.</p>
-          </article>
+      <article class="panel">
+        <h2>System Security</h2>
+        <div class="row">
+          <button id="load-access-profile" type="button">Load Access Profile</button>
+          <button id="load-metrics" type="button">Load Metrics</button>
+        </div>
+        <pre id="access-profile-box" class="box mono">Access profile will appear here.</pre>
+        <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
+      </article>
 
-          <article class="panel">
-            <h2>Upload Question Bank CSV</h2>
-            <div class="row">
-              <input id="question-csv-file" type="file" accept=".csv" style="flex:1 1 260px">
-              <button id="upload-question-csv">Upload Questions</button>
-            </div>
-            <pre id="question-upload-result" class="box mono">Upload result will appear here.</pre>
-          </article>
+      <article id="admin-accounts-panel" class="panel">
+        <h2>Admin Accounts</h2>
+        <div class="stack">
+          <div class="row">
+            <input id="new-admin-id" placeholder="Admin ID">
+            <input id="new-admin-name" placeholder="Display name">
+            <select id="new-admin-role" style="width:140px">
+              <option value="examiner">Examiner</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+          <div class="row">
+            <input id="new-admin-key" type="password" placeholder="Access key">
+            <button id="create-admin-account" type="button">Create Admin Account</button>
+            <button id="load-admin-accounts" type="button">Refresh Accounts</button>
+          </div>
+          <pre id="admin-account-result" class="box mono">Only superadmin can create and view admin accounts.</pre>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Admin ID</th><th>Name</th><th>Role</th><th>Status</th><th>Created By</th></tr></thead>
+              <tbody id="admin-accounts-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </article>
 
-          <article class="panel">
-            <h2>Upload Exam Package CSV</h2>
-            <div class="row">
-              <input id="exam-pack-file" type="file" accept=".csv" style="flex:1 1 260px">
-              <button id="upload-exam-pack">Upload Exam Pack</button>
-            </div>
-            <pre id="exam-pack-result" class="box mono">Exam package result will appear here.</pre>
-          </article>
-
-          <article class="panel">
-            <h2>Question Library</h2>
-            <div class="row">
-              <button id="load-questions">Refresh Question List</button>
-              <span class="chip mono">Total: <span id="question-count">0</span></span>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Text</th>
-                    <th>Topic</th>
-                    <th>Difficulty</th>
-                    <th>Marks</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="questions-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="panel">
-            <h2>Student-View Preview</h2>
-            <p class="small">Question row se Preview click karo. Yahan student-facing question view render hoga.</p>
-            <div id="student-preview-box" class="box">
-              <p class="small">No preview selected.</p>
-            </div>
-          </article>
-
-          <article class="panel">
-            <h2>AI Draft + Human Review Lane</h2>
-            <div class="row">
-              <input id="ai-draft-topic" placeholder="Topic (example: algebra)" style="width:180px">
-              <select id="ai-draft-difficulty" style="width:140px">
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-              <button id="generate-ai-draft" class="alt">Generate Draft</button>
-              <button id="approve-ai-draft">Approve Draft</button>
-            </div>
-            <textarea id="ai-draft-prompt" rows="3" placeholder="Human prompt: kya concept cover karna hai, kitne options, kis style me..."></textarea>
-            <pre id="ai-draft-box" class="box mono">AI draft output will appear here. Human approval mandatory.</pre>
-          </article>
-
-          <article class="panel">
-            <h2>Student ID Manager</h2>
-            <div class="row">
-              <input id="student-id-input" placeholder="Student ID (example: cadet-101)" style="flex:1 1 220px">
-              <input id="student-name-input" placeholder="Display Name (optional)" style="flex:1 1 220px">
-              <button id="create-student-id">Create Student ID</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <input id="student-prefix" value="cadet" placeholder="Prefix (example: cadet)" style="width:130px">
-              <input id="student-count" type="number" min="1" max="200" value="10" style="width:90px">
-              <button id="generate-student-ids" class="alt">Generate Batch</button>
-              <button id="refresh-student-ids" class="alt">Refresh List</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <input id="student-csv-file" type="file" accept=".csv" style="flex:1 1 260px">
-              <button id="upload-student-csv" class="alt">Import Student CSV</button>
-              <button id="export-student-csv" class="alt">Export Student CSV</button>
-            </div>
-            <pre id="student-id-result" class="box mono" style="margin-top:8px">Student ID creation result will appear here.</pre>
-            <pre id="student-csv-result" class="box mono" style="margin-top:8px">Student CSV import/export result will appear here.</pre>
-            <div class="table-wrap" style="margin-top:8px">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Student ID</th>
-                    <th>Name</th>
-                    <th>Created By</th>
-                    <th>Created At</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="students-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="guide-only panel">
-            <h2>Guide: Question Bank</h2>
-            <p class="small">1. Template download karo. 2. CSV me row-wise questions bharo. 3. Upload Question Bank se sirf bank update hoga.</p>
-            <p class="small">4. Agar exam bhi auto-create karna hai to Exam Package CSV upload karo. Isse exam name, duration, questions sab import honge.</p>
-          </article>
-        </section>
-
-        <section id="page-recalibration" class="page-panel">
-          <article class="panel">
-            <h2>Bulk Recalibration</h2>
-            <div class="row">
-              <input id="min-attempts" type="number" min="1" value="5" style="width:90px">
-              <label class="small row"><input id="apply-run" type="checkbox"> Apply</label>
-              <button id="run-recalibration">Run</button>
-              <button id="load-history" class="alt">History</button>
-            </div>
-            <div class="row">
-              <input id="rollback-reason" placeholder="Rollback reason (optional)" style="flex:1 1 260px">
-            </div>
-            <pre id="run-summary" class="box mono">No run selected.</pre>
-          </article>
-
-          <article class="panel">
-            <h2>Recalibration Runs</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Created</th>
-                    <th>Run ID</th>
-                    <th>Mode</th>
-                    <th>Updated</th>
-                    <th>Eligible</th>
-                    <th>Source</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="runs-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="panel">
-            <h2>Run Items</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Question</th>
-                    <th>Attempts</th>
-                    <th>Observed%</th>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="items-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="guide-only panel">
-            <h2>Guide: Recalibration</h2>
-            <p class="small">1. Exam select karke Preview run karo (Apply off). 2. Items verify karo. 3. Apply run only after review.</p>
-            <p class="small">4. Agar change rollback karna ho to apply-run row par Rollback click karo aur reason likho.</p>
-          </article>
-        </section>
-
-        <section id="page-analytics" class="page-panel">
-          <article class="panel">
-            <h2>Exam Analytics</h2>
-            <div class="row">
-              <button id="load-analytics">Load Analytics</button>
-            </div>
-            <pre id="analytics-summary" class="box mono">Analytics summary will appear here.</pre>
-          </article>
-
-          <article class="panel">
-            <h2>Difficulty Heatmap</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Question</th>
-                    <th>Difficulty%</th>
-                    <th>Total Attempts</th>
-                    <th>Correct</th>
-                  </tr>
-                </thead>
-                <tbody id="difficulty-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="panel">
-            <h2>Topic Heatmap</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Topic</th>
-                    <th>Attempts</th>
-                    <th>Avg%</th>
-                    <th>Pass%</th>
-                  </tr>
-                </thead>
-                <tbody id="topic-body"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="panel">
-            <h2>Score Distribution</h2>
-            <div id="distribution-body" class="stack"></div>
-          </article>
-
-          <article class="panel">
-            <h2>Advanced Analytics Studio</h2>
-            <div class="row">
-              <button id="run-cohort-benchmarking" class="alt">Cohort Benchmarking</button>
-              <button id="run-distractor-analytics" class="alt">Distractor Deep Analytics</button>
-              <button id="run-attendance-forecast" class="alt">Attendance Forecast</button>
-              <button id="run-slot-demand" class="alt">Slot Demand Allocator</button>
-            </div>
-            <pre id="analytics-advanced-box" class="box mono">Advanced analytics output will appear here.</pre>
-          </article>
-
-          <article class="guide-only panel">
-            <h2>Guide: Analytics</h2>
-            <p class="small">1. Exam select karo. 2. Load Analytics click karo. 3. Difficulty/topic trends se weak areas identify karo.</p>
-            <p class="small">4. Score distribution se cohort spread aur pass threshold behavior assess karo.</p>
-          </article>
-        </section>
-
-        <section id="page-system" class="page-panel">
-          <article class="panel">
-            <h2>System Metrics</h2>
-            <div class="row">
-              <button id="load-metrics">Refresh Metrics</button>
-              <button id="load-dashboard" class="alt">Global Proctor Snapshot</button>
-              <button id="compute-risk" class="alt">Compute Risk Model</button>
-              <button id="export-siem" class="alt">Export SIEM JSON</button>
-              <button id="hash-audit-chain" class="alt">Hash Audit Chain</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <label for="idle-timeout-seconds" class="small">Idle lock timeout (seconds)</label>
-              <input id="idle-timeout-seconds" type="number" min="10" max="3600" value="10" style="width:120px">
-              <button id="apply-idle-timeout" class="alt">Apply Timeout Policy</button>
-              <button id="load-migration-health" class="alt">Migration Health</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <label class="small row"><input id="widget-live-toggle" type="checkbox" checked> Show Live Widget</label>
-              <label class="small row"><input id="widget-alert-toggle" type="checkbox" checked> Show Alert Widget</label>
-              <label class="small row"><input id="widget-analytics-toggle" type="checkbox" checked> Show Analytics Widget</label>
-              <button id="save-widget-layout" class="alt">Save Widget Layout</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <select id="compliance-profile" style="width:220px">
-                <option value="standard">Standard Compliance</option>
-                <option value="strict">Strict Compliance</option>
-                <option value="audit_plus">Audit Plus</option>
-              </select>
-              <button id="apply-compliance-profile" class="alt">Apply Compliance Profile</button>
-              <button id="save-policy-version" class="alt">Save Policy Version</button>
-            </div>
-            <pre id="metrics-box" class="box mono">Metrics will appear here.</pre>
-            <pre id="dashboard-box" class="box mono">Dashboard snapshot will appear here.</pre>
-            <div id="infra-health-box" class="box">Infra health summary will appear here.</div>
-            <pre id="anomaly-box" class="box mono">Anomaly and cluster insights will appear here.</pre>
-            <pre id="integrity-box" class="box mono">Evidence chain/hash output will appear here.</pre>
-            <pre id="policy-box" class="box mono">Policy versions and RBAC matrix will appear here.</pre>
-            <pre id="trend-box" class="box mono">Trend cube and benchmark output will appear here.</pre>
-            <pre id="simulator-box" class="box mono">Cutoff optimizer / what-if simulation output will appear here.</pre>
-          </article>
-
-          <article class="panel">
-            <h2>Backup and Access Security</h2>
-            <div class="row">
-              <label class="small row">Retention Days
-                <input id="backup-retention-days" type="number" min="1" max="365" value="30" style="width:90px">
-              </label>
-              <button id="apply-backup-retention" class="alt">Apply Retention Policy</button>
-              <label class="small row"><input id="backup-encryption-toggle" type="checkbox" checked> Backup Encryption</label>
-              <input id="backup-encryption-key" placeholder="Encryption key alias (example: key-v2)" style="width:200px">
-              <button id="apply-backup-encryption" class="alt">Apply Encryption</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <input id="restore-point-time" placeholder="Restore point ISO time (optional)" style="flex:1 1 260px">
-              <button id="browse-restore-points" class="alt">Browse Restore Points</button>
-              <button id="run-restore-dry" class="alt">Run Restore Dry-Run</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <button id="run-db-profiler" class="alt">DB Performance Profiler</button>
-              <button id="run-queue-monitor" class="alt">Worker Queue Monitor</button>
-              <button id="run-key-rotation" class="alt">Key Rotation Dashboard</button>
-              <button id="run-vault-check" class="alt">Secret Vault Check</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <select id="sso-mode" style="width:180px">
-                <option value="disabled">SSO Disabled</option>
-                <option value="oauth_google">OAuth Google</option>
-                <option value="oauth_microsoft">OAuth Microsoft</option>
-              </select>
-              <label class="small row"><input id="toggle-hardware-mfa" type="checkbox"> Hardware MFA Required</label>
-              <input id="geo-ip-policy" placeholder="Allowed geo (example: IN,SG)" style="width:200px">
-              <button id="apply-geo-policy" class="alt">Apply Geo-IP Restriction</button>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <input id="conditional-access-rule" placeholder="Conditional access rule (example: strict_if_outside_geo)" style="flex:1 1 300px">
-              <button id="apply-conditional-access" class="alt">Apply Conditional Access</button>
-            </div>
-            <pre id="backup-security-box" class="box mono">Backup/security/access output will appear here.</pre>
-          </article>
-
-          <article class="guide-only panel">
-            <h2>Guide: System Ops</h2>
-            <p class="small">1. Refresh Metrics se latency, conflict counters, operational values inspect karo.</p>
-            <p class="small">2. Global Proctor Snapshot se cross-exam activity aur finalize stream dekho.</p>
-          </article>
-        </section>
-      </div>
+      <article class="panel wide">
+        <h2>Results and Reports</h2>
+        <div class="row">
+          <button id="load-exam-analytics" type="button">Load Exam Analytics</button>
+        </div>
+        <div id="analytics-box" class="box analytics-shell">
+          <p class="small">Exam analytics dashboard will appear here.</p>
+        </div>
+      </article>
     </section>
   </main>
 

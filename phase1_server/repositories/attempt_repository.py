@@ -24,6 +24,15 @@ class AttemptRepository(Protocol):
         expected_version: int,
     ) -> bool: ...
 
+    def update_timer_state(
+        self,
+        attempt_id: str,
+        *,
+        timer_frozen: bool,
+        timer_paused_at: str | None,
+        expires_at: str | None = None,
+    ) -> None: ...
+
     def get_by_candidate_and_exam(
         self,
         candidate_id: str,
@@ -38,7 +47,7 @@ class AttemptRepository(Protocol):
 
     def upsert_response(self, response: AttemptResponse) -> None: ...
 
-    def get_responses(self, attempt_id: str) -> dict[str, str]: ...
+    def get_responses(self, attempt_id: str) -> dict[str, dict]: ...
 
     def clear_results(self, attempt_id: str) -> None: ...
 
@@ -56,11 +65,18 @@ class AttemptRepository(Protocol):
         self,
         attempt_id: str,
         question_id: str,
+        question_type: str,
         selected_option_id: str | None,
-        correct_option_id: str,
+        correct_option_id: str | None,
+        text_answer: str | None,
+        matched_variant_id: str | None,
+        grading_state: str,
         marks_awarded: float,
         max_marks: float,
         is_correct: bool,
+        reviewed_by: str | None = None,
+        reviewed_at: str | None = None,
+        review_note: str | None = None,
     ) -> None: ...
 
     def get_attempt_result(self, attempt_id: str) -> dict | None: ...
@@ -68,6 +84,36 @@ class AttemptRepository(Protocol):
     def result_exists(self, attempt_id: str) -> bool: ...
 
     def get_question_results(self, attempt_id: str) -> list[dict]: ...
+
+    def get_question_result(self, attempt_id: str, question_id: str) -> dict | None: ...
+
+    def update_question_result_review(
+        self,
+        attempt_id: str,
+        question_id: str,
+        grading_state: str,
+        marks_awarded: float,
+        is_correct: bool,
+        matched_variant_id: str | None,
+        reviewed_by: str | None,
+        reviewed_at: str | None,
+        review_note: str | None,
+    ) -> None: ...
+
+    def count_pending_question_results(self, attempt_id: str) -> int: ...
+
+    def delete_attempt_result(self, attempt_id: str) -> None: ...
+
+    def list_fib_review_queue(self, exam_id: str) -> list[dict]: ...
+
+    def list_subjective_review_queue(self, exam_id: str) -> list[dict]: ...
+
+    def list_attempt_ids_for_pending_fib_variant(
+        self,
+        exam_id: str,
+        question_id: str,
+        normalized_text_answer: str,
+    ) -> list[dict]: ...
 
     def log_audit_event(
         self,
@@ -124,7 +170,8 @@ class SQLiteAttemptRepository:
     def get(self, attempt_id: str) -> Attempt | None:
         row = self._conn.execute(
             """
-            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
+            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at,
+                   timer_frozen, timer_paused_at
             FROM attempts
             WHERE id = ?
             """,
@@ -142,14 +189,17 @@ class SQLiteAttemptRepository:
             version=row["version"],
             submitted_at=row["submitted_at"],
             expires_at=row["expires_at"],
+            timer_frozen=bool(row["timer_frozen"]),
+            timer_paused_at=row["timer_paused_at"],
         )
 
     def create(self, attempt: Attempt) -> None:
         self._conn.execute(
             """
             INSERT INTO attempts(
-                id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at,
+                timer_frozen, timer_paused_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 attempt.id,
@@ -161,6 +211,8 @@ class SQLiteAttemptRepository:
                 attempt.version,
                 attempt.submitted_at,
                 attempt.expires_at,
+                1 if attempt.timer_frozen else 0,
+                attempt.timer_paused_at,
             ),
         )
 
@@ -192,7 +244,8 @@ class SQLiteAttemptRepository:
     ) -> Attempt | None:
         row = self._conn.execute(
             """
-            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at
+            SELECT id, candidate_id, exam_id, status, created_at, updated_at, version, submitted_at, expires_at,
+                   timer_frozen, timer_paused_at
             FROM attempts
             WHERE candidate_id = ? AND exam_id = ?
             ORDER BY created_at DESC
@@ -212,6 +265,35 @@ class SQLiteAttemptRepository:
             version=row["version"],
             submitted_at=row["submitted_at"],
             expires_at=row["expires_at"],
+            timer_frozen=bool(row["timer_frozen"]),
+            timer_paused_at=row["timer_paused_at"],
+        )
+
+    def update_timer_state(
+        self,
+        attempt_id: str,
+        *,
+        timer_frozen: bool,
+        timer_paused_at: str | None,
+        expires_at: str | None = None,
+    ) -> None:
+        if expires_at is None:
+            self._conn.execute(
+                """
+                UPDATE attempts
+                SET timer_frozen = ?, timer_paused_at = ?
+                WHERE id = ?
+                """,
+                (1 if timer_frozen else 0, timer_paused_at, attempt_id),
+            )
+            return
+        self._conn.execute(
+            """
+            UPDATE attempts
+            SET timer_frozen = ?, timer_paused_at = ?, expires_at = ?
+            WHERE id = ?
+            """,
+            (1 if timer_frozen else 0, timer_paused_at, expires_at, attempt_id),
         )
 
     def get_snapshot_question_id(self, attempt_id: str, order_index: int) -> str | None:
@@ -252,30 +334,48 @@ class SQLiteAttemptRepository:
     def upsert_response(self, response: AttemptResponse) -> None:
         self._conn.execute(
             """
-            INSERT INTO attempt_responses(attempt_id, question_id, selected_option_id, answered_at)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO attempt_responses(
+                attempt_id, question_id, selected_option_id, text_answer,
+                normalized_text_answer, word_count, answered_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(attempt_id, question_id)
             DO UPDATE SET selected_option_id = excluded.selected_option_id,
+                          text_answer = excluded.text_answer,
+                          normalized_text_answer = excluded.normalized_text_answer,
+                          word_count = excluded.word_count,
                           answered_at = excluded.answered_at
             """,
             (
                 response.attempt_id,
                 response.question_id,
                 response.selected_option_id,
+                response.text_answer,
+                response.normalized_text_answer,
+                response.word_count,
                 response.answered_at,
             ),
         )
 
-    def get_responses(self, attempt_id: str) -> dict[str, str]:
+    def get_responses(self, attempt_id: str) -> dict[str, dict]:
         rows = self._conn.execute(
             """
-            SELECT question_id, selected_option_id
+            SELECT question_id, selected_option_id, text_answer, normalized_text_answer, word_count, answered_at
             FROM attempt_responses
             WHERE attempt_id = ?
             """,
             (attempt_id,),
         ).fetchall()
-        return {row["question_id"]: row["selected_option_id"] for row in rows}
+        return {
+            row["question_id"]: {
+                "selected_option_id": row["selected_option_id"],
+                "text_answer": row["text_answer"],
+                "normalized_text_answer": row["normalized_text_answer"],
+                "word_count": row["word_count"],
+                "answered_at": row["answered_at"],
+            }
+            for row in rows
+        }
 
     def clear_results(self, attempt_id: str) -> None:
         self._conn.execute(
@@ -298,7 +398,7 @@ class SQLiteAttemptRepository:
     ) -> None:
         self._conn.execute(
             """
-            INSERT INTO attempt_results(
+            INSERT OR REPLACE INTO attempt_results(
                 attempt_id, total_score, total_possible_marks, percentage, passed, graded_at
             ) VALUES(?, ?, ?, ?, ?, ?)
             """,
@@ -316,27 +416,42 @@ class SQLiteAttemptRepository:
         self,
         attempt_id: str,
         question_id: str,
+        question_type: str,
         selected_option_id: str | None,
-        correct_option_id: str,
+        correct_option_id: str | None,
+        text_answer: str | None,
+        matched_variant_id: str | None,
+        grading_state: str,
         marks_awarded: float,
         max_marks: float,
         is_correct: bool,
+        reviewed_by: str | None = None,
+        reviewed_at: str | None = None,
+        review_note: str | None = None,
     ) -> None:
         self._conn.execute(
             """
-            INSERT INTO attempt_question_results(
-                attempt_id, question_id, selected_option_id, correct_option_id,
-                marks_awarded, max_marks, is_correct
-            ) VALUES(?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO attempt_question_results(
+                attempt_id, question_id, question_type, selected_option_id, correct_option_id,
+                text_answer, matched_variant_id, grading_state,
+                marks_awarded, max_marks, is_correct, reviewed_by, reviewed_at, review_note
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 attempt_id,
                 question_id,
+                question_type,
                 selected_option_id,
                 correct_option_id,
+                text_answer,
+                matched_variant_id,
+                grading_state,
                 marks_awarded,
                 max_marks,
                 1 if is_correct else 0,
+                reviewed_by,
+                reviewed_at,
+                review_note,
             ),
         )
 
@@ -370,8 +485,9 @@ class SQLiteAttemptRepository:
     def get_question_results(self, attempt_id: str) -> list[dict]:
         rows = self._conn.execute(
             """
-            SELECT attempt_id, question_id, selected_option_id, correct_option_id,
-                   marks_awarded, max_marks, is_correct
+            SELECT attempt_id, question_id, question_type, selected_option_id, correct_option_id,
+                   text_answer, matched_variant_id, grading_state,
+                   marks_awarded, max_marks, is_correct, reviewed_by, reviewed_at, review_note
             FROM attempt_question_results
             WHERE attempt_id = ?
             ORDER BY question_id ASC
@@ -382,14 +498,105 @@ class SQLiteAttemptRepository:
             {
                 "attempt_id": row["attempt_id"],
                 "question_id": row["question_id"],
+                "question_type": row["question_type"],
                 "selected_option_id": row["selected_option_id"],
                 "correct_option_id": row["correct_option_id"],
+                "text_answer": row["text_answer"],
+                "matched_variant_id": row["matched_variant_id"],
+                "grading_state": row["grading_state"],
                 "marks_awarded": row["marks_awarded"],
                 "max_marks": row["max_marks"],
                 "is_correct": bool(row["is_correct"]),
+                "reviewed_by": row["reviewed_by"],
+                "reviewed_at": row["reviewed_at"],
+                "review_note": row["review_note"],
             }
             for row in rows
         ]
+
+    def get_question_result(self, attempt_id: str, question_id: str) -> dict | None:
+        row = self._conn.execute(
+            """
+            SELECT attempt_id, question_id, question_type, selected_option_id, correct_option_id,
+                   text_answer, matched_variant_id, grading_state,
+                   marks_awarded, max_marks, is_correct, reviewed_by, reviewed_at, review_note
+            FROM attempt_question_results
+            WHERE attempt_id = ? AND question_id = ?
+            """,
+            (attempt_id, question_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "attempt_id": row["attempt_id"],
+            "question_id": row["question_id"],
+            "question_type": row["question_type"],
+            "selected_option_id": row["selected_option_id"],
+            "correct_option_id": row["correct_option_id"],
+            "text_answer": row["text_answer"],
+            "matched_variant_id": row["matched_variant_id"],
+            "grading_state": row["grading_state"],
+            "marks_awarded": row["marks_awarded"],
+            "max_marks": row["max_marks"],
+            "is_correct": bool(row["is_correct"]),
+            "reviewed_by": row["reviewed_by"],
+            "reviewed_at": row["reviewed_at"],
+            "review_note": row["review_note"],
+        }
+
+    def update_question_result_review(
+        self,
+        attempt_id: str,
+        question_id: str,
+        grading_state: str,
+        marks_awarded: float,
+        is_correct: bool,
+        matched_variant_id: str | None,
+        reviewed_by: str | None,
+        reviewed_at: str | None,
+        review_note: str | None,
+    ) -> None:
+        self._conn.execute(
+            """
+            UPDATE attempt_question_results
+            SET grading_state = ?,
+                marks_awarded = ?,
+                is_correct = ?,
+                matched_variant_id = COALESCE(?, matched_variant_id),
+                reviewed_by = ?,
+                reviewed_at = ?,
+                review_note = ?
+            WHERE attempt_id = ? AND question_id = ?
+            """,
+            (
+                grading_state,
+                marks_awarded,
+                1 if is_correct else 0,
+                matched_variant_id,
+                reviewed_by,
+                reviewed_at,
+                review_note,
+                attempt_id,
+                question_id,
+            ),
+        )
+
+    def count_pending_question_results(self, attempt_id: str) -> int:
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM attempt_question_results
+            WHERE attempt_id = ? AND grading_state = 'pending_review'
+            """,
+            (attempt_id,),
+        ).fetchone()
+        return 0 if row is None else int(row["total"] or 0)
+
+    def delete_attempt_result(self, attempt_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM attempt_results WHERE attempt_id = ?",
+            (attempt_id,),
+        )
 
     def log_audit_event(
         self,
@@ -739,6 +946,127 @@ class SQLiteAttemptRepository:
             ),
         ).fetchall()
         return [row["id"] for row in rows]
+
+    def list_fib_review_queue(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                q.id AS question_id,
+                q.text AS question_text,
+                q.marks AS max_marks,
+                ar.normalized_text_answer AS normalized_text_answer,
+                MIN(ar.text_answer) AS sample_answer,
+                COUNT(*) AS submission_count,
+                GROUP_CONCAT(DISTINCT a.id) AS attempt_ids,
+                GROUP_CONCAT(DISTINCT a.candidate_id) AS student_ids
+            FROM attempt_question_results aqr
+            INNER JOIN attempts a ON a.id = aqr.attempt_id
+            INNER JOIN questions q ON q.id = aqr.question_id
+            INNER JOIN attempt_responses ar
+                ON ar.attempt_id = aqr.attempt_id AND ar.question_id = aqr.question_id
+            WHERE
+                a.exam_id = ?
+                AND q.question_type = 'fib_text'
+                AND aqr.grading_state = 'pending_review'
+            GROUP BY q.id, q.text, q.marks, ar.normalized_text_answer
+            ORDER BY q.id ASC, submission_count DESC, ar.normalized_text_answer ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+        return [
+            {
+                "question_id": row["question_id"],
+                "question_text": row["question_text"],
+                "max_marks": float(row["max_marks"]),
+                "normalized_text_answer": row["normalized_text_answer"],
+                "sample_answer": row["sample_answer"],
+                "submission_count": int(row["submission_count"] or 0),
+                "attempt_ids": (row["attempt_ids"] or "").split(",") if row["attempt_ids"] else [],
+                "student_ids": (row["student_ids"] or "").split(",") if row["student_ids"] else [],
+            }
+            for row in rows
+        ]
+
+    def list_subjective_review_queue(self, exam_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                a.id AS attempt_id,
+                a.candidate_id AS student_id,
+                q.id AS question_id,
+                q.text AS question_text,
+                q.question_type AS question_type,
+                q.marks AS max_marks,
+                q.word_target_min AS word_target_min,
+                q.word_target_max AS word_target_max,
+                q.word_hard_max AS word_hard_max,
+                ar.text_answer AS text_answer,
+                ar.word_count AS word_count,
+                aqr.grading_state AS grading_state
+            FROM attempt_question_results aqr
+            INNER JOIN attempts a ON a.id = aqr.attempt_id
+            INNER JOIN questions q ON q.id = aqr.question_id
+            INNER JOIN attempt_responses ar
+                ON ar.attempt_id = aqr.attempt_id AND ar.question_id = aqr.question_id
+            WHERE
+                a.exam_id = ?
+                AND q.question_type IN ('short_answer', 'long_answer')
+                AND aqr.grading_state = 'pending_review'
+            ORDER BY q.id ASC, a.candidate_id ASC
+            """,
+            (exam_id,),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "question_id": row["question_id"],
+                "question_text": row["question_text"],
+                "question_type": row["question_type"],
+                "max_marks": float(row["max_marks"]),
+                "word_target_min": row["word_target_min"],
+                "word_target_max": row["word_target_max"],
+                "word_hard_max": row["word_hard_max"],
+                "text_answer": row["text_answer"],
+                "word_count": row["word_count"],
+                "grading_state": row["grading_state"],
+            }
+            for row in rows
+        ]
+
+    def list_attempt_ids_for_pending_fib_variant(
+        self,
+        exam_id: str,
+        question_id: str,
+        normalized_text_answer: str,
+    ) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                a.id AS attempt_id,
+                a.candidate_id AS student_id,
+                ar.text_answer AS text_answer
+            FROM attempt_question_results aqr
+            INNER JOIN attempts a ON a.id = aqr.attempt_id
+            INNER JOIN attempt_responses ar
+                ON ar.attempt_id = aqr.attempt_id AND ar.question_id = aqr.question_id
+            WHERE
+                a.exam_id = ?
+                AND aqr.question_id = ?
+                AND aqr.grading_state = 'pending_review'
+                AND ar.normalized_text_answer = ?
+            ORDER BY a.created_at ASC
+            """,
+            (exam_id, question_id, normalized_text_answer),
+        ).fetchall()
+        return [
+            {
+                "attempt_id": row["attempt_id"],
+                "student_id": row["student_id"],
+                "text_answer": row["text_answer"],
+            }
+            for row in rows
+        ]
 
     def list_attempt_ids_by_exam_and_status(
         self,

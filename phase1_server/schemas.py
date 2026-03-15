@@ -17,11 +17,16 @@ class QuestionCreateSchema(BaseModel):
     topic: str = Field(min_length=1, max_length=120)
     difficulty: str = Field(min_length=1, max_length=30)
     marks: confloat(gt=0)
+    question_type: Literal["mcq_single", "true_false", "fib_text", "short_answer", "long_answer"] = "mcq_single"
     difficulty_level: conint(ge=1, le=10) | None = None
     discrimination_index: confloat(ge=0, le=1) | None = None
     topic_tag: str | None = Field(default=None, min_length=1, max_length=120)
     cognitive_level: str | None = Field(default=None, min_length=1, max_length=80)
-    options: list[OptionCreateSchema] = Field(min_length=2, max_length=6)
+    options: list[OptionCreateSchema] | None = Field(default=None, max_length=6)
+    accepted_answers: list[str] | None = Field(default=None, max_length=20)
+    word_target_min: conint(ge=1, le=5000) | None = None
+    word_target_max: conint(ge=1, le=5000) | None = None
+    word_hard_max: conint(ge=1, le=10000) | None = None
 
 
 class QuestionMetadataUpdateSchema(BaseModel):
@@ -30,6 +35,9 @@ class QuestionMetadataUpdateSchema(BaseModel):
     discrimination_index: confloat(ge=0, le=1) | None = None
     topic_tag: str | None = Field(default=None, min_length=1, max_length=120)
     cognitive_level: str | None = Field(default=None, min_length=1, max_length=80)
+    word_target_min: conint(ge=1, le=5000) | None = None
+    word_target_max: conint(ge=1, le=5000) | None = None
+    word_hard_max: conint(ge=1, le=10000) | None = None
 
 
 class QuestionRecalibrationSchema(BaseModel):
@@ -57,13 +65,14 @@ class AddQuestionsSchema(BaseModel):
 
 class AnswerSubmitSchema(BaseModel):
     question_id: str = Field(min_length=1)
-    selected_option_id: str = Field(min_length=1)
-    confidence_tag: Literal["sure", "maybe", "guess"] | None = None
+    selected_option_id: str | None = Field(default=None, min_length=1)
+    text_answer: str | None = Field(default=None, max_length=20000)
 
 
 class StudentRegisterSchema(BaseModel):
     student_id: str = Field(min_length=3, max_length=40)
     display_name: str | None = Field(default=None, max_length=120)
+    password: str | None = Field(default=None, min_length=4, max_length=120)
 
 
 class StudentGenerateSchema(BaseModel):
@@ -98,7 +107,46 @@ class BroadcastReceiptSchema(BaseModel):
 
 class ExamControlSchema(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
+    freeze_timer: bool = False
+
+
+class StudentLoginSchema(BaseModel):
+    student_id: str = Field(min_length=3, max_length=40)
+    password: str = Field(min_length=4, max_length=120)
+
+
+class AdminLoginSchema(BaseModel):
+    admin_id: str = Field(min_length=3, max_length=40)
+    access_key: str = Field(min_length=4, max_length=120)
+
+
+class AdminAccountCreateSchema(BaseModel):
+    admin_id: str = Field(min_length=3, max_length=40)
+    display_name: str | None = Field(default=None, max_length=120)
+    role: Literal["superadmin", "examiner"] = "examiner"
+    access_key: str = Field(min_length=4, max_length=120)
+
+
+class ExamRulesUpdateSchema(BaseModel):
+    custom_rules: list[str] = Field(default_factory=list, max_length=20)
 
 
 class AIExplainRequestSchema(BaseModel):
     question_id: str = Field(min_length=1)
+
+
+class ExamReferenceUpdateSchema(BaseModel):
+    reference_exam_id: str | None = Field(default=None, min_length=1)
+
+
+class FibReviewDecisionSchema(BaseModel):
+    question_id: str = Field(min_length=1)
+    normalized_text_answer: str = Field(min_length=1, max_length=4000)
+    decision: Literal["accepted", "rejected"]
+    canonical_answer_text: str = Field(min_length=1, max_length=4000)
+
+
+class SubjectiveReviewSchema(BaseModel):
+    question_id: str = Field(min_length=1)
+    marks_awarded: confloat(ge=0)
+    review_note: str | None = Field(default=None, max_length=1000)

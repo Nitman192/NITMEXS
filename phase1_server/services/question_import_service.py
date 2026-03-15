@@ -64,7 +64,7 @@ class QuestionCsvImportService:
         "option4",
         "option4_is_correct",
     ]
-    SIMPLIFIED_REQUIRED_COLUMNS = [
+    SIMPLIFIED_LEGACY_REQUIRED_COLUMNS = [
         "text",
         "topic",
         "marks",
@@ -72,10 +72,23 @@ class QuestionCsvImportService:
         "option_b",
         "correct_option",
     ]
+    SIMPLIFIED_REQUIRED_COLUMNS = [
+        "text",
+        "topic",
+        "marks",
+        "question_type",
+    ]
     OPTIONAL_COLUMNS = [
         "difficulty",
+        "accepted_answers",
+        "word_target_min",
+        "word_target_max",
+        "word_hard_max",
+        "option_a",
+        "option_b",
         "option_c",
         "option_d",
+        "correct_option",
         "difficulty_level",
         "discrimination_index",
         "topic_tag",
@@ -85,7 +98,12 @@ class QuestionCsvImportService:
     def __init__(self, question_service: QuestionService):
         self._question_service = question_service
 
-    def import_csv(self, content: str) -> CsvImportResult:
+    def import_csv(
+        self,
+        content: str,
+        owner_admin_id: str = "superadmin",
+        created_by: str = "admin",
+    ) -> CsvImportResult:
         if not content.strip():
             raise CsvImportError("CSV file is empty")
 
@@ -96,9 +114,8 @@ class QuestionCsvImportService:
         format_name = self.detect_format(reader.fieldnames)
         if format_name is None:
             raise CsvImportError(
-                "CSV header not recognized. Use legacy columns "
-                "(option1..option4 + option*_is_correct) or simplified columns "
-                "(option_a..option_d + correct_option)."
+                "CSV header not recognized. Use legacy MCQ columns or simplified Army columns "
+                "(text, topic, marks, question_type, plus type-specific fields)."
             )
 
         errors: list[CsvImportRowError] = []
@@ -110,7 +127,12 @@ class QuestionCsvImportService:
                 continue
             total_rows += 1
             try:
-                payload = self._parse_row(row, format_name=format_name)
+                payload = self._parse_row(
+                    row,
+                    format_name=format_name,
+                    owner_admin_id=owner_admin_id,
+                    created_by=created_by,
+                )
                 self._question_service.create_question(payload)
                 inserted += 1
             except (CsvImportError, QuestionValidationError, ValueError) as exc:
@@ -128,11 +150,19 @@ class QuestionCsvImportService:
         names = set(fieldnames)
         if all(column in names for column in cls.LEGACY_REQUIRED_COLUMNS):
             return "legacy"
+        if all(column in names for column in cls.SIMPLIFIED_LEGACY_REQUIRED_COLUMNS):
+            return "simplified"
         if all(column in names for column in cls.SIMPLIFIED_REQUIRED_COLUMNS):
             return "simplified"
         return None
 
-    def _parse_row(self, row: dict[str, str], format_name: str) -> QuestionCreatePayload:
+    def _parse_row(
+        self,
+        row: dict[str, str],
+        format_name: str,
+        owner_admin_id: str,
+        created_by: str,
+    ) -> QuestionCreatePayload:
         text = (row.get("text") or "").strip()
         topic = (row.get("topic") or "").strip()
         difficulty = (row.get("difficulty") or "").strip() or "medium"
@@ -141,6 +171,20 @@ class QuestionCsvImportService:
         discrimination_raw = (row.get("discrimination_index") or "").strip()
         topic_tag = (row.get("topic_tag") or "").strip() or None
         cognitive_level = (row.get("cognitive_level") or "").strip() or None
+        question_type = (row.get("question_type") or "").strip() or "mcq_single"
+        accepted_answers = self._parse_accepted_answers(row.get("accepted_answers"))
+        word_target_min = self._parse_optional_int(
+            (row.get("word_target_min") or "").strip(),
+            field_name="word_target_min",
+        )
+        word_target_max = self._parse_optional_int(
+            (row.get("word_target_max") or "").strip(),
+            field_name="word_target_max",
+        )
+        word_hard_max = self._parse_optional_int(
+            (row.get("word_hard_max") or "").strip(),
+            field_name="word_hard_max",
+        )
 
         if not text:
             raise CsvImportError("Question text cannot be empty")
@@ -174,22 +218,34 @@ class QuestionCsvImportService:
 
         options = self._parse_options(row, format_name=format_name)
 
-        if len(options) < 2:
-            raise CsvImportError("At least two options are required")
-
         return QuestionCreatePayload(
             text=text,
             topic=topic,
             difficulty=difficulty,
             marks=marks,
+            owner_admin_id=owner_admin_id,
+            created_by=created_by,
+            question_type=question_type,
             options=options,
+            accepted_answers=accepted_answers,
             difficulty_level=difficulty_level,
             discrimination_index=discrimination_index,
             topic_tag=topic_tag,
             cognitive_level=cognitive_level,
+            word_target_min=word_target_min,
+            word_target_max=word_target_max,
+            word_hard_max=word_hard_max,
         )
 
     def _parse_options(self, row: dict[str, str], format_name: str) -> list[tuple[str, bool]]:
+        question_type = (row.get("question_type") or "").strip() or "mcq_single"
+        if question_type == "true_false":
+            correct_option = (row.get("correct_option") or "").strip().upper()
+            if correct_option not in {"TRUE", "FALSE", "T", "F"}:
+                raise CsvImportError("true_false questions require correct_option TRUE or FALSE")
+            return [(correct_option.title(), True)]
+        if question_type in {"fib_text", "short_answer", "long_answer"}:
+            return []
         if format_name == "legacy":
             return self._parse_legacy_options(row)
         if format_name == "simplified":
@@ -244,6 +300,22 @@ class QuestionCsvImportService:
     def _is_blank_row(row: dict[str, str]) -> bool:
         return all(not (value or "").strip() for value in row.values())
 
+    @staticmethod
+    def _parse_accepted_answers(value: str | None) -> list[str]:
+        raw = (value or "").strip()
+        if not raw:
+            return []
+        return [item.strip() for item in raw.split("|") if item.strip()]
+
+    @staticmethod
+    def _parse_optional_int(value: str, field_name: str) -> int | None:
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise CsvImportError(f"{field_name} must be integer") from exc
+
 
 class ExamQuestionPackageCsvImportService:
     REQUIRED_EXAM_COLUMNS = [
@@ -263,7 +335,12 @@ class ExamQuestionPackageCsvImportService:
         self._question_service = question_service
         self._exam_service = exam_service
 
-    def import_csv(self, content: str) -> CsvExamPackageImportResult:
+    def import_csv(
+        self,
+        content: str,
+        owner_admin_id: str = "superadmin",
+        created_by: str = "admin",
+    ) -> CsvExamPackageImportResult:
         if not content.strip():
             raise CsvImportError("CSV file is empty")
 
@@ -320,6 +397,7 @@ class ExamQuestionPackageCsvImportService:
                         name=exam_name,
                         duration_minutes=duration_minutes,
                         negative_marking=negative_marking,
+                        owner_admin_id=owner_admin_id,
                     )
                 )
                 exam_id = exam.id
@@ -335,7 +413,12 @@ class ExamQuestionPackageCsvImportService:
                     continue
 
             try:
-                payload = parser._parse_row(row, format_name=question_format)
+                payload = parser._parse_row(
+                    row,
+                    format_name=question_format,
+                    owner_admin_id=owner_admin_id,
+                    created_by=created_by,
+                )
                 question = self._question_service.create_question(payload)
                 created_question_ids.append(question.id)
                 inserted += 1

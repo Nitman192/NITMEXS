@@ -1,46 +1,44 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NITMEXS Portal</title>
+  <title>NITMEXS Examination Gateway | Web Control Gateway</title>
   <link rel="stylesheet" href="/web/theme.css">
 </head>
 <body class="portal-body" data-default-theme="dark">
   <div class="nebula"></div>
   <main class="portal-wrap">
     <header class="portal-header">
-      <p class="chip">NITMEXS // LAN MODE</p>
-      <h1>Web Control Gateway</h1>
-      <p class="subtitle">Pehle role choose karo, phir login karo, uske baad dedicated interface open hoga.</p>
+      <p class="chip">NITMEXS EXAM SYSTEM</p>
+      <h1>Examination Gateway</h1>
+      <p class="small">Web Control Gateway</p>
+      <p class="subtitle">Trusted host machine par Exam Controller aur Cadet login dono dikhenge. Network clients par sirf Cadet login available hoga.</p>
       <p class="mono tiny">Server Version: <span id="version-badge">loading...</span></p>
-      <label class="theme-switch" for="theme-toggle">
-        <input id="theme-toggle" data-theme-toggle type="checkbox" aria-label="Toggle dark mode">
-        <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
-        <span class="theme-switch-text" data-theme-label>Dark</span>
-      </label>
+      <p class="mono tiny">Access Profile: <span id="access-profile-label">loading...</span></p>
     </header>
 
     <section class="portal-grid">
       <article class="portal-card">
-        <p class="card-kicker">STUDENT ZONE</p>
-        <h2>Student Dashboard</h2>
-        <p>Student ID se login karo, phir exam attempt interface open hoga.</p>
+        <p class="card-kicker">CADET ZONE</p>
+        <h2>Student Login</h2>
+        <p>Student ID aur password enter karke NITMEXS exam console open karo.</p>
         <div class="stack">
           <input id="student-login-id" placeholder="Student ID (example: cadet-01)">
-          <button id="student-login-btn" class="portal-btn primary" type="button">Login As Student</button>
+          <input id="student-login-password" type="password" placeholder="Password">
+          <button id="student-login-btn" class="portal-btn primary" type="button">Login As Cadet</button>
         </div>
       </article>
 
-      <article class="portal-card">
-        <p class="card-kicker">ADMIN ZONE</p>
-        <h2>Proctor Command Center</h2>
-        <p>Admin ID + access key se login karo. Yahan se exam orchestration aur monitoring control milega.</p>
+      <article id="admin-card" class="portal-card">
+        <p class="card-kicker">EXAM CONTROLLER</p>
+        <h2>Admin Login</h2>
+        <p>Yeh panel sirf trusted host machine par available hai.</p>
         <div class="stack">
           <input id="admin-login-id" placeholder="Admin ID (example: superadmin)">
           <input id="admin-login-key" type="password" placeholder="Access Key">
-          <button id="admin-login-btn" class="portal-btn" type="button">Login As Admin</button>
-          <p class="small">Demo key: <span class="mono">nitmexs-admin</span></p>
+          <button id="admin-login-btn" class="portal-btn" type="button">Login As Exam Controller</button>
+          <p class="small">Default superadmin: <span class="mono">superadmin / nitmexs-admin</span></p>
         </div>
       </article>
     </section>
@@ -49,7 +47,7 @@
       <p class="card-kicker">SESSION CONTROL</p>
       <h2>Quick Access</h2>
       <div class="row">
-        <button id="continue-student" type="button" class="portal-btn primary">Continue Student Session</button>
+        <button id="continue-student" type="button" class="portal-btn primary">Continue Cadet Session</button>
         <button id="continue-admin" type="button" class="portal-btn">Continue Admin Session</button>
         <button id="logout-all" type="button" class="portal-btn danger">Logout All</button>
       </div>
@@ -60,4 +58,3 @@
   <script src="/web/index.js"></script>
 </body>
 </html>
-

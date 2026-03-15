@@ -34,7 +34,7 @@ class StudentCsvImportResult:
 
 class StudentRegistryCsvService:
     REQUIRED_COLUMNS = ["student_id"]
-    OPTIONAL_COLUMNS = ["display_name", "created_by"]
+    OPTIONAL_COLUMNS = ["display_name", "created_by", "password"]
     EXPORT_COLUMNS = ["student_id", "display_name", "status", "created_by", "created_at"]
 
     def __init__(self, registry_service: StudentRegistryService):
@@ -72,6 +72,7 @@ class StudentRegistryCsvService:
             student_id = (row.get("student_id") or "").strip()
             display_name = (row.get("display_name") or "").strip() or None
             created_by = (row.get("created_by") or "").strip() or default_created_by
+            password = (row.get("password") or "").strip() or student_id
 
             try:
                 self._registry_service.register_student(
@@ -79,6 +80,7 @@ class StudentRegistryCsvService:
                         student_id=student_id,
                         display_name=display_name,
                         created_by=created_by,
+                        password=password,
                     )
                 )
                 inserted += 1
@@ -92,8 +94,17 @@ class StudentRegistryCsvService:
             errors=errors,
         )
 
-    def export_csv(self, limit: int = 1000) -> str:
-        students = self._registry_service.list_students(limit=limit)
+    def export_csv(
+        self,
+        limit: int = 1000,
+        owner_admin_id: str | None = None,
+        include_all: bool = False,
+    ) -> str:
+        students = self._registry_service.list_students(
+            limit=limit,
+            owner_admin_id=owner_admin_id,
+            include_all=include_all,
+        )
         output = StringIO()
         writer = csv.DictWriter(output, fieldnames=self.EXPORT_COLUMNS, lineterminator="\n")
         writer.writeheader()

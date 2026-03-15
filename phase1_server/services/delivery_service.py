@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from phase1_server.models import Attempt, AttemptResponse, AttemptStatus, ExamStatus
+from phase1_server.models import Attempt, AttemptResponse, AttemptStatus, ExamStatus, QuestionType
 from phase1_server.repositories.attempt_repository import AttemptRepository
 from phase1_server.repositories.exam_repository import ExamRepository
 from phase1_server.repositories.question_repository import QuestionRepository
@@ -22,6 +22,7 @@ from phase1_server.services.audit_service import AuditService
 from phase1_server.services.exam_service import ExamNotFoundError, ExamService, ExamValidationError
 from phase1_server.services.grading_service import GradingEngine, GradingError
 from phase1_server.services.metrics_service import MetricsService
+from phase1_server.services.question_service import QuestionService
 
 
 class DeliveryError(ValueError):
@@ -69,8 +70,8 @@ class AuditEventType:
 class AnswerSubmissionPayload:
     attempt_id: str
     question_id: str
-    selected_option_id: str
-    confidence_tag: str | None = None
+    selected_option_id: str | None = None
+    text_answer: str | None = None
 
 
 class DeliveryService:
@@ -167,24 +168,85 @@ class DeliveryService:
             **self._question_public_payload(question_id),
         }
 
+    def get_reference_exam_preview(self, exam_id: str) -> dict:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+        if not exam.reference_exam_id:
+            return {
+                "available": False,
+                "exam_id": exam_id,
+                "reference_exam_id": None,
+                "questions": [],
+            }
+        reference_exam = self._exam_repo.get_exam(exam.reference_exam_id)
+        if reference_exam is None:
+            raise ExamNotFoundError(f"Reference exam '{exam.reference_exam_id}' not found")
+        question_ids = self._exam_repo.list_question_ids(reference_exam.id)
+        preview_items = [
+            {
+                "sequence_number": index,
+                **self._question_public_payload(question_id),
+            }
+            for index, question_id in enumerate(question_ids[:10], start=1)
+        ]
+        return {
+            "available": True,
+            "exam_id": exam_id,
+            "reference_exam_id": reference_exam.id,
+            "reference_exam_name": reference_exam.name,
+            "question_count": len(question_ids),
+            "questions": preview_items,
+        }
+
     def submit_answer(self, payload: AnswerSubmissionPayload, student_id: str) -> dict:
         attempt = self._assert_owned_active_attempt(payload.attempt_id, student_id)
         if not self._attempt_repo.question_in_snapshot(attempt.id, payload.question_id):
             raise SnapshotQuestionNotFoundError(
                 "Question does not belong to attempt snapshot"
             )
-        if not self._question_repo.option_belongs_to_question(
-            payload.question_id,
-            payload.selected_option_id,
-        ):
-            raise DeliveryError("Selected option does not belong to question")
+        row = self._question_repo.get_question_with_options(payload.question_id)
+        if row is None:
+            raise SnapshotQuestionNotFoundError(f"Question '{payload.question_id}' not found")
+        question, _ = row
+
+        selected_option_id: str | None = None
+        text_answer: str | None = None
+        normalized_text_answer: str | None = None
+        word_count: int | None = None
+
+        if question.question_type in {QuestionType.MCQ_SINGLE, QuestionType.TRUE_FALSE}:
+            if not payload.selected_option_id or payload.text_answer:
+                raise DeliveryError("Objective questions require a selected_option_id only")
+            if not self._question_repo.option_belongs_to_question(
+                payload.question_id,
+                payload.selected_option_id,
+            ):
+                raise DeliveryError("Selected option does not belong to question")
+            selected_option_id = payload.selected_option_id
+        else:
+            if payload.selected_option_id is not None:
+                raise DeliveryError("Text questions accept only text answers")
+            text_answer = (payload.text_answer or "").strip()
+            normalized_text_answer = (
+                QuestionService.normalize_text_answer(text_answer) if text_answer else None
+            )
+            word_count = QuestionService.count_words(text_answer) if text_answer else 0
+            if question.question_type in {QuestionType.SHORT_ANSWER, QuestionType.LONG_ANSWER}:
+                if text_answer and question.word_hard_max and word_count > question.word_hard_max:
+                    raise DeliveryError(
+                        f"Answer exceeds the hard word limit of {question.word_hard_max} words"
+                    )
 
         answered_at = self._now_iso()
         self._attempt_repo.upsert_response(
             AttemptResponse(
                 attempt_id=attempt.id,
                 question_id=payload.question_id,
-                selected_option_id=payload.selected_option_id,
+                selected_option_id=selected_option_id,
+                text_answer=text_answer,
+                normalized_text_answer=normalized_text_answer,
+                word_count=word_count,
                 answered_at=answered_at,
             )
         )
@@ -196,8 +258,10 @@ class DeliveryService:
             event_type=AuditEventType.ANSWER_SUBMITTED,
             payload={
                 "question_id": payload.question_id,
-                "selected_option_id": payload.selected_option_id,
-                "confidence_tag": payload.confidence_tag,
+                "question_type": question.question_type.value,
+                "selected_option_id": selected_option_id,
+                "text_answer": text_answer,
+                "word_count": word_count,
             },
             created_at=answered_at,
             version=attempt.version,
@@ -205,8 +269,10 @@ class DeliveryService:
         return {
             "attempt_id": attempt.id,
             "question_id": payload.question_id,
-            "selected_option_id": payload.selected_option_id,
-            "confidence_tag": payload.confidence_tag,
+            "question_type": question.question_type.value,
+            "selected_option_id": selected_option_id,
+            "text_answer": text_answer,
+            "word_count": word_count,
             "answered_at": answered_at,
             "idempotent": True,
         }
@@ -484,6 +550,7 @@ class DeliveryService:
         exam_id: str,
         actor_id: str = "admin",
         reason: str | None = None,
+        freeze_timer: bool = False,
         limit: int = 2000,
     ) -> dict:
         if limit < 1 or limit > 5000:
@@ -502,6 +569,12 @@ class DeliveryService:
         for attempt_id in attempt_ids:
             try:
                 transition = state_service.transition(attempt_id, AttemptStatus.PAUSED)
+                if freeze_timer:
+                    self._attempt_repo.update_timer_state(
+                        attempt_id,
+                        timer_frozen=True,
+                        timer_paused_at=transition.updated_at,
+                    )
                 self._attempt_repo.log_audit_event(
                     attempt_id=attempt_id,
                     event_type="PAUSED",
@@ -515,11 +588,17 @@ class DeliveryService:
                     actor_type="admin",
                     actor_id=actor_id,
                     event_type=AuditEventType.ATTEMPT_PAUSED,
-                    payload={"reason": reason},
+                    payload={"reason": reason, "freeze_timer": freeze_timer},
                     created_at=transition.updated_at,
                     version=transition.version,
                 )
-                paused.append({"attempt_id": attempt_id, "paused_at": transition.updated_at})
+                paused.append(
+                    {
+                        "attempt_id": attempt_id,
+                        "paused_at": transition.updated_at,
+                        "freeze_timer": freeze_timer,
+                    }
+                )
             except (AttemptConcurrencyError, InvalidAttemptTransitionError) as exc:
                 failures.append({"attempt_id": attempt_id, "error": str(exc)})
 
@@ -531,6 +610,7 @@ class DeliveryService:
             event_type=AuditEventType.EXAM_PAUSED,
             payload={
                 "reason": reason,
+                "freeze_timer": freeze_timer,
                 "processed_count": len(attempt_ids),
                 "paused_count": len(paused),
                 "failed_count": len(failures),
@@ -541,6 +621,7 @@ class DeliveryService:
             "processed_count": len(attempt_ids),
             "paused_count": len(paused),
             "failed_count": len(failures),
+            "freeze_timer": freeze_timer,
             "paused_attempts": paused,
             "failures": failures,
         }
@@ -567,7 +648,25 @@ class DeliveryService:
         failures: list[dict] = []
         for attempt_id in attempt_ids:
             try:
+                existing_attempt = self._attempt_repo.get(attempt_id)
                 transition = state_service.transition(attempt_id, AttemptStatus.ACTIVE)
+                if existing_attempt and existing_attempt.timer_frozen and existing_attempt.timer_paused_at:
+                    self._attempt_repo.update_timer_state(
+                        attempt_id,
+                        timer_frozen=False,
+                        timer_paused_at=None,
+                        expires_at=self._extend_expires_at(
+                            existing_attempt.expires_at,
+                            existing_attempt.timer_paused_at,
+                            transition.updated_at,
+                        ),
+                    )
+                else:
+                    self._attempt_repo.update_timer_state(
+                        attempt_id,
+                        timer_frozen=False,
+                        timer_paused_at=None,
+                    )
                 self._attempt_repo.log_audit_event(
                     attempt_id=attempt_id,
                     event_type="RESUMED",
@@ -867,20 +966,24 @@ class DeliveryService:
         exam = self._exam_repo.get_exam(attempt.exam_id)
         if exam is None:
             raise ExamNotFoundError(f"Exam '{attempt.exam_id}' not found")
-
-        rules = [
-            "Read each question carefully before selecting an option.",
-            "Use Save & Next to persist each answer.",
-            "Do not switch tabs or open external resources during attempt.",
-            "Keep LAN connected; local queue auto-syncs on reconnect.",
-            "Review marked/unanswered items before final submission.",
-        ]
+        rules = ExamService(self._exam_repo, self._question_repo).build_exam_rules(exam)
         return {
             "attempt_id": attempt.id,
             "exam_id": exam.id,
             "exam_name": exam.name,
             "duration_minutes": exam.duration_minutes,
             "negative_marking": exam.negative_marking,
+            "rules": rules,
+        }
+
+    def get_exam_rules_preview(self, exam_id: str) -> dict:
+        exam = self._exam_repo.get_exam(exam_id)
+        if exam is None:
+            raise ExamNotFoundError(f"Exam '{exam_id}' not found")
+        rules = ExamService(self._exam_repo, self._question_repo).build_exam_rules(exam)
+        return {
+            "exam_id": exam.id,
+            "exam_name": exam.name,
             "rules": rules,
         }
 
@@ -1023,10 +1126,12 @@ class DeliveryService:
             {
                 "sequence_number": sequence_by_question_id[question_id],
                 "question_id": question_id,
-                "selected_option_id": selected_option_id,
+                "selected_option_id": response.get("selected_option_id"),
+                "text_answer": response.get("text_answer"),
             }
-            for question_id, selected_option_id in responses.items()
+            for question_id, response in responses.items()
             if question_id in sequence_by_question_id
+            if response.get("selected_option_id") or response.get("text_answer")
         ]
         answered.sort(key=lambda item: item["sequence_number"])
 
@@ -1036,6 +1141,9 @@ class DeliveryService:
             "status": attempt.status.value,
             "started_at": attempt.created_at,
             "expires_at": attempt.expires_at,
+            "timer_frozen": attempt.timer_frozen,
+            "timer_paused_at": attempt.timer_paused_at,
+            "frozen_remaining_seconds": self._frozen_remaining_seconds(attempt),
             "total_question_count": len(snapshot_question_ids),
             "answered_question_count": len(answered),
             "answered": answered,
@@ -1078,13 +1186,18 @@ class DeliveryService:
             "attempt_id": attempt_id,
             "status": AttemptStatus.FINALIZED.value,
             "finalized_at": finalized_at,
-            "grading": "completed",
-            "result": {
-                "total_score": summary.total_score,
-                "total_possible_marks": summary.total_possible_marks,
-                "percentage": summary.percentage,
-                "passed": summary.passed,
-            },
+            "grading": "completed" if summary.result_ready else "pending_review",
+            "pending_review_count": summary.pending_review_count,
+            "result": (
+                {
+                    "total_score": summary.total_score,
+                    "total_possible_marks": summary.total_possible_marks,
+                    "percentage": summary.percentage,
+                    "passed": summary.passed,
+                }
+                if summary.result_ready
+                else None
+            ),
         }
 
     def _assert_owned_attempt(self, attempt_id: str, student_id: str) -> Attempt:
@@ -1128,6 +1241,19 @@ class DeliveryService:
                 "topic": question.topic,
                 "difficulty": question.difficulty,
                 "marks": question.marks,
+                "question_type": question.question_type.value,
+                "word_policy": {
+                    "word_target_min": question.word_target_min,
+                    "word_target_max": question.word_target_max,
+                    "word_hard_max": question.word_hard_max,
+                },
+                "input_mode": (
+                    "choice"
+                    if question.question_type in {QuestionType.MCQ_SINGLE, QuestionType.TRUE_FALSE}
+                    else "text"
+                ),
+                "virtual_keyboard_allowed": question.question_type
+                in {QuestionType.FIB_TEXT, QuestionType.SHORT_ANSWER, QuestionType.LONG_ANSWER},
             },
             "options": [
                 {
@@ -1162,6 +1288,42 @@ class DeliveryService:
         if started.tzinfo is None:
             started = started.replace(tzinfo=timezone.utc)
         return (started + timedelta(minutes=duration_minutes)).isoformat()
+
+    def _extend_expires_at(
+        self,
+        expires_at_iso: str | None,
+        paused_at_iso: str,
+        resumed_at_iso: str,
+    ) -> str | None:
+        if not expires_at_iso:
+            return expires_at_iso
+        expires_at = datetime.fromisoformat(expires_at_iso)
+        paused_at = datetime.fromisoformat(paused_at_iso)
+        resumed_at = datetime.fromisoformat(resumed_at_iso)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if paused_at.tzinfo is None:
+            paused_at = paused_at.replace(tzinfo=timezone.utc)
+        if resumed_at.tzinfo is None:
+            resumed_at = resumed_at.replace(tzinfo=timezone.utc)
+        extension = max(timedelta(0), resumed_at - paused_at)
+        return (expires_at + extension).isoformat()
+
+    def _frozen_remaining_seconds(self, attempt: Attempt) -> int | None:
+        if (
+            attempt.status is not AttemptStatus.PAUSED
+            or not attempt.timer_frozen
+            or not attempt.timer_paused_at
+            or not attempt.expires_at
+        ):
+            return None
+        expires_at = datetime.fromisoformat(attempt.expires_at)
+        paused_at = datetime.fromisoformat(attempt.timer_paused_at)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if paused_at.tzinfo is None:
+            paused_at = paused_at.replace(tzinfo=timezone.utc)
+        return max(0, int((expires_at - paused_at).total_seconds()))
 
     def _now_iso(self) -> str:
         return self._now_provider().isoformat()
